@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "661193309412",
+    "project_id": "com-example-hueckoapp-5e244",
+    "storage_bucket": "com-example-hueckoapp-5e244.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:661193309412:android:e1ce8b278b5b8c537d80f1",
+        "android_client_info": {
+          "package_name": "com.example.hueckoapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxklE54_32MvBWQ8r5P7d3hoqD9mP6R5A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
