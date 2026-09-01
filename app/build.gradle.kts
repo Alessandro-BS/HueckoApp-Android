@@ -61,6 +61,8 @@ dependencies {
 
     // Navegación
     implementation("androidx.navigation:navigation-compose:2.8.0-beta07")
+    // Iconos
+    implementation("androidx.compose.material:material-icons-extended")
     // Retrofit para Backend
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
