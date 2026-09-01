@@ -1,11 +1,16 @@
 package com.example.hueckoapp.ui.schedule
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -20,13 +25,33 @@ import com.example.hueckoapp.domain.model.TimeBlock
 fun MyScheduleScreen(
     viewModel: ScheduleViewModel,
     onNavigateToAdd: () -> Unit,
+    onNavigateToOcr: (android.net.Uri) -> Unit,
     onBack: () -> Unit
 ) {
     val blocks by viewModel.timeBlocks.collectAsState()
 
+    // Selector de imágenes de la galería
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let { onNavigateToOcr(it) }
+        }
+    )
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Mi Horario") })
+            TopAppBar(
+                title = { Text("Mi Horario") },
+                actions = {
+                    IconButton(onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }) {
+                        Icon(Icons.Default.DocumentScanner, contentDescription = "Escanear con IA")
+                    }
+                }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onNavigateToAdd) {
