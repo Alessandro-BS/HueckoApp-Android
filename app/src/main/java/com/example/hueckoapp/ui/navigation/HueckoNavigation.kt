@@ -6,12 +6,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.hueckoapp.data.repository.AuthRepositoryImpl
+import com.example.hueckoapp.data.repository.GroupRepositoryImpl
 import com.example.hueckoapp.data.repository.ScheduleRepositoryImpl
 import com.example.hueckoapp.data.service.GeminiService
 import com.example.hueckoapp.ui.auth.AuthViewModel
 import com.example.hueckoapp.ui.auth.LoginScreen
 import com.example.hueckoapp.ui.auth.RegisterScreen
 import com.example.hueckoapp.ui.dashboard.DashboardScreen
+import com.example.hueckoapp.ui.group.GroupListScreen
+import com.example.hueckoapp.ui.group.GroupViewModel
 import com.example.hueckoapp.ui.ocr.OcrReviewScreen
 import com.example.hueckoapp.ui.ocr.OcrViewModel
 import com.example.hueckoapp.ui.schedule.AddScheduleScreen
@@ -30,6 +33,9 @@ fun HueckoNavigation() {
     
     val scheduleRepository = remember { ScheduleRepositoryImpl() }
     val scheduleViewModel = remember { ScheduleViewModel(scheduleRepository) }
+
+    val groupRepository = remember { GroupRepositoryImpl() }
+    val groupViewModel = remember { GroupViewModel(groupRepository) }
 
     val geminiService = remember { GeminiService() }
     val ocrViewModel = remember { OcrViewModel(geminiService) }
@@ -58,7 +64,19 @@ fun HueckoNavigation() {
             )
         }
         composable("dashboard") {
-            DashboardScreen(onNavigateToSchedule = { navController.navigate("my_schedule") })
+            DashboardScreen(
+                onNavigateToSchedule = { navController.navigate("my_schedule") },
+                onNavigateToGroups = { navController.navigate("groups") }
+            )
+        }
+        composable("groups") {
+            GroupListScreen(
+                viewModel = groupViewModel,
+                onNavigateToGroupDetail = { groupId ->
+                    // Próxima fase: navegar al detalle del grupo y ver su heatmap
+                },
+                onBack = { navController.popBackStack() }
+            )
         }
         composable("my_schedule") {
             MyScheduleScreen(
