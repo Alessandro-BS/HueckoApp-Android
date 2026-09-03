@@ -12,6 +12,7 @@ data class User(
 data class Group(
     val id: String,
     val name: String,
+    val inviteCode: String,
     val members: List<User>
 )
 
