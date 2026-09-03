@@ -87,7 +87,25 @@ fun GroupListScreen(
         }
     }
 
-    // Aquí irán los diálogos en la Parte 4
+    if (showCreateDialog) {
+        CreateGroupDialog(
+            viewModel = viewModel,
+            onDismiss = { 
+                showCreateDialog = false
+                viewModel.clearError() 
+            }
+        )
+    }
+
+    if (showJoinDialog) {
+        JoinGroupDialog(
+            viewModel = viewModel,
+            onDismiss = { 
+                showJoinDialog = false
+                viewModel.clearError()
+            }
+        )
+    }
 }
 
 @Composable
