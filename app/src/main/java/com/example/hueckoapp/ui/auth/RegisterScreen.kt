@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,9 +21,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mail
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -54,27 +55,27 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.hueckoapp.ui.theme.HueckoRadius
 
 /**
- * Inicio de sesion.
+ * Alta de cuenta.
  *
- * Se apoya en el [AuthViewModel] que ya existia, para que el registro y el
- * inicio de sesion sigan pasando por el mismo repositorio.
+ * Comparte cromo y reglas de validacion con [LoginScreen] a proposito: son la
+ * misma tarea vista dos veces, y cambiar de estilo entre una y otra haria
+ * dudar de si se sigue en la misma aplicacion.
  *
- * La validacion de formato se resuelve aqui, en el cliente, y el mensaje del
- * repositorio se muestra aparte: son errores de origen distinto y se limpian
- * en momentos distintos. Uno desaparece al corregir el campo, el otro solo al
- * reintentar el envio.
+ * La navegacion al exito va en un `LaunchedEffect`. Llamarla directamente
+ * durante la composicion, como estaba, la dispara en cada recomposicion y
+ * apila destinos duplicados.
  */
 @Composable
-fun LoginScreen(
+fun RegisterScreen(
     viewModel: AuthViewModel,
-    onNavigateToRegister: () -> Unit,
-    onLoginSuccess: () -> Unit,
+    onNavigateToLogin: () -> Unit,
+    onRegisterSuccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val name by viewModel.name
     val email by viewModel.email
     val password by viewModel.password
     val isLoading by viewModel.isLoading
@@ -82,17 +83,19 @@ fun LoginScreen(
     val isLoggedIn by viewModel.isLoggedIn
 
     var showPassword by remember { mutableStateOf(false) }
+    var nameError by remember { mutableStateOf<String?>(null) }
     var emailError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(isLoggedIn) {
-        if (isLoggedIn) onLoginSuccess()
+        if (isLoggedIn) onRegisterSuccess()
     }
 
     fun submit() {
+        nameError = if (name.isBlank()) "El nombre es requerido" else null
         emailError = when {
             email.isBlank() -> "El correo es requerido"
-            !EMAIL_REGEX.matches(email.trim()) -> "Ingresa un correo válido"
+            !REGISTER_EMAIL_REGEX.matches(email.trim()) -> "Ingresa un correo válido"
             else -> null
         }
         passwordError = when {
@@ -100,7 +103,9 @@ fun LoginScreen(
             password.length < 6 -> "Mínimo 6 caracteres"
             else -> null
         }
-        if (emailError == null && passwordError == null) viewModel.login()
+        if (nameError == null && emailError == null && passwordError == null) {
+            viewModel.register()
+        }
     }
 
     Column(
@@ -111,12 +116,33 @@ fun LoginScreen(
             .navigationBarsPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(horizontal = 20.dp, vertical = 20.dp),
     ) {
-        BrandMark()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onNavigateToLogin) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Volver al inicio de sesión",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = "Crear cuenta",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "Necesitas una cuenta para compartir tu disponibilidad con un grupo.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(Modifier.height(24.dp))
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -125,23 +151,25 @@ fun LoginScreen(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = "Bienvenido de vuelta",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                RegisterFieldLabel("Nombre completo")
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Inicia sesión para coordinar horarios con tu grupo.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                RegisterField(
+                    value = name,
+                    onValueChange = {
+                        viewModel.onNameChange(it)
+                        nameError = null
+                    },
+                    placeholder = "Ana Pérez",
+                    leadingIcon = Icons.Outlined.Person,
+                    errorMessage = nameError,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 )
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(18.dp))
 
-                FieldLabel("Correo electrónico")
+                RegisterFieldLabel("Correo electrónico")
                 Spacer(Modifier.height(6.dp))
-                HueckoTextField(
+                RegisterField(
                     value = email,
                     onValueChange = {
                         viewModel.onEmailChange(it)
@@ -158,9 +186,9 @@ fun LoginScreen(
 
                 Spacer(Modifier.height(18.dp))
 
-                FieldLabel("Contraseña")
+                RegisterFieldLabel("Contraseña")
                 Spacer(Modifier.height(6.dp))
-                HueckoTextField(
+                RegisterField(
                     value = password,
                     onValueChange = {
                         viewModel.onPasswordChange(it)
@@ -179,8 +207,6 @@ fun LoginScreen(
                         PasswordVisualTransformation()
                     },
                     trailingIcon = {
-                        // IconButton, y no un Icon pulsable: trae por defecto
-                        // los 48dp de area tactil que pide Material.
                         IconButton(onClick = { showPassword = !showPassword }) {
                             Icon(
                                 imageVector = if (showPassword) {
@@ -202,7 +228,29 @@ fun LoginScreen(
                 AnimatedVisibility(visible = serverError != null) {
                     Column {
                         Spacer(Modifier.height(16.dp))
-                        ErrorBanner(serverError.orEmpty())
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(HueckoRadius.xxl),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Filled.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = serverError.orEmpty(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -219,7 +267,6 @@ fun LoginScreen(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                     ),
-                    // Sin elevacion: la jerarquia la da el color, no la sombra.
                     elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp, 0.dp, 0.dp),
                 ) {
                     if (isLoading) {
@@ -229,9 +276,9 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onPrimary,
                         )
                         Spacer(Modifier.width(10.dp))
-                        Text("Iniciando sesión…", style = MaterialTheme.typography.labelLarge)
+                        Text("Creando cuenta…", style = MaterialTheme.typography.labelLarge)
                     } else {
-                        Text("Iniciar sesión", style = MaterialTheme.typography.labelLarge)
+                        Text("Registrarme", style = MaterialTheme.typography.labelLarge)
                     }
                 }
 
@@ -243,13 +290,13 @@ fun LoginScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "¿No tienes cuenta?",
+                        text = "¿Ya tienes cuenta?",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(onClick = onNavigateToRegister, enabled = !isLoading) {
+                    TextButton(onClick = onNavigateToLogin, enabled = !isLoading) {
                         Text(
-                            text = "Regístrate",
+                            text = "Inicia sesión",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                         )
@@ -257,62 +304,11 @@ fun LoginScreen(
                 }
             }
         }
-
-        Spacer(Modifier.height(20.dp))
-
-        Text(
-            text = "Mientras no haya servidor, entra cualquier correo con formato válido y una contraseña de 6 caracteres o más.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 8.dp),
-        )
-    }
-}
-
-/**
- * Marca. Un cuadrado liso con la inicial: sin degradado ni sombra, que en un
- * logotipo de 52dp solo anaden ruido y no comunican nada.
- */
-@Composable
-private fun BrandMark() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(HueckoRadius.xxl),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "H",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary,
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Huecko",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "Coordinar horarios sin discutirlo en el grupo",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
 @Composable
-private fun FieldLabel(text: String) {
+private fun RegisterFieldLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
@@ -321,42 +317,7 @@ private fun FieldLabel(text: String) {
 }
 
 @Composable
-private fun ErrorBanner(message: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(HueckoRadius.xxl),
-        color = MaterialTheme.colorScheme.errorContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Filled.ErrorOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-            )
-        }
-    }
-}
-
-/**
- * Campo de texto con el cromo de Huecko. Envuelve `OutlinedTextField` en vez
- * de dibujar uno desde cero para no perder el manejo del teclado ni el
- * soporte de accesibilidad.
- *
- * El error va como `supportingText` y no como un Text suelto debajo: asi el
- * lector de pantalla lo asocia al campo en lugar de leerlo como texto huerfano.
- */
-@Composable
-private fun HueckoTextField(
+private fun RegisterField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -381,14 +342,13 @@ private fun HueckoTextField(
         leadingIcon = {
             Icon(
                 leadingIcon,
-                // Decorativo: repite lo que ya dice la etiqueta del campo.
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp),
             )
         },
         trailingIcon = trailingIcon,
-        supportingText = errorMessage?.let { mensaje -> { Text(mensaje) } },
+        supportingText = errorMessage?.let { message -> { Text(message) } },
         isError = errorMessage != null,
         singleLine = true,
         shape = RoundedCornerShape(HueckoRadius.xxl),
@@ -406,4 +366,4 @@ private fun HueckoTextField(
     )
 }
 
-private val EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+private val REGISTER_EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")

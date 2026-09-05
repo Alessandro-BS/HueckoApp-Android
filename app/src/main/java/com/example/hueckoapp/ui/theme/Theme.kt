@@ -14,10 +14,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 /**
- * Esquema claro de Huecko. El color dinamico de Android 12+ esta deshabilitado
- * a proposito: la identidad de la marca es el verde salvia, y dejar que el
- * fondo de pantalla del telefono lo reescriba romperia la continuidad con la
- * web, que no tiene modo oscuro.
+ * Esquema claro de Huecko.
+ *
+ * El color dinamico de Android 12+ esta deshabilitado a proposito: la
+ * identidad de la marca es el violeta, y dejar que el fondo de pantalla del
+ * telefono lo reescriba haria que la app se viera distinta en cada movil y
+ * rompiera la continuidad con la web.
  */
 private val HueckoLightColorScheme = lightColorScheme(
     primary = HuePrimary,
@@ -64,15 +66,14 @@ private val HueckoLightColorScheme = lightColorScheme(
 )
 
 /**
- * Roles que la web usa y Material 3 no define: exito, aviso, los tonos de
- * pulsacion y el verde profundo de marca. Viajan por un CompositionLocal para
- * que se lean igual que `MaterialTheme.colorScheme`, sin constantes sueltas
- * repartidas por las pantallas.
+ * Roles que la interfaz usa y Material 3 no define: exito, aviso y los tonos
+ * de pulsacion. Viajan por un CompositionLocal para leerse igual que
+ * `MaterialTheme.colorScheme`, sin constantes sueltas por las pantallas.
  */
 @Immutable
 data class HueckoExtendedColors(
-    val primaryHover: Color = HuePrimaryHover,
-    val secondaryHover: Color = HueSecondaryHover,
+    val primaryPressed: Color = HuePrimaryPressed,
+    val secondaryPressed: Color = HueSecondaryPressed,
     val success: Color = HueSuccess,
     val onSuccess: Color = HueOnSuccess,
     val successContainer: Color = HueSuccessContainer,
@@ -81,8 +82,6 @@ data class HueckoExtendedColors(
     val onWarning: Color = HueOnWarning,
     val warningContainer: Color = HueWarningContainer,
     val onWarningContainer: Color = HueOnWarningContainer,
-    val brandDeep: Color = HueBrandDeep,
-    val brandMid: Color = HueBrandMid,
 )
 
 val LocalHueckoColors = staticCompositionLocalOf { HueckoExtendedColors() }

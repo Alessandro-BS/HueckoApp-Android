@@ -2,18 +2,24 @@ package com.example.hueckoapp.ui.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.hueckoapp.data.HueckoRepository
+import com.example.hueckoapp.domain.model.AttendeeStatus
 import com.example.hueckoapp.domain.model.DayOfWeek
+import com.example.hueckoapp.domain.model.EventAttendee
 import com.example.hueckoapp.domain.model.Group
+import com.example.hueckoapp.domain.model.IncidenceType
 import com.example.hueckoapp.domain.model.PlanProposal
 import com.example.hueckoapp.domain.model.ProposalState
 import com.example.hueckoapp.domain.model.TimeBlock
 import com.example.hueckoapp.domain.model.UpcomingEvent
+import com.example.hueckoapp.domain.model.User
+import com.example.hueckoapp.domain.repository.AuthRepository
+import com.example.hueckoapp.domain.repository.GroupRepository
+import com.example.hueckoapp.domain.repository.PlanRepository
+import com.example.hueckoapp.domain.repository.ScheduleRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -22,11 +28,10 @@ import java.util.Calendar
 /** Resumen de un grupo tal y como lo lista el inicio. */
 data class GroupSummary(
     val id: String,
-    val nombre: String,
-    val miembros: Int,
-    val coincidenciaPorcentaje: Int,
-    val proximaFranja: String,
-    val colorArgb: Long,
+    val name: String,
+    val memberCount: Int,
+    val matchPercentage: Int,
+    val nextSlot: String,
 )
 
 /** Votacion abierta que el usuario todavia puede resolver desde el inicio. */
@@ -35,81 +40,91 @@ data class PendingVote(
     val groupName: String,
 )
 
+/** Aviso de baja critica que abre una votacion expres (HU-14). */
+data class ExpressVoteAlert(
+    val proposalId: String,
+    val who: String,
+    val reason: String,
+    val planTitle: String,
+)
+
+enum class ExpressVoteChoice(val label: String, val resultingState: ProposalState) {
+    REPROGRAMAR("Reprogramar", ProposalState.PROPUESTO),
+    CANCELAR("Cancelar", ProposalState.CANCELADO),
+    MANTENER("Mantener", ProposalState.CONFIRMADO),
+}
+
 data class DashboardUiState(
-    val saludo: String = "",
-    val nombre: String = "",
-    val fechaLarga: String = "",
-    val hoy: DayOfWeek = DayOfWeek.LUN,
-    val bloquesDeHoy: List<TimeBlock> = emptyList(),
-    val gruposActivos: Int = 0,
-    val votacionesActivas: Int = 0,
-    val horasCoincidentes: Int = 0,
-    val bloquesTotales: Int = 0,
-    val proximoPlan: UpcomingEvent? = null,
-    val grupos: List<GroupSummary> = emptyList(),
-    val votaciones: List<PendingVote> = emptyList(),
-    /** Aviso de baja critica que dispara la votacion expres (HU-14). */
-    val alertaVotacionExpres: ExpressVoteAlert? = null,
-    val votoExpresElegido: ExpressVoteChoice? = null,
+    val greeting: String = "",
+    val name: String = "",
+    val longDate: String = "",
+    val today: DayOfWeek = DayOfWeek.LUN,
+    val todayBlocks: List<TimeBlock> = emptyList(),
+    val activeGroups: Int = 0,
+    val openVotes: Int = 0,
+    val matchingHours: Int = 0,
+    val totalBlocks: Int = 0,
+    val upcomingEvent: UpcomingEvent? = null,
+    val groups: List<GroupSummary> = emptyList(),
+    val pendingVotes: List<PendingVote> = emptyList(),
+    val expressAlert: ExpressVoteAlert? = null,
+    val expressChoice: ExpressVoteChoice? = null,
+    val userEmail: String = "",
     val toast: String? = null,
 )
 
-data class ExpressVoteAlert(
-    val quien: String,
-    val motivo: String,
-    val planTitulo: String,
-    val tiempoRestante: String,
-)
+/**
+ * Compone el inicio a partir de los cuatro repositorios. No guarda datos
+ * propios: todo lo que se ve aqui es una vista derivada de lo que ya sirven
+ * auth, grupos, horario y planes, de modo que votar en la pantalla de grupos
+ * se refleja aqui sin sincronizar nada a mano.
+ */
+class DashboardViewModel(
+    authRepository: AuthRepository,
+    groupRepository: GroupRepository,
+    scheduleRepository: ScheduleRepository,
+    private val planRepository: PlanRepository,
+) : ViewModel() {
 
-enum class ExpressVoteChoice(val etiqueta: String) {
-    REPROGRAMAR("Reprogramar"),
-    CANCELAR("Cancelar"),
-    MANTENER("Mantener"),
-}
-
-class DashboardViewModel : ViewModel() {
-
-    private val alertaDescartada = MutableStateFlow(false)
-    private val votoExpres = MutableStateFlow<ExpressVoteChoice?>(null)
+    private val expressChoice = MutableStateFlow<ExpressVoteChoice?>(null)
     private val toast = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<DashboardUiState> = combine(
-        HueckoRepository.groups,
-        HueckoRepository.proposals,
-        HueckoRepository.mySchedule,
-        HueckoRepository.currentUser,
-        combine(alertaDescartada, votoExpres, toast) { descartada, voto, aviso ->
-            Triple(descartada, voto, aviso)
-        },
-    ) { grupos, propuestas, horario, usuario, (descartada, voto, aviso) ->
-        val email = usuario?.email ?: HueckoRepository.DEMO_EMAIL
-        val hoy = DayOfWeek.fromCalendarField(Calendar.getInstance().get(Calendar.DAY_OF_WEEK))
+        authRepository.getCurrentUser(),
+        groupRepository.getGroups(),
+        scheduleRepository.getTimeBlocks(),
+        planRepository.getProposals(),
+        combine(expressChoice, toast) { choice, message -> choice to message },
+    ) { user, groups, blocks, proposals, (choice, message) ->
+        val today = DayOfWeek.fromCalendarField(Calendar.getInstance().get(Calendar.DAY_OF_WEEK))
+        val email = user?.email.orEmpty()
 
-        val votaciones = propuestas
-            .filter { it.estado == ProposalState.PROPUESTO }
-            .map { propuesta ->
+        val votes = proposals
+            .filter { it.state == ProposalState.PROPUESTO }
+            .map { proposal ->
                 PendingVote(
-                    proposal = propuesta,
-                    groupName = grupos.firstOrNull { it.id == propuesta.groupId }?.nombre ?: "Grupo",
+                    proposal = proposal,
+                    groupName = groups.firstOrNull { it.id == proposal.groupId }?.name ?: "Grupo",
                 )
             }
 
         DashboardUiState(
-            saludo = saludoSegunHora(),
-            nombre = usuario?.nombre?.substringBefore(' ') ?: "Alex",
-            fechaLarga = fechaLarga(),
-            hoy = hoy,
-            bloquesDeHoy = horario.filter { it.day == hoy },
-            gruposActivos = grupos.size,
-            votacionesActivas = votaciones.size,
-            horasCoincidentes = horasCoincidentes(propuestas),
-            bloquesTotales = horario.size,
-            proximoPlan = HueckoRepository.upcomingEvent(email),
-            grupos = grupos.map { resumen(it, propuestas) },
-            votaciones = votaciones,
-            alertaVotacionExpres = if (descartada) null else alertaAbierta(propuestas),
-            votoExpresElegido = voto,
-            toast = aviso,
+            greeting = greetingForHour(),
+            name = user?.name?.substringBefore(' ').orEmpty(),
+            longDate = longDate(),
+            today = today,
+            todayBlocks = blocks.filter { it.dayOfWeek == today.iso },
+            activeGroups = groups.size,
+            openVotes = votes.size,
+            matchingHours = matchingHours(proposals),
+            totalBlocks = blocks.size,
+            upcomingEvent = upcomingEvent(groups, proposals, email),
+            groups = groups.map { summaryOf(it, proposals) },
+            pendingVotes = votes,
+            expressAlert = openAlert(proposals),
+            expressChoice = choice,
+            userEmail = email,
+            toast = message,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -117,118 +132,154 @@ class DashboardViewModel : ViewModel() {
         initialValue = DashboardUiState(),
     )
 
-    private val _userEmail = MutableStateFlow(HueckoRepository.DEMO_EMAIL)
-    val userEmail: StateFlow<String> = _userEmail.asStateFlow()
-
     fun vote(proposalId: String, windowId: String) {
-        HueckoRepository.voteWindow(proposalId, windowId, currentEmail())
-        showToast("Tu voto ha sido registrado correctamente.")
+        val email = uiState.value.userEmail
+        if (email.isEmpty()) return
+        viewModelScope.launch {
+            planRepository.voteWindow(proposalId, windowId, email)
+            showToast("Tu voto ha sido registrado.")
+        }
     }
 
     /**
-     * Registra la preferencia en la votacion expres y cierra el aviso poco
-     * despues, para que la respuesta del grupo se vea confirmada antes de que
-     * la tarjeta desaparezca.
+     * Registra la preferencia y cierra el aviso tras un momento, para que la
+     * eleccion se vea confirmada antes de que la tarjeta desaparezca.
      */
     fun submitExpressVote(choice: ExpressVoteChoice) {
-        votoExpres.value = choice
-        showToast("Votacion expres registrada: ${choice.etiqueta.uppercase()}. Notificando al grupo...")
+        val proposalId = uiState.value.expressAlert?.proposalId ?: return
+        expressChoice.value = choice
         viewModelScope.launch {
-            delay(2_500)
-            alertaDescartada.value = true
+            showToast("Votación exprés registrada: ${choice.label.lowercase()}.")
+            delay(1_500)
+            planRepository.resolveIncidences(proposalId, choice.resultingState.name)
+            expressChoice.value = null
         }
     }
 
-    fun dismissToast() {
-        toast.value = null
-    }
-
-    private fun showToast(mensaje: String) {
-        toast.value = mensaje
+    private fun showToast(message: String) {
+        toast.value = message
         viewModelScope.launch {
-            delay(3_500)
-            if (toast.value == mensaje) toast.value = null
+            delay(3_000)
+            if (toast.value == message) toast.value = null
         }
     }
-
-    private fun currentEmail(): String =
-        HueckoRepository.currentUser.value?.email ?: HueckoRepository.DEMO_EMAIL
 
     // ------------------------------------------------------------- derivados
 
-    private fun resumen(group: Group, propuestas: List<PlanProposal>): GroupSummary {
-        val siguiente = propuestas
-            .filter { it.groupId == group.id && it.estado != ProposalState.CANCELADO }
-            .flatMap { it.ventanasSugeridas }
+    private fun summaryOf(group: Group, proposals: List<PlanProposal>): GroupSummary {
+        val next = proposals
+            .filter { it.groupId == group.id && it.state != ProposalState.CANCELADO }
+            .flatMap { it.suggestedWindows }
             .firstOrNull()
 
         return GroupSummary(
             id = group.id,
-            nombre = group.nombre,
-            miembros = group.miembros.size,
-            coincidenciaPorcentaje = siguiente?.disponibilidadPorcentaje ?: group.umbralDisponibilidad,
-            proximaFranja = siguiente
-                ?.let { "${it.dia.label} ${it.rangoHorario}" }
-                ?: "Sin propuesta aun",
-            colorArgb = group.miembros.firstOrNull()?.colorArgb ?: 0xFF3F5D45,
+            name = group.name,
+            memberCount = group.members.size,
+            matchPercentage = next?.availabilityPercentage ?: group.availabilityThreshold,
+            nextSlot = next?.let { "${it.day.label} ${it.timeRange}" } ?: "Sin propuesta aún",
         )
     }
 
     /**
-     * Horas de la semana en las que coincide al menos el 80% del grupo. Se
-     * cuentan sobre las ventanas ya propuestas, que es lo que el usuario puede
-     * aprovechar hoy; el cruce completo de agendas vive en la pantalla de
-     * grupos.
+     * Horas de la semana con coincidencia alta. Se cuentan sobre las ventanas
+     * ya propuestas, que es lo que el usuario puede aprovechar hoy; el cruce
+     * completo de agendas vive en la pantalla de grupos.
      */
-    private fun horasCoincidentes(propuestas: List<PlanProposal>): Int = propuestas
-        .flatMap { it.ventanasSugeridas }
-        .filter { it.disponibilidadPorcentaje >= 80 }
-        .sumOf { ventana ->
-            val inicio = ventana.horaInicio.substringBefore(':').toIntOrNull() ?: 0
-            val fin = ventana.horaFin.substringBefore(':').toIntOrNull() ?: 0
-            (fin - inicio).coerceAtLeast(0)
+    private fun matchingHours(proposals: List<PlanProposal>): Int = proposals
+        .flatMap { it.suggestedWindows }
+        .filter { it.availabilityPercentage >= HIGH_MATCH_THRESHOLD }
+        .sumOf { window ->
+            val start = window.startTime.substringBefore(':').toIntOrNull() ?: 0
+            val end = window.endTime.substringBefore(':').toIntOrNull() ?: 0
+            (end - start).coerceAtLeast(0)
+        }
+
+    private fun upcomingEvent(
+        groups: List<Group>,
+        proposals: List<PlanProposal>,
+        userEmail: String,
+    ): UpcomingEvent? {
+        val proposal = proposals.firstOrNull { it.state == ProposalState.CONFIRMADO } ?: return null
+        val group = groups.firstOrNull { it.id == proposal.groupId } ?: return null
+        val window = proposal.suggestedWindows.firstOrNull() ?: return null
+
+        return UpcomingEvent(
+            id = proposal.id,
+            groupId = group.id,
+            groupName = group.name,
+            title = proposal.title,
+            dayLabel = window.day.label,
+            timeRange = window.timeRange,
+            location = proposal.location ?: "Lugar por definir",
+            state = proposal.state,
+            attendees = group.members.map { member -> attendeeOf(member, proposal, userEmail) },
+        )
+    }
+
+    private fun attendeeOf(
+        member: User,
+        proposal: PlanProposal,
+        userEmail: String,
+    ): EventAttendee {
+        val incidence = proposal.incidences.firstOrNull { it.userEmail == member.email && !it.resolved }
+        return EventAttendee(
+            email = member.email,
+            name = if (member.email == userEmail) "Tú" else member.name,
+            status = when (incidence?.type) {
+                IncidenceType.TARDANZA -> AttendeeStatus.RETRASADO
+                IncidenceType.FALTA, IncidenceType.IMPREVISTO -> AttendeeStatus.NO_ASISTE
+                null -> AttendeeStatus.PUNTUAL
+            },
+            delayMinutes = incidence?.delayMinutes,
+            isEssential = member.isEssential,
+        )
+    }
+
+    /**
+     * Solo un imprevisto sin resolver sobre un plan ya confirmado abre la
+     * votacion expres. Si la disparara cualquier aviso, el grupo votaria a
+     * diario y la alerta dejaria de significar nada.
+     */
+    private fun openAlert(proposals: List<PlanProposal>): ExpressVoteAlert? {
+        val proposal = proposals.firstOrNull { plan ->
+            plan.state == ProposalState.CONFIRMADO && plan.incidences.any { !it.resolved }
+        } ?: return null
+        val incidence = proposal.incidences.first { !it.resolved }
+
+        return ExpressVoteAlert(
+            proposalId = proposal.id,
+            who = incidence.userName,
+            reason = incidence.reason,
+            planTitle = proposal.title,
+        )
+    }
+
+    private fun greetingForHour(): String =
+        when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
+            in 0..11 -> "Buenos días"
+            in 12..18 -> "Buenas tardes"
+            else -> "Buenas noches"
         }
 
     /**
-     * Solo la ausencia de alguien imprescindible abre una votacion expres: si
-     * cualquier baja la disparara, el grupo votaria a diario y el aviso
-     * perderia todo su valor.
+     * Se formatea a mano en vez de con `java.time` porque el resultado debe
+     * salir en castellano sea cual sea el idioma del telefono.
      */
-    private fun alertaAbierta(propuestas: List<PlanProposal>): ExpressVoteAlert? {
-        val propuesta = propuestas.firstOrNull { plan ->
-            plan.estado == ProposalState.CONFIRMADO && plan.incidencias.any { !it.resuelta }
-        } ?: return null
-        val incidencia = propuesta.incidencias.firstOrNull { !it.resuelta } ?: return null
-
-        return ExpressVoteAlert(
-            quien = incidencia.userName,
-            motivo = incidencia.motivo,
-            planTitulo = propuesta.titulo,
-            tiempoRestante = "14:20 min",
-        )
-    }
-
-    private fun saludoSegunHora(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-        in 0..11 -> "Buenos dias"
-        in 12..18 -> "Buenas tardes"
-        else -> "Buenas noches"
-    }
-
-    private fun fechaLarga(): String {
+    private fun longDate(): String {
         val cal = Calendar.getInstance()
-        val dia = DIAS_LARGOS[cal.get(Calendar.DAY_OF_WEEK) - 1]
-        val mes = MESES[cal.get(Calendar.MONTH)]
-        return "$dia, ${cal.get(Calendar.DAY_OF_MONTH)} de $mes"
+        val day = LONG_DAYS[cal.get(Calendar.DAY_OF_WEEK) - 1]
+        val month = MONTHS[cal.get(Calendar.MONTH)]
+        return "$day, ${cal.get(Calendar.DAY_OF_MONTH)} de $month"
     }
 
     private companion object {
-        // Se formatea a mano en vez de con java.time porque minSdk es 29 y el
-        // resultado debe ser identico al de la web (es-ES) en cualquier locale
-        // del telefono.
-        val DIAS_LARGOS = listOf(
-            "Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado",
+        const val HIGH_MATCH_THRESHOLD = 80
+
+        val LONG_DAYS = listOf(
+            "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado",
         )
-        val MESES = listOf(
+        val MONTHS = listOf(
             "enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
         )
