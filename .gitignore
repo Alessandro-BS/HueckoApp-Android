@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Directorio de cache del compilador de Kotlin (K2), generado en cada build.
+.kotlin
