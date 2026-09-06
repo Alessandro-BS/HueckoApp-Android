@@ -47,7 +47,7 @@ import com.example.hueckoapp.domain.model.BlockType
 import com.example.hueckoapp.domain.model.TimeBlock
 import com.example.hueckoapp.domain.model.TimeWindowProposal
 import com.example.hueckoapp.domain.model.UpcomingEvent
-import com.example.hueckoapp.ui.components.EmptyState
+import com.example.hueckoapp.ui.components.EmptyStateView
 import com.example.hueckoapp.ui.components.HueckoAvatar
 import com.example.hueckoapp.ui.components.HueckoBadge
 import com.example.hueckoapp.ui.components.HueckoCard
@@ -106,12 +106,12 @@ fun DashboardScreen(
                     if (plan != null) {
                         UpcomingPlanCard(plan)
                     } else {
-                        EmptyState(
-                            icon = Icons.Outlined.EventBusy,
+                        EmptyStateView(
                             title = "Sin planes confirmados",
                             description = "Propón un plan en tus grupos y Huecko sugerirá los mejores horarios.",
+                            icon = Icons.Outlined.EventBusy,
                             actionLabel = "Ir a mis grupos",
-                            onAction = onNavigateToGroups,
+                            onActionClick = onNavigateToGroups,
                         )
                     }
                 }
@@ -137,12 +137,12 @@ fun DashboardScreen(
 
             if (state.pendingVotes.isEmpty()) {
                 item {
-                    EmptyState(
-                        icon = Icons.Outlined.HowToVote,
+                    EmptyStateView(
                         title = "No hay votaciones activas",
                         description = "Cuando alguien proponga un plan podrás elegir aquí tu franja preferida.",
+                        icon = Icons.Outlined.HowToVote,
                         actionLabel = "Ver grupos",
-                        onAction = onNavigateToGroups,
+                        onActionClick = onNavigateToGroups,
                     )
                 }
             } else {
