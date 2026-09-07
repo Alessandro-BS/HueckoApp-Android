@@ -53,7 +53,7 @@ import com.example.hueckoapp.domain.model.PlanProposal
 import com.example.hueckoapp.domain.model.ProposalState
 import com.example.hueckoapp.domain.model.TimeWindowProposal
 import com.example.hueckoapp.domain.model.User
-import com.example.hueckoapp.ui.components.EmptyState
+import com.example.hueckoapp.ui.components.EmptyStateView
 import com.example.hueckoapp.ui.components.HueckoAvatar
 import com.example.hueckoapp.ui.components.HueckoBadge
 import com.example.hueckoapp.ui.components.HueckoCard
@@ -109,12 +109,12 @@ fun GroupListScreen(
 
             if (groups.isEmpty()) {
                 item {
-                    EmptyState(
-                        icon = Icons.Outlined.Groups,
+                    EmptyStateView(
                         title = "Aún no tienes ningún grupo",
                         description = "Crea uno para invitar a tus compañeros, o únete con el código que te hayan pasado.",
+                        icon = Icons.Outlined.Groups,
                         actionLabel = "Crear mi primer grupo",
-                        onAction = { showCreateDialog = true },
+                        onActionClick = { showCreateDialog = true },
                     )
                 }
             } else {
