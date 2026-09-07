@@ -130,7 +130,9 @@ fun HueckoNavigation(navController: NavHostController = rememberNavController())
             composable(HueckoDestination.GROUPS.route) {
                 GroupListScreen(
                     viewModel = groupViewModel,
-                    planningViewModel = planningViewModel,
+                    onGroupClick = { groupId ->
+                        // TODO: navegar a GroupDetailScreen
+                    },
                 )
             }
 
