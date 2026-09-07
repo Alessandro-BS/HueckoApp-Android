@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.example.hueckoapp.domain.model.BlockType
 import com.example.hueckoapp.domain.model.DayOfWeek
 import com.example.hueckoapp.domain.model.TimeBlock
-import com.example.hueckoapp.ui.components.EmptyState
+import com.example.hueckoapp.ui.components.EmptyStateView
 import com.example.hueckoapp.ui.components.HueckoBadge
 import com.example.hueckoapp.ui.components.HueckoDaySelector
 import com.example.hueckoapp.ui.components.PrimaryAction
@@ -125,12 +125,12 @@ fun MyScheduleScreen(
 
         if (blocks.isEmpty()) {
             item {
-                EmptyState(
-                    icon = Icons.Outlined.CalendarToday,
+                EmptyStateView(
                     title = "Aún no tienes horarios registrados",
                     description = "Añade tus clases, trabajo o actividades para que tus grupos encuentren los mejores huecos.",
+                    icon = Icons.Outlined.CalendarToday,
                     actionLabel = "Añadir mi primer bloque",
-                    onAction = onNavigateToAdd,
+                    onActionClick = onNavigateToAdd,
                 )
             }
         } else {
@@ -161,12 +161,12 @@ fun MyScheduleScreen(
 
 @Composable
 private fun FreeDayNotice(day: DayOfWeek, onAdd: () -> Unit) {
-    EmptyState(
-        icon = Icons.Outlined.EventAvailable,
+    EmptyStateView(
         title = "Sin bloques el ${day.label}",
         description = "Todo el día cuenta como libre para tus grupos.",
+        icon = Icons.Outlined.EventAvailable,
         actionLabel = "Añadir un bloque",
-        onAction = onAdd,
+        onActionClick = onAdd,
     )
 }
 
