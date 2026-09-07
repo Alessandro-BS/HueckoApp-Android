@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<!--
+  Tema de la ventana antes de que Compose tome el control.
 
-    <style name="Theme.HueckoApp" parent="android:Theme.Material.Light.NoActionBar" />
+  Sin el fondo y las barras declarados aqui, al abrir la aplicacion se ve un
+  destello blanco y una barra de estado con iconos claros sobre fondo claro
+  hasta que HueckoAppTheme se aplica.
+-->
+<resources>
+    <style name="Theme.HueckoApp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/hueck_surface</item>
+        <item name="android:colorBackground">@color/hueck_surface</item>
+        <item name="android:statusBarColor">@color/hueck_surface</item>
+        <item name="android:navigationBarColor">@color/hueck_surface_container</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:textColorPrimary">@color/hueck_on_surface</item>
+        <item name="android:colorAccent">@color/hueck_primary</item>
+    </style>
 </resources>

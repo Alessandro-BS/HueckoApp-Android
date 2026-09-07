@@ -58,4 +58,20 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
             _isLoading.value = false
         }
     }
+    /**
+     * Cierra la sesion y devuelve el formulario a su estado inicial.
+     *
+     * Sin limpiar isLoggedIn, la pantalla de login volveria a dar por buena la
+     * sesion en cuanto se pintara y rebotaria al inicio: nadie podria salir.
+     */
+    fun logout() {
+        viewModelScope.launch {
+            repository.logout()
+            _isLoggedIn.value = false
+            _email.value = ""
+            _password.value = ""
+            _name.value = ""
+            _errorMessage.value = null
+        }
+    }
 }
