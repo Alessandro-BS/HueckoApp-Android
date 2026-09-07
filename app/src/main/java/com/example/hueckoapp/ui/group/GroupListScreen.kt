@@ -9,15 +9,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.hueckoapp.domain.model.Group
 import com.example.hueckoapp.ui.components.EmptyStateView
-import com.example.hueckoapp.ui.components.HueckoAvatar
 import com.example.hueckoapp.ui.components.HueckoCard
 import com.example.hueckoapp.ui.components.PrimaryAction
 import com.example.hueckoapp.ui.components.SecondaryAction
@@ -134,8 +130,8 @@ private fun Header(onJoin: () -> Unit, onCreate: () -> Unit) {
 }
 
 /**
- * Tarjeta de grupo simplificada: avatar con la inicial, nombre, descripcion
- * breve, conteo de miembros y boton "Ir a grupo".
+ * Tarjeta de grupo simplificada: banner de color con la inicial,
+ * nombre, descripcion breve y conteo de miembros.
  */
 @Composable
 private fun GroupCard(
@@ -144,20 +140,31 @@ private fun GroupCard(
 ) {
     HueckoCard(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        onClick = onClick,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            HueckoAvatar(
-                name = group.name,
-                color = categoryColorByIndex(group.name.hashCode()),
-                size = 56.dp,
-            )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Banner: fondo de color con la inicial del grupo
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .background(
+                        color = categoryColorByIndex(group.name.hashCode())
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = group.name.trim().take(1).uppercase(),
+                    style = MaterialTheme.typography.displaySmall,
+                    color = androidx.compose.ui.graphics.Color.White,
+                )
+            }
 
-            Column(modifier = Modifier.weight(1f)) {
+            // Contenido debajo del banner
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
                 Text(
                     text = group.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -165,7 +172,7 @@ private fun GroupCard(
                 )
 
                 if (group.description.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = group.description,
                         style = MaterialTheme.typography.bodySmall,
@@ -174,7 +181,7 @@ private fun GroupCard(
                     )
                 }
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
 
                 Text(
                     text = "${group.members.size} ${if (group.members.size == 1) "miembro" else "miembros"}",
@@ -182,13 +189,6 @@ private fun GroupCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            Icon(
-                imageVector = Icons.Outlined.ArrowForward,
-                contentDescription = "Ir a grupo",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
         }
     }
 }
