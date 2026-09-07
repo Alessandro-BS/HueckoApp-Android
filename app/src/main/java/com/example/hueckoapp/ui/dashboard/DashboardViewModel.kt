@@ -89,6 +89,10 @@ class DashboardViewModel(
     private val expressChoice = MutableStateFlow<ExpressVoteChoice?>(null)
     private val toast = MutableStateFlow<String?>(null)
 
+    fun showWelcomeToast() {
+        showToast("¡Sesión iniciada con éxito! Bienvenido a HueckoApp.")
+    }
+
     val uiState: StateFlow<DashboardUiState> = combine(
         authRepository.getCurrentUser(),
         groupRepository.getGroups(),
