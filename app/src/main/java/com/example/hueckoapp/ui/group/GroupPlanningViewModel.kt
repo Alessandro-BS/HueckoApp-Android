@@ -20,12 +20,21 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+data class VotingCall(
+    val id: String,
+    val planId: String,
+    val planTitle: String,
+    val createdBy: String,
+    val createdAt: String,
+)
+
 data class GroupPlanningState(
     val proposals: List<PlanProposal> = emptyList(),
     /** Bloques de todos los miembros, ya normalizados a su `userId` real. */
     val blocks: List<TimeBlock> = emptyList(),
     val userEmail: String = "",
     val toast: String? = null,
+    val votingCalls: List<VotingCall> = emptyList(),
 )
 
 /**
@@ -43,6 +52,8 @@ class GroupPlanningViewModel(
 ) : ViewModel() {
 
     private val toast = MutableStateFlow<String?>(null)
+    private val _votingCalls = MutableStateFlow<List<VotingCall>>(emptyList())
+    private val _localProposals = MutableStateFlow<List<PlanProposal>>(emptyList())
 
     val state: StateFlow<GroupPlanningState> = combine(
         authRepository.getCurrentUser(),
@@ -50,18 +61,22 @@ class GroupPlanningViewModel(
         planRepository.getGroupOccupancy(),
         planRepository.getProposals(),
         toast,
-    ) { user, ownBlocks, occupancy, proposals, message ->
-        // El horario propio se guarda sin saber quien lo mira: el repositorio
-        // sirve "los bloques del usuario actual" y su `userId` es el de la
-        // semilla. Para cruzarlo con el resto hay que reetiquetarlo con el id
-        // real, o el usuario no cuenta como ocupado en su propio grupo.
+    ) { results ->
+        val user = results[0] as? com.example.hueckoapp.domain.model.User
+        @Suppress("UNCHECKED_CAST")
+        val ownBlocks = results[1] as List<TimeBlock>
+        val occupancy = results[2] as List<TimeBlock>
+        val proposals = results[3] as List<PlanProposal>
+        val message = results[4] as? String
+
         val mine = user?.let { u -> ownBlocks.map { it.copy(userId = u.id) } }.orEmpty()
 
         GroupPlanningState(
-            proposals = proposals,
+            proposals = proposals + _localProposals.value,
             blocks = mine + occupancy,
             userEmail = user?.email.orEmpty(),
             toast = message,
+            votingCalls = _votingCalls.value,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -87,6 +102,48 @@ class GroupPlanningViewModel(
     }
 
     fun notifyCodeCopied(code: String) = showToast("Código $code copiado.")
+
+    /** Crear una propuesta de plan (placeholder). */
+    fun createProposal(groupId: String, title: String, location: String?, deadline: String) {
+        if (title.isBlank()) {
+            showToast("El titulo no puede estar vacio.")
+            return
+        }
+        val proposal = PlanProposal(
+            id = "local_${groupId}_${System.currentTimeMillis()}",
+            groupId = groupId,
+            title = title.trim(),
+            location = location?.trim()?.ifBlank { null },
+            createdBy = state.value.userEmail,
+            votingDeadline = deadline.trim(),
+            state = ProposalState.PROPUESTO,
+        )
+        _localProposals.value = _localProposals.value + proposal
+        showToast("Propuesta creada.")
+    }
+
+    /** Llamadas a la votacion de un grupo. */
+    fun votingCallsOf(groupId: String): List<VotingCall> =
+        state.value.votingCalls.filter { it.id.startsWith(groupId) }
+
+    /** Crear una llamada a la votacion para un plan (placeholder). */
+    fun createVotingCall(groupId: String, proposal: PlanProposal) {
+        val alreadyExists = _votingCalls.value.any { it.planId == proposal.id }
+        if (alreadyExists) {
+            showToast("Ya hay un llamado activo para este plan.")
+            return
+        }
+        val call = VotingCall(
+            id = "${groupId}_${proposal.id}_${System.currentTimeMillis()}",
+            planId = proposal.id,
+            planTitle = proposal.title,
+            createdBy = state.value.userEmail,
+            createdAt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                .format(java.util.Date()),
+        )
+        _votingCalls.value = _votingCalls.value + call
+        showToast("Llamado a la votación creado.")
+    }
 
     private fun showToast(message: String) {
         toast.value = message

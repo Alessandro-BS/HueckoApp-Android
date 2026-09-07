@@ -21,18 +21,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.HowToVote
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,7 +58,7 @@ import com.example.hueckoapp.ui.theme.categoryColorByIndex
  * Pantalla de detalle de un grupo.
  *
  * Orden: banner, titulo + integrantes, botones de accion,
- * lista de planes propuestos y lista horizontal de miembros.
+ * llamadas a la votacion, planes propuestos y lista horizontal de miembros.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,6 +73,9 @@ fun GroupDetailScreen(
     val planning by planningViewModel.state.collectAsStateWithLifecycle()
     val group = groups.firstOrNull { it.id == groupId }
 
+    var showVotingSheet by remember { mutableStateOf(false) }
+    var showCreatePlanSheet by remember { mutableStateOf(false) }
+
     if (group == null) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -78,6 +88,8 @@ fun GroupDetailScreen(
     }
 
     val proposals = planningViewModel.proposalsOf(group.id)
+    val votingCalls = planningViewModel.votingCallsOf(group.id)
+    val activePlanIds = votingCalls.map { it.planId }
 
     Scaffold(
         topBar = {
@@ -147,31 +159,42 @@ fun GroupDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(
-                        onClick = { /* TODO: crear plan */ },
+                        onClick = { showCreatePlanSheet = true },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(HueckoRadius.xxl),
                     ) {
-                        Icon(
-                            Icons.Outlined.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Crear plan")
                     }
                     OutlinedButton(
-                        onClick = { /* TODO: llamar a votacion */ },
+                        onClick = { showVotingSheet = true },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(HueckoRadius.xxl),
                     ) {
-                        Icon(
-                            Icons.Outlined.HowToVote,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        Icon(Icons.Outlined.HowToVote, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Votacion")
                     }
+                }
+            }
+
+            // Llamadas a la votacion
+            if (votingCalls.isNotEmpty()) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        Text(
+                            text = "Llamadas a la votacion",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                items(votingCalls, key = { it.id }) { call ->
+                    VotingCallCard(
+                        call = call,
+                        onVoteClick = { /* TODO: ir a votar */ },
+                    )
                 }
             }
 
@@ -220,6 +243,224 @@ fun GroupDetailScreen(
                     members = group.members,
                     onSeeAll = { /* TODO: ver todos los miembros */ },
                 )
+            }
+        }
+    }
+
+    // Bottom sheet para elegir plan y crear llamada a la votacion
+    if (showVotingSheet) {
+        VotingCallBottomSheet(
+            proposals = proposals,
+            activePlanIds = activePlanIds,
+            onSelectPlan = { proposal ->
+                planningViewModel.createVotingCall(groupId, proposal)
+                showVotingSheet = false
+            },
+            onDismiss = { showVotingSheet = false },
+        )
+    }
+
+    // Bottom sheet para crear propuesta de plan
+    if (showCreatePlanSheet) {
+        CreatePlanBottomSheet(
+            onCreatePlan = { title, location, deadline ->
+                planningViewModel.createProposal(groupId, title, location, deadline)
+                showCreatePlanSheet = false
+            },
+            onDismiss = { showCreatePlanSheet = false },
+        )
+    }
+}
+
+@Composable
+private fun VotingCallCard(
+    call: VotingCall,
+    onVoteClick: () -> Unit,
+) {
+    HueckoCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = call.planTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Convocado por ${call.createdBy} · ${call.createdAt}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onVoteClick) {
+                Text("Ir a votar")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VotingCallBottomSheet(
+    proposals: List<PlanProposal>,
+    activePlanIds: List<String>,
+    onSelectPlan: (PlanProposal) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text(
+                text = "Crear llamado a la votacion",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Selecciona un plan para convocar al grupo a votar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            if (proposals.isEmpty()) {
+                Text(
+                    text = "No hay planes propuestos todavia.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    proposals.forEach { proposal ->
+                        val isActive = proposal.id in activePlanIds
+                        Surface(
+                            onClick = { if (!isActive) onSelectPlan(proposal) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(HueckoRadius.xxl),
+                            color = if (isActive) {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            },
+                            enabled = !isActive,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = proposal.title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    if (isActive) {
+                                        HueckoBadge(
+                                            text = "Ya convocado",
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        )
+                                    }
+                                }
+                                if (!proposal.location.isNullOrBlank()) {
+                                    Text(
+                                        text = proposal.location,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreatePlanBottomSheet(
+    onCreatePlan: (title: String, location: String?, deadline: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    var title by remember { mutableStateOf("") }
+    var location by remember { mutableStateOf("") }
+    var deadline by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Crear propuesta de plan",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            androidx.compose.material3.OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Titulo del plan") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            androidx.compose.material3.OutlinedTextField(
+                value = location,
+                onValueChange = { location = it },
+                label = { Text("Ubicacion (opcional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            androidx.compose.material3.OutlinedTextField(
+                value = deadline,
+                onValueChange = { deadline = it },
+                label = { Text("Fecha limite de votacion") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            androidx.compose.material3.Button(
+                onClick = { onCreatePlan(title, location, deadline) },
+                enabled = title.isNotBlank() && deadline.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(HueckoRadius.xxl),
+            ) {
+                Text("Crear propuesta")
             }
         }
     }
