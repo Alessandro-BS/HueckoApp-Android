@@ -31,6 +31,9 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
     private val _newDay = mutableStateOf(1) // 1 = Lunes
     val newDay: State<Int> = _newDay
 
+    private val _isRecurring = mutableStateOf(true)
+    val isRecurring: State<Boolean> = _isRecurring
+
     private val _newStartTime = mutableStateOf("08:00")
     val newStartTime: State<String> = _newStartTime
 
@@ -39,20 +42,22 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
 
     fun onLabelChange(value: String) { _newLabel.value = value }
     fun onDayChange(value: Int) { _newDay.value = value }
+    fun onRecurringChange(value: Boolean) { _isRecurring.value = value }
     fun onStartTimeChange(value: String) { _newStartTime.value = value }
     fun onEndTimeChange(value: String) { _newEndTime.value = value }
 
-    // Guarda el nuevo bloque en el repositorio
+    // Guarda el nuevo bloque en el repositorio (recurrente o puntual)
     fun saveBlock(onSuccess: () -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             val block = TimeBlock(
                 id = System.currentTimeMillis().toString(),
                 userId = "user_1",
-                dayOfWeek = _newDay.value,
+                dayOfWeek = if (_isRecurring.value) _newDay.value else null,
                 startTime = _newStartTime.value,
                 endTime = _newEndTime.value,
-                label = _newLabel.value
+                label = _newLabel.value,
+                isRecurring = _isRecurring.value
             )
             repository.addTimeBlock(block)
             _isLoading.value = false
