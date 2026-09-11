@@ -8,6 +8,7 @@ import com.example.hueckoapp.domain.model.MatchWindow
 import com.example.hueckoapp.domain.model.PlanProposal
 import com.example.hueckoapp.domain.model.ProposalState
 import com.example.hueckoapp.domain.model.TimeBlock
+import com.example.hueckoapp.domain.model.TimeWindowProposal
 import com.example.hueckoapp.domain.repository.AuthRepository
 import com.example.hueckoapp.domain.repository.PlanRepository
 import com.example.hueckoapp.domain.repository.ScheduleRepository
@@ -15,6 +16,7 @@ import com.example.hueckoapp.domain.usecase.AvailabilityMatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -60,6 +62,7 @@ class GroupPlanningViewModel(
         scheduleRepository.getTimeBlocks(),
         planRepository.getGroupOccupancy(),
         planRepository.getProposals(),
+        _localProposals,
         toast,
     ) { results ->
         val user = results[0] as? com.example.hueckoapp.domain.model.User
@@ -67,12 +70,13 @@ class GroupPlanningViewModel(
         val ownBlocks = results[1] as List<TimeBlock>
         val occupancy = results[2] as List<TimeBlock>
         val proposals = results[3] as List<PlanProposal>
-        val message = results[4] as? String
+        val localProposals = results[4] as List<PlanProposal>
+        val message = results[5] as? String
 
         val mine = user?.let { u -> ownBlocks.map { it.copy(userId = u.id) } }.orEmpty()
 
         GroupPlanningState(
-            proposals = proposals + _localProposals.value,
+            proposals = (proposals + localProposals).distinctBy { it.id },
             blocks = mine + occupancy,
             userEmail = user?.email.orEmpty(),
             toast = message,
@@ -92,9 +96,71 @@ class GroupPlanningViewModel(
     fun windowsFor(group: Group, day: DayOfWeek): List<MatchWindow> =
         AvailabilityMatcher.windowsFor(group, state.value.blocks, day)
 
+    /** Todas las ventanas disponibles del grupo, de lunes a domingo. */
+    fun allWindowsFor(group: Group): List<MatchWindow> =
+        DayOfWeek.week.flatMap { day ->
+            AvailabilityMatcher.windowsFor(group, state.value.blocks, day)
+        }
+
+    /** Agrega una ventana horaria sugerida a una propuesta existente. */
+    fun addSuggestedWindow(
+        proposalId: String,
+        day: DayOfWeek,
+        startTime: String,
+        endTime: String,
+    ) {
+        val window = TimeWindowProposal(
+            id = "sw_${System.currentTimeMillis()}",
+            day = day,
+            startTime = startTime,
+            endTime = endTime,
+            availabilityPercentage = 0,
+            voterEmails = emptyList(),
+        )
+
+        val proposal = state.value.proposals.firstOrNull { it.id == proposalId }
+        if (proposal == null) {
+            showToast("Propuesta no encontrada.")
+            return
+        }
+
+        val updated = proposal.copy(suggestedWindows = proposal.suggestedWindows + window)
+
+        // Guardar en _localProposals para que el combine lo incluya
+        _localProposals.update { list ->
+            val without = list.filter { it.id != proposalId }
+            without + updated
+        }
+        showToast("Franja horaria agregada.")
+    }
+
     fun vote(proposalId: String, windowId: String) {
         val email = state.value.userEmail
         if (email.isEmpty()) return
+
+        // Si la propuesta es local, actualizar directamente en _localProposals
+        val isLocal = _localProposals.value.any { it.id == proposalId }
+        if (isLocal) {
+            _localProposals.update { list ->
+                list.map { p ->
+                    if (p.id != proposalId) return@map p
+                    p.copy(
+                        suggestedWindows = p.suggestedWindows.map { w ->
+                            val sinVoto = w.voterEmails - email
+                            if (w.id == windowId && email !in w.voterEmails) {
+                                w.copy(voterEmails = sinVoto + email)
+                            } else {
+                                w.copy(voterEmails = sinVoto)
+                            }
+                        }
+                    )
+                }
+            }
+            showToast("Tu voto ha sido registrado.")
+            return
+        }
+
+        // Si viene del repositorio, delegar al repo
         viewModelScope.launch {
             planRepository.voteWindow(proposalId, windowId, email)
             showToast("Tu voto ha sido registrado.")
@@ -103,20 +169,35 @@ class GroupPlanningViewModel(
 
     fun notifyCodeCopied(code: String) = showToast("Código $code copiado.")
 
-    /** Crear una propuesta de plan (placeholder). */
-    fun createProposal(groupId: String, title: String, location: String?, deadline: String) {
+    /** Crear una propuesta de plan con las ventanas del cruce de agendas. */
+    fun createProposal(group: Group, title: String, location: String?, deadline: String) {
         if (title.isBlank()) {
             showToast("El titulo no puede estar vacio.")
             return
         }
+
+        val matcherWindows = DayOfWeek.week.flatMap { day ->
+            AvailabilityMatcher.windowsFor(group, state.value.blocks, day)
+        }.map { mw ->
+            TimeWindowProposal(
+                id = "mw_${mw.day.iso}_${mw.startHour}",
+                day = mw.day,
+                startTime = "%02d:00".format(mw.startHour),
+                endTime = "%02d:00".format(mw.endHour),
+                availabilityPercentage = mw.availabilityPercentage,
+                voterEmails = emptyList(),
+            )
+        }
+
         val proposal = PlanProposal(
-            id = "local_${groupId}_${System.currentTimeMillis()}",
-            groupId = groupId,
+            id = "local_${group.id}_${System.currentTimeMillis()}",
+            groupId = group.id,
             title = title.trim(),
             location = location?.trim()?.ifBlank { null },
             createdBy = state.value.userEmail,
             votingDeadline = deadline.trim(),
             state = ProposalState.PROPUESTO,
+            suggestedWindows = matcherWindows,
         )
         _localProposals.value = _localProposals.value + proposal
         showToast("Propuesta creada.")
