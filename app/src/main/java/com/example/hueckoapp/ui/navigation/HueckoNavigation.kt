@@ -25,6 +25,7 @@ import com.example.hueckoapp.ui.components.HueckoBottomBar
 import com.example.hueckoapp.ui.components.HueckoDestination
 import com.example.hueckoapp.ui.dashboard.DashboardScreen
 import com.example.hueckoapp.ui.dashboard.DashboardViewModel
+import com.example.hueckoapp.ui.group.GroupDetailScreen
 import com.example.hueckoapp.ui.group.GroupListScreen
 import com.example.hueckoapp.ui.group.GroupPlanningViewModel
 import com.example.hueckoapp.ui.group.GroupViewModel
@@ -41,6 +42,7 @@ object Routes {
     const val REGISTER = "register"
     const val ADD_SCHEDULE = "add_schedule"
     const val OCR_REVIEW = "ocr_review/{uri}"
+    const val GROUP_DETAIL = "group_detail/{groupId}"
 }
 
 /**
@@ -130,7 +132,19 @@ fun HueckoNavigation(navController: NavHostController = rememberNavController())
             composable(HueckoDestination.GROUPS.route) {
                 GroupListScreen(
                     viewModel = groupViewModel,
+                    onGroupClick = { groupId ->
+                        navController.navigate("group_detail/$groupId")
+                    },
+                )
+            }
+
+            composable(Routes.GROUP_DETAIL) { entry ->
+                val groupId = entry.arguments?.getString("groupId").orEmpty()
+                GroupDetailScreen(
+                    groupId = groupId,
+                    viewModel = groupViewModel,
                     planningViewModel = planningViewModel,
+                    onBack = { navController.popBackStack() },
                 )
             }
 
