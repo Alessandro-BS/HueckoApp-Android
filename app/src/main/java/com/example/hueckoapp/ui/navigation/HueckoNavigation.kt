@@ -98,6 +98,7 @@ fun HueckoNavigation(navController: NavHostController = rememberNavController())
                     viewModel = authViewModel,
                     onNavigateToRegister = { navController.navigate(Routes.REGISTER) },
                     onLoginSuccess = {
+                        dashboardViewModel.showWelcomeToast()
                         navController.navigate(HueckoDestination.DASHBOARD.route) {
                             // Se saca login de la pila: el boton Atras no debe
                             // devolver a un formulario ya resuelto.
@@ -112,6 +113,7 @@ fun HueckoNavigation(navController: NavHostController = rememberNavController())
                     viewModel = authViewModel,
                     onNavigateToLogin = { navController.popBackStack() },
                     onRegisterSuccess = {
+                        dashboardViewModel.showWelcomeToast()
                         navController.navigate(HueckoDestination.DASHBOARD.route) {
                             popUpTo(Routes.LOGIN) { inclusive = true }
                         }
