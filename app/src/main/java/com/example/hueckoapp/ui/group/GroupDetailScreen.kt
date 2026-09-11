@@ -67,6 +67,8 @@ fun GroupDetailScreen(
     viewModel: GroupViewModel,
     planningViewModel: GroupPlanningViewModel,
     onBack: () -> Unit,
+    onNavigateToVoting: (proposalId: String, groupId: String) -> Unit,
+    onNavigateToPlanDetail: (proposalId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
@@ -165,7 +167,7 @@ fun GroupDetailScreen(
                     ) {
                         Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Crear plan")
+                        Text("Crear propuesta")
                     }
                     OutlinedButton(
                         onClick = { showVotingSheet = true },
@@ -193,7 +195,7 @@ fun GroupDetailScreen(
                 items(votingCalls, key = { it.id }) { call ->
                     VotingCallCard(
                         call = call,
-                        onVoteClick = { /* TODO: ir a votar */ },
+                        onVoteClick = { onNavigateToVoting(call.planId, groupId) },
                     )
                 }
             }
@@ -222,7 +224,7 @@ fun GroupDetailScreen(
                 items(proposals, key = { it.id }) { proposal ->
                     PlanCard(
                         proposal = proposal,
-                        onDetailsClick = { /* TODO: ir a detalle del plan */ },
+                        onDetailsClick = { onNavigateToPlanDetail(proposal.id) },
                     )
                 }
             }
@@ -264,7 +266,7 @@ fun GroupDetailScreen(
     if (showCreatePlanSheet) {
         CreatePlanBottomSheet(
             onCreatePlan = { title, location, deadline ->
-                planningViewModel.createProposal(groupId, title, location, deadline)
+                planningViewModel.createProposal(group, title, location, deadline)
                 showCreatePlanSheet = false
             },
             onDismiss = { showCreatePlanSheet = false },

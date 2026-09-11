@@ -29,6 +29,8 @@ import com.example.hueckoapp.ui.group.GroupDetailScreen
 import com.example.hueckoapp.ui.group.GroupListScreen
 import com.example.hueckoapp.ui.group.GroupPlanningViewModel
 import com.example.hueckoapp.ui.group.GroupViewModel
+import com.example.hueckoapp.ui.group.PlanDetailScreen
+import com.example.hueckoapp.ui.group.VotingScreen
 import com.example.hueckoapp.ui.ocr.OcrReviewScreen
 import com.example.hueckoapp.ui.ocr.OcrViewModel
 import com.example.hueckoapp.ui.profile.ProfileScreen
@@ -43,6 +45,8 @@ object Routes {
     const val ADD_SCHEDULE = "add_schedule"
     const val OCR_REVIEW = "ocr_review/{uri}"
     const val GROUP_DETAIL = "group_detail/{groupId}"
+    const val VOTING = "voting/{proposalId}/{groupId}"
+    const val PLAN_DETAIL = "plan_detail/{proposalId}"
 }
 
 /**
@@ -147,6 +151,35 @@ fun HueckoNavigation(navController: NavHostController = rememberNavController())
                     viewModel = groupViewModel,
                     planningViewModel = planningViewModel,
                     onBack = { navController.popBackStack() },
+                    onNavigateToVoting = { proposalId, gId ->
+                        navController.navigate("voting/$proposalId/$gId")
+                    },
+                    onNavigateToPlanDetail = { proposalId ->
+                        navController.navigate("plan_detail/$proposalId")
+                    },
+                )
+            }
+
+            composable(Routes.VOTING) { entry ->
+                val proposalId = entry.arguments?.getString("proposalId").orEmpty()
+                val groupId = entry.arguments?.getString("groupId").orEmpty()
+                VotingScreen(
+                    proposalId = proposalId,
+                    groupId = groupId,
+                    planningViewModel = planningViewModel,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.PLAN_DETAIL) { entry ->
+                val proposalId = entry.arguments?.getString("proposalId").orEmpty()
+                PlanDetailScreen(
+                    proposalId = proposalId,
+                    planningViewModel = planningViewModel,
+                    onBack = { navController.popBackStack() },
+                    onGoToVoting = { pId, gId ->
+                        navController.navigate("voting/$pId/$gId")
+                    },
                 )
             }
 
