@@ -1,7 +1,9 @@
 package com.example.hueckoapp.ui.schedule
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -42,14 +44,7 @@ import com.example.hueckoapp.ui.components.PrimaryAction
 import com.example.hueckoapp.ui.theme.HueckoRadius
 
 /**
- * Alta de un bloque de horario (HU-01, HU-03).
- *
- * El dia se elige con siete pastillas en una fila que se ajusta sola, no con
- * una lista de siete radios: ocupa una linea en lugar de media pantalla y deja
- * el boton de guardar a la vista sin tener que desplazarse.
- *
- * Las horas se validan aqui mismo. Aceptar "25:70" y descubrirlo despues, al
- * cruzar agendas, dejaria un bloque que nadie sabe interpretar.
+ * Alta de un bloque de horario (HU-01, HU-03) - Recurrente o Puntual.
  */
 @Composable
 fun AddScheduleScreen(
@@ -59,6 +54,7 @@ fun AddScheduleScreen(
 ) {
     val label by viewModel.newLabel
     val selectedDay by viewModel.newDay
+    val isRecurring by viewModel.isRecurring
     val startTime by viewModel.newStartTime
     val endTime by viewModel.newEndTime
     val isLoading by viewModel.isLoading
@@ -105,41 +101,62 @@ fun AddScheduleScreen(
         }
 
         Column {
-            FieldLabel("Día de la semana")
-            Spacer(Modifier.height(10.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DayOfWeek.week.forEach { day ->
-                    val active = day.iso == selectedDay
-                    Surface(
-                        onClick = { viewModel.onDayChange(day.iso) },
-                        modifier = Modifier
-                            .widthIn(min = 56.dp)
-                            .height(48.dp)
-                            .semantics { this.selected = active },
-                        shape = RoundedCornerShape(HueckoRadius.xxl),
-                        color = if (active) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainer
-                        },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+            FieldLabel("Tipo de bloque")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TypeChoiceButton(
+                    text = "Recurrente",
+                    selected = isRecurring,
+                    onClick = { viewModel.onRecurringChange(true) },
+                    modifier = Modifier.weight(1f),
+                )
+                TypeChoiceButton(
+                    text = "Puntual (Única vez)",
+                    selected = !isRecurring,
+                    onClick = { viewModel.onRecurringChange(false) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        AnimatedVisibility(visible = isRecurring) {
+            Column {
+                FieldLabel("Día de la semana")
+                Spacer(Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DayOfWeek.week.forEach { day ->
+                        val active = day.iso == selectedDay
+                        Surface(
+                            onClick = { viewModel.onDayChange(day.iso) },
+                            modifier = Modifier
+                                .widthIn(min = 56.dp)
+                                .height(48.dp)
+                                .semantics { this.selected = active },
+                            shape = RoundedCornerShape(HueckoRadius.xxl),
+                            color = if (active) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            },
                         ) {
-                            Text(
-                                text = day.label,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = if (active) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = day.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (active) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -200,6 +217,29 @@ fun AddScheduleScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun TypeChoiceButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(HueckoRadius.xxl),
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
