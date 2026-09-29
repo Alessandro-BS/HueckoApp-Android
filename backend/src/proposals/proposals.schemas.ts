@@ -52,3 +52,53 @@ export const createProposalSchema = (now: Date) =>
 export const voteSchema = z.object({
   windowId: z.string({ error: 'Elige una franja' }).min(1, 'Elige una franja'),
 });
+
+export const INCIDENCE_TYPES = ['FALTA', 'TARDANZA', 'IMPREVISTO'] as const;
+
+// C4: una tardanza lleva minutos (1–600); el resto no.
+export const incidenceInputSchema = z
+  .object({
+    type: z.enum(INCIDENCE_TYPES, { error: 'Tipo de imprevisto inválido' }),
+    reason: z.string({ error: 'Cuéntale al grupo qué pasó' }).trim().min(1, 'Cuéntale al grupo qué pasó').max(200, 'Máximo 200 caracteres'),
+    delayMinutes: z
+      .number({ error: 'Minutos inválidos' })
+      .int('Minutos inválidos')
+      .min(1, 'Los minutos deben ser mayores que 0')
+      .max(600, 'Máximo 600 minutos')
+      .nullish(),
+  })
+  .superRefine((incidence, ctx) => {
+    if (incidence.type === 'TARDANZA' && incidence.delayMinutes == null) {
+      ctx.addIssue({ code: 'custom', path: ['delayMinutes'], message: 'Indica cuántos minutos llegarás tarde' });
+    }
+    if (incidence.type !== 'TARDANZA' && incidence.delayMinutes != null) {
+      ctx.addIssue({ code: 'custom', path: ['delayMinutes'], message: 'Solo una tardanza lleva minutos de retraso' });
+    }
+  })
+  .transform((incidence) => ({ ...incidence, delayMinutes: incidence.delayMinutes ?? null }));
+
+export const confirmSchema = z.object({
+  windowId: z.string({ error: 'Franja inválida' }).min(1, 'Franja inválida').optional(),
+});
+
+// G4: reprogramar (PROPUESTO) exige un plazo nuevo y futuro. Con los otros dos estados `votingDeadline`
+// se ignora por completo: ni siquiera se valida su formato.
+export const resolveIncidencesSchema = (now: Date) =>
+  z
+    .object({
+      newState: z.enum(['CONFIRMADO', 'CANCELADO', 'PROPUESTO'], { error: 'Estado inválido: CONFIRMADO, CANCELADO o PROPUESTO' }),
+      votingDeadline: z.unknown().optional(),
+    })
+    .transform((body, ctx): { newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO'; votingDeadline: string | null } => {
+      if (body.newState !== 'PROPUESTO') return { newState: body.newState, votingDeadline: null };
+      if (body.votingDeadline === undefined) {
+        ctx.issues.push({ code: 'custom', input: body, path: ['votingDeadline'], message: 'Para reprogramar indica una nueva fecha límite' });
+        return z.NEVER;
+      }
+      const parsed = futureDeadline(now).safeParse(body.votingDeadline);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) ctx.issues.push({ code: 'custom', input: body, path: ['votingDeadline'], message: issue.message });
+        return z.NEVER;
+      }
+      return { newState: 'PROPUESTO', votingDeadline: new Date(parsed.data).toISOString() };
+    });

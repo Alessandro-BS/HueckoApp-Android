@@ -38,6 +38,15 @@ type IncidenceRow = {
 };
 
 export type NewWindow = { dayOfWeek: number; startTime: string; endTime: string; availabilityPercentage: number };
+export type NewIncidence = {
+  userId: string;
+  type: IncidenceType;
+  reason: string;
+  delayMinutes: number | null;
+  criticality: Criticality;
+  // ISO del reloj de la app, explícito como en las demás tablas.
+  createdAt: string;
+};
 export type NewProposal = {
   groupId: string;
   createdBy: string;
@@ -173,6 +182,42 @@ export function proposalsRepository(db: Db) {
 
     unvote(proposalId: string, userId: string): void {
       db.prepare('DELETE FROM votes WHERE proposal_id = ? AND user_id = ?').run(proposalId, userId);
+    },
+
+    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): void {
+      db.prepare(
+        "UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = ?, scheduled_at = ?, scheduled_date = ? WHERE id = ?",
+      ).run(windowId, scheduledAt, scheduledDate, id);
+    },
+
+    setState(id: string, state: ProposalState): void {
+      db.prepare('UPDATE proposals SET state = ? WHERE id = ?').run(state, id);
+    },
+
+    // La incidencia y, si falta un imprescindible, el paso a EN_RECOORDINACION: todo o nada.
+    reportIncidence(proposalId: string, input: NewIncidence, escalate: boolean): void {
+      withTransaction(db, () => {
+        db.prepare(
+          `INSERT INTO incidences (id, proposal_id, user_id, type, reason, delay_minutes, criticality, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(randomUUID(), proposalId, input.userId, input.type, input.reason, input.delayMinutes, input.criticality, input.createdAt);
+        if (escalate) db.prepare("UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = ?").run(proposalId);
+      });
+    },
+
+    // Votación exprés (G4): todas las incidencias quedan resueltas; reprogramar abre una votación nueva.
+    resolveIncidences(id: string, newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO', votingDeadline: string | null): void {
+      withTransaction(db, () => {
+        db.prepare('UPDATE incidences SET resolved = 1 WHERE proposal_id = ?').run(id);
+        if (newState === 'PROPUESTO') {
+          db.prepare('DELETE FROM votes WHERE proposal_id = ?').run(id);
+          db.prepare(
+            "UPDATE proposals SET state = 'PROPUESTO', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL, voting_deadline = ? WHERE id = ?",
+          ).run(votingDeadline, id);
+        } else {
+          db.prepare('UPDATE proposals SET state = ? WHERE id = ?').run(newState, id);
+        }
+      });
     },
   };
 }

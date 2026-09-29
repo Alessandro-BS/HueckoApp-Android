@@ -33,7 +33,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token o expiró → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, votación cerrada, ya es miembro |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB) |
 | 422 | La IA no pudo interpretar la imagen |
 | 429 | Demasiados intentos en `/auth` (20 cada 15 min por IP) |
@@ -205,20 +205,37 @@ El servidor calcula su `availabilityPercentage` con los horarios **actuales** de
 `201 Proposal` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» · `409 VOTING_CLOSED`
 
 ### `POST /proposals/:id/confirm`
-Solo quien la creó. `{ "windowId": "..." }` (opcional: si falta, gana la más votada). Pasa a `CONFIRMADO`. `200 Proposal`
+Solo quien la creó (`403 NOT_CREATOR` «Solo quien propuso el plan puede hacer esto.») y solo si está `PROPUESTO` (`409 INVALID_STATE`); se puede confirmar antes o después del plazo. `{ "windowId": "..." }` es opcional:
+- con `windowId`: se confirma esa franja, tenga votos o no (`404 WINDOW_NOT_FOUND` si no es de la propuesta);
+- sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de día y hora más tempranos. Si nadie votó → `409 NO_VOTES`.
+
+Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = **la próxima vez que ocurre esa franja** (su día de la semana y hora de inicio) desde el momento de confirmar, y `scheduledDate` (`"YYYY-MM-DD"`) = esa misma fecha en la zona horaria del servidor, para que la app la muestre sin depender de la del teléfono. Si hoy es ese día y la hora aún no llegó, es hoy; si ya pasó, la semana siguiente. Se calcula en la zona horaria del servidor (en desarrollo, la del PC). Desde ese momento no se puede votar. `200 Proposal`
 
 ### `POST /proposals/:id/cancel`
-Solo quien la creó. Pasa a `CANCELADO`. `200 Proposal`
+Solo quien la creó. Desde cualquier estado salvo `CANCELADO` (`409 INVALID_STATE`). Pasa a `CANCELADO`. `200 Proposal`
 
 ### `POST /proposals/:id/incidences`
-Reportar un imprevisto sobre un plan confirmado.
+Reportar un imprevisto sobre un plan `CONFIRMADO` o `EN_RECOORDINACION` (si no, `409 INVALID_STATE` «Solo se pueden reportar imprevistos de un plan confirmado.»). Cualquier miembro.
 ```json
 { "type": "TARDANZA", "reason": "Tráfico", "delayMinutes": 20 }
 ```
-Si quien reporta es imprescindible (`isEssential`) y el tipo es `FALTA`, la propuesta pasa a `EN_RECOORDINACION`. `201 Proposal`
+Cuerpo = `IncidenceInput`. Reglas:
+- `type` ∈ `FALTA | TARDANZA | IMPREVISTO`; `reason` obligatorio, 1–200 caracteres tras `trim`.
+- `delayMinutes`: entero 1–600, **obligatorio** si `TARDANZA`; `null` u omitido en los demás.
+- `criticality` la pone el servidor: `FALTA` de un imprescindible → `ALTA`; cualquier otra `FALTA` o un `IMPREVISTO` → `MEDIA`; `TARDANZA` → `BAJA`, o `MEDIA` si `delayMinutes ≥ 30`.
+- Si quien reporta es imprescindible (`isEssential`) y el tipo es `FALTA`, un plan `CONFIRMADO` pasa a `EN_RECOORDINACION`.
+
+`201 Proposal`
 
 ### `POST /proposals/:id/incidences/resolve`
-Solo quien la creó. `{ "newState": "CONFIRMADO" | "CANCELADO" }` → marca las incidencias como resueltas. `200 Proposal`
+La «votación exprés». Solo quien la creó, y solo con el plan `CONFIRMADO` o `EN_RECOORDINACION` (`409 INVALID_STATE`). Cuerpo = `ResolveIncidencesInput`:
+- `{ "newState": "CONFIRMADO" }` — mantener el plan;
+- `{ "newState": "CANCELADO" }` — cancelarlo;
+- `{ "newState": "PROPUESTO", "votingDeadline": "2026-10-10T20:00:00.000Z" }` — reprogramar: `votingDeadline` obligatorio y futuro.
+
+`votingDeadline` **solo se valida cuando `newState` es `PROPUESTO`**; con `CONFIRMADO` o `CANCELADO` se ignora. Siempre: **todas** las incidencias quedan `resolved: true`. Con `PROPUESTO` además se borran todos los votos, `chosenWindowId`, `scheduledAt` y `scheduledDate` vuelven a `null` y empieza una votación nueva hasta el plazo enviado; las franjas se conservan. `200 Proposal`
+
+**Cuándo muestra la app la alerta exprés:** con el plan `EN_RECOORDINACION` («Votación exprés»: falta un imprescindible) o `CONFIRMADO` con incidencias sin resolver («Aviso de imprevisto»). En los dos casos solo quien creó el plan ve Reprogramar / Cancelar / Mantener.
 
 ## Inteligencia artificial
 
@@ -247,3 +264,9 @@ Ayuda en votaciones y demás funciones: se agregan aquí cuando el equipo las de
 - **Ubicación con coordenadas:** `location` pasa de texto libre a `{ name, latitude, longitude }` para usar `expo-location`.
 - **Código de invitación:** 8 caracteres sin símbolos ambiguos, generado y garantizado único por el servidor (antes: 3 letras del nombre + 3 cifras, podía repetirse). Se acepta en minúsculas y con espacios.
 - **Cruce de agendas:** los bloques `LIBRE` ya no cuentan como ocupados.
+- **Voto:** votar dos veces la misma franja ya no retira el voto en el servidor (`PUT /vote` es idempotente); la app lo retira con `DELETE` cuando se toca la franja ya votada, así que el gesto es el mismo.
+- **Plazo real:** `votingDeadline` es una fecha ISO (antes, texto libre) y cierra la votación.
+- **Sin «llamados a la votación»:** en Kotlin eran un marcador local sin efecto; no hay endpoint y la app quita el botón «Votación» y la sección «Llamadas a la votación» del grupo.
+- **Votación exprés:** solo quien creó el plan la decide (antes, el primero que pulsaba) y reprogramar pide una nueva fecha límite.
+- **Criticidad** calculada por el servidor según el tipo, si es imprescindible y los minutos de retraso.
+- **Plan confirmado con fecha:** `scheduledAt` y `scheduledDate`; el «próximo plan» usa la franja elegida, no la primera.

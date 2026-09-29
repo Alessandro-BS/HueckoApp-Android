@@ -9,8 +9,8 @@ import { groupsRepository } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { proposalsRepository } from './proposals.repository';
-import { createProposalSchema, timeWindowInputSchema, voteSchema } from './proposals.schemas';
-import { bestWindows, isVotingOpen } from './rules';
+import { confirmSchema, createProposalSchema, incidenceInputSchema, resolveIncidencesSchema, timeWindowInputSchema, voteSchema } from './proposals.schemas';
+import { bestWindows, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
 function proposalsContext({ db, now }: ResolvedDeps) {
@@ -119,6 +119,64 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const { matcherGroup, groupBlocks } = ctx.matcherInput(group);
     ctx.proposals.addWindow(proposal.id, { ...input, availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, input) });
     res.status(201).json(ctx.proposals.findById(proposal.id, userId));
+  });
+
+  // Solo quien creó la propuesta decide sobre ella (C2, C3, G4).
+  const loadForCreator = (proposalId: string, userId: string) => {
+    const loaded = ctx.loadForMember(proposalId, userId);
+    if (loaded.proposal.createdBy.id !== userId) {
+      throw new ApiError(403, 'NOT_CREATOR', 'Solo quien propuso el plan puede hacer esto.');
+    }
+    return loaded;
+  };
+  const invalidState = () => new ApiError(409, 'INVALID_STATE', 'El plan no admite esta acción en su estado actual.');
+  const isActivePlan = (p: Proposal) => p.state === 'CONFIRMADO' || p.state === 'EN_RECOORDINACION';
+
+  router.post('/:id/confirm', (req, res) => {
+    const userId = getUserId(res);
+    const { proposal } = loadForCreator(req.params.id, userId);
+    const { windowId } = confirmSchema.parse(req.body ?? {});
+    if (proposal.state !== 'PROPUESTO') throw invalidState();
+    const chosen = windowId !== undefined ? proposal.windows.find((w) => w.id === windowId) : pickWinner(proposal.windows);
+    if (!chosen && windowId !== undefined) throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
+    if (!chosen) throw new ApiError(409, 'NO_VOTES', 'Nadie ha votado todavía: elige la franja para confirmar.');
+    const { scheduledAt, scheduledDate } = scheduleFor(chosen.dayOfWeek, chosen.startTime, ctx.now());
+    ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate);
+    res.json(ctx.proposals.findById(proposal.id, userId));
+  });
+
+  router.post('/:id/cancel', (req, res) => {
+    const userId = getUserId(res);
+    const { proposal } = loadForCreator(req.params.id, userId);
+    if (proposal.state === 'CANCELADO') throw invalidState();
+    ctx.proposals.setState(proposal.id, 'CANCELADO');
+    res.json(ctx.proposals.findById(proposal.id, userId));
+  });
+
+  router.post('/:id/incidences', (req, res) => {
+    const userId = getUserId(res);
+    const { proposal, me } = ctx.loadForMember(req.params.id, userId);
+    const input = incidenceInputSchema.parse(req.body);
+    if (!isActivePlan(proposal)) {
+      throw new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
+    }
+    // Contrato + G5: si falta un imprescindible, el plan confirmado pasa a re-coordinarse.
+    const escalate = input.type === 'FALTA' && me.isEssential && proposal.state === 'CONFIRMADO';
+    ctx.proposals.reportIncidence(
+      proposal.id,
+      { userId, ...input, criticality: criticalityFor(input.type, me.isEssential, input.delayMinutes), createdAt: ctx.now().toISOString() },
+      escalate,
+    );
+    res.status(201).json(ctx.proposals.findById(proposal.id, userId));
+  });
+
+  router.post('/:id/incidences/resolve', (req, res) => {
+    const userId = getUserId(res);
+    const { proposal } = loadForCreator(req.params.id, userId);
+    const input = resolveIncidencesSchema(ctx.now()).parse(req.body);
+    if (!isActivePlan(proposal)) throw invalidState();
+    ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline);
+    res.json(ctx.proposals.findById(proposal.id, userId));
   });
 
   return router;
