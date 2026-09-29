@@ -3,8 +3,11 @@ import express from 'express';
 import helmet from 'helmet';
 
 import { authRouter } from './auth/auth.routes';
+import { requireAuth } from './auth/require-auth';
 import type { Db } from './db/database';
+import { groupsRouter } from './groups/groups.routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { timeBlocksRouter } from './schedule/time-blocks.routes';
 
 export type AppDeps = {
   db: Db;
@@ -28,6 +31,8 @@ export function createApp(deps: AppDeps) {
     res.json({ status: 'ok' });
   });
   api.use('/auth', authRouter(deps));
+  api.use('/me/time-blocks', requireAuth(deps.jwtSecret), timeBlocksRouter(deps));
+  api.use('/groups', requireAuth(deps.jwtSecret), groupsRouter(deps));
 
   app.use('/api', api);
   app.use(notFound);

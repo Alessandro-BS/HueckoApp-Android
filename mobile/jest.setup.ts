@@ -8,3 +8,4 @@ jest.mock('expo-secure-store', () => {
     __store: store,
   };
 });
+jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(async () => true) }));

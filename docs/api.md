@@ -96,21 +96,28 @@ El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos
 ## Mi horario
 
 ### `GET /me/time-blocks`
-`200 TimeBlock[]`, solo los del usuario autenticado.
+`200 TimeBlock[]`, solo los del usuario autenticado. Orden: recurrentes por día y hora de inicio; después los puntuales por fecha y hora.
 
 ### `POST /me/time-blocks`
 ```json
 { "label": "Clase de Android", "type": "CLASE", "startTime": "08:00", "endTime": "10:00",
   "isRecurring": true, "dayOfWeek": 1, "date": null }
 ```
-Reglas: `startTime < endTime`; si `isRecurring`, `dayOfWeek` es obligatorio y `date` es null; si no, al revés.
-`201 TimeBlock`
+Cuerpo = `TimeBlockInput` de `shared`. Reglas:
+- `label` obligatorio, 1–80 caracteres tras `trim`.
+- `type` ∈ `CLASE | TRABAJO | LIBRE | PUNTUAL`.
+- `startTime` y `endTime` en `HH:mm` de 00:00 a 23:59 con dos dígitos (`8:00` y `24:00` no valen); `startTime < endTime`.
+- Recurrente (`isRecurring: true`): `dayOfWeek` 1–7 obligatorio; `date` `null` u omitido.
+- Puntual (`isRecurring: false`): `date` `YYYY-MM-DD` real obligatorio; `dayOfWeek` `null` u omitido.
+- `userId` lo pone el servidor desde el token (si viene en el cuerpo, se ignora).
+
+`201 TimeBlock` · `400 VALIDATION_ERROR` (`details[].path` indica el campo)
 
 ### `POST /me/time-blocks/bulk`
-`{ "blocks": [ ...mismo cuerpo que arriba... ] }` → `201 TimeBlock[]`. Lo usa la pantalla de revisión del OCR para guardar todo de una vez.
+`{ "blocks": [ ...mismo cuerpo que arriba... ] }` → `201 TimeBlock[]`. Entre 1 y 100 bloques. **Todo o nada:** si uno es inválido responde `400` (con `path` tipo `["blocks", 1, "endTime"]`) y no se guarda ninguno. Lo usa la pantalla de revisión del OCR.
 
 ### `DELETE /me/time-blocks/:id`
-`204` · `404` si el bloque no es del usuario.
+`204` · `404 TIME_BLOCK_NOT_FOUND` si el bloque no existe o no es del usuario.
 
 ### `GET /me/upcoming-plans`
 `200 Proposal[]`: propuestas `CONFIRMADO` de todos mis grupos con fecha futura, ordenadas. Alimenta el dashboard.
@@ -118,32 +125,44 @@ Reglas: `startTime < endTime`; si `isRecurring`, `dayOfWeek` es obligatorio y `d
 ## Grupos
 
 ### `GET /groups`
-`200 GroupSummary[]`: grupos de los que soy miembro.
+`200 GroupSummary[]`: grupos de los que soy miembro, en el orden en que me uní.
 
 ### `POST /groups`
 ```json
 { "name": "Proyecto Integrador", "description": "", "availabilityThreshold": 80 }
 ```
-El servidor genera el `inviteCode` y deja al creador como `OWNER`. `201 Group`
+`name` obligatorio (1–60 tras `trim`); `description` opcional (≤ 200, por defecto `""`); `availabilityThreshold` entero 0–100 (por defecto 80).
+El servidor genera el `inviteCode`: **8 caracteres** de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin `0/O/1/I`), único. Los códigos de la semilla (`PROY2026`, `HUECKO123`) no siguen ese formato y siguen siendo válidos. El creador queda como `OWNER`. `201 Group`
 
 ### `POST /groups/join`
-`{ "inviteCode": "PROY2026" }` → `200 Group` · `404` si el código no existe · `409 ALREADY_MEMBER`
+`{ "inviteCode": "PROY2026" }` → `200 Group`. El código se normaliza con `trim` y mayúsculas (`" proy2026 "` sirve).
+`404 INVALID_INVITE_CODE` «Código de invitación inválido.» · `409 ALREADY_MEMBER` «Ya perteneces a este grupo.» · `400` si viene vacío.
 
 ### `GET /groups/:id`
-`200 Group` con la lista completa de miembros · `403` si no soy miembro.
+`200 Group` con la lista completa de miembros, en orden de llegada.
+`404 GROUP_NOT_FOUND` si no existe · `403 NOT_A_MEMBER` si existe pero no soy miembro. (Igual en todas las rutas `/groups/:id/...`.)
 
 ### `PATCH /groups/:id`
-Solo el `OWNER`. Campos opcionales: `name`, `description`, `availabilityThreshold`. `200 Group`
+Solo el `OWNER` (`403 NOT_OWNER`). Campos opcionales con las mismas reglas que al crear: `name`, `description`, `availabilityThreshold`; hay que enviar al menos uno. `200 Group`
 
 ### `PATCH /groups/:id/members/:userId`
-Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember`
+Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. El `OWNER` puede marcarse a sí mismo.
 
 ### `DELETE /groups/:id/members/me`
-Salir del grupo. `204`
+Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra.
 
 ### `GET /groups/:id/availability`
-Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo.
-`200 MatchWindow[]`, ordenadas por día y hora.
+Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`).
+`200 MatchWindow[]`, ordenadas por día (lunes a domingo) y hora · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+
+Reglas:
+- La agenda va de **08:00 a 20:00** en horas enteras; cada hora `h` es la franja `[h:00, h+1:00)`.
+- Un bloque ocupa **entera** cualquier hora que toque: el inicio trunca minutos (`10:30` → 10) y el fin redondea hacia arriba (`10:30` → 11).
+- Por hora: `libres = miembros − personas ocupadas` (una persona cuenta una vez aunque tenga bloques solapados); `% = round(libres × 100 / miembros)`.
+- Una hora vale si `% ≥ availabilityThreshold` (inclusivo). Las horas válidas seguidas se fusionan en una franja, que muestra el **peor** `%` y el **menor** `freeMembers` de sus horas.
+- Solo cuentan los bloques **recurrentes**; los puntuales no entran en esta vista semanal (un filtro `?weekOf=YYYY-MM-DD` queda pendiente).
+- Los bloques de tipo **`LIBRE` no ocupan**.
+- Grupo sin miembros → `[]`.
 
 ## Propuestas y votación
 
@@ -213,3 +232,5 @@ Ayuda en votaciones y demás funciones: se agregan aquí cuando el equipo las de
 - **Votos por usuario, no por email:** el servidor sabe quién vota por el token; la app ya no envía `userEmail`.
 - **Un solo usuario actual:** el `id` sale siempre del token. Esto elimina el desajuste `mock_123` / `user_1` de la versión Kotlin.
 - **Ubicación con coordenadas:** `location` pasa de texto libre a `{ name, latitude, longitude }` para usar `expo-location`.
+- **Código de invitación:** 8 caracteres sin símbolos ambiguos, generado y garantizado único por el servidor (antes: 3 letras del nombre + 3 cifras, podía repetirse). Se acepta en minúsculas y con espacios.
+- **Cruce de agendas:** los bloques `LIBRE` ya no cuentan como ocupados.

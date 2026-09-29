@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

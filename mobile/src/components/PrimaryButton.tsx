@@ -15,12 +15,9 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-const DISABLED_BG = 'rgba(29,27,32,0.12)';
-const DISABLED_FG = 'rgba(29,27,32,0.38)';
-
 export function PrimaryButton({ title, onPress, icon, disabled = false, loading = false, loadingTitle, size = 'md', style }: Props) {
   const blocked = disabled || loading;
-  const fg = disabled ? DISABLED_FG : colors.onPrimary;
+  const fg = disabled ? colors.disabledContent : colors.onPrimary;
   const textStyle = size === 'lg' ? typography.labelLarge : typography.labelMedium;
   return (
     <Pressable
@@ -28,7 +25,7 @@ export function PrimaryButton({ title, onPress, icon, disabled = false, loading 
       accessibilityState={{ disabled: blocked, busy: loading }}
       disabled={blocked}
       onPress={onPress}
-      style={[styles.button, { height: size === 'lg' ? 52 : 48, backgroundColor: disabled ? DISABLED_BG : colors.primary }, style]}
+      style={[styles.button, { height: size === 'lg' ? 52 : 48, backgroundColor: disabled ? colors.disabledContainer : colors.primary }, style]}
     >
       <View style={styles.row}>
         {loading ? (
