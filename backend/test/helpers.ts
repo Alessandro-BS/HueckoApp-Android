@@ -7,6 +7,8 @@ import { openDatabase, type Db } from '../src/db/database';
 
 export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
 
+export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
 export function makeTestApp(options?: { authRateLimit?: number }): { app: Express; db: Db } {
   const db = openDatabase(':memory:');
   const app = createApp({

@@ -96,21 +96,28 @@ El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos
 ## Mi horario
 
 ### `GET /me/time-blocks`
-`200 TimeBlock[]`, solo los del usuario autenticado.
+`200 TimeBlock[]`, solo los del usuario autenticado. Orden: recurrentes por día y hora de inicio; después los puntuales por fecha y hora.
 
 ### `POST /me/time-blocks`
 ```json
 { "label": "Clase de Android", "type": "CLASE", "startTime": "08:00", "endTime": "10:00",
   "isRecurring": true, "dayOfWeek": 1, "date": null }
 ```
-Reglas: `startTime < endTime`; si `isRecurring`, `dayOfWeek` es obligatorio y `date` es null; si no, al revés.
-`201 TimeBlock`
+Cuerpo = `TimeBlockInput` de `shared`. Reglas:
+- `label` obligatorio, 1–80 caracteres tras `trim`.
+- `type` ∈ `CLASE | TRABAJO | LIBRE | PUNTUAL`.
+- `startTime` y `endTime` en `HH:mm` de 00:00 a 23:59 con dos dígitos (`8:00` y `24:00` no valen); `startTime < endTime`.
+- Recurrente (`isRecurring: true`): `dayOfWeek` 1–7 obligatorio; `date` `null` u omitido.
+- Puntual (`isRecurring: false`): `date` `YYYY-MM-DD` real obligatorio; `dayOfWeek` `null` u omitido.
+- `userId` lo pone el servidor desde el token (si viene en el cuerpo, se ignora).
+
+`201 TimeBlock` · `400 VALIDATION_ERROR` (`details[].path` indica el campo)
 
 ### `POST /me/time-blocks/bulk`
-`{ "blocks": [ ...mismo cuerpo que arriba... ] }` → `201 TimeBlock[]`. Lo usa la pantalla de revisión del OCR para guardar todo de una vez.
+`{ "blocks": [ ...mismo cuerpo que arriba... ] }` → `201 TimeBlock[]`. Entre 1 y 100 bloques. **Todo o nada:** si uno es inválido responde `400` (con `path` tipo `["blocks", 1, "endTime"]`) y no se guarda ninguno. Lo usa la pantalla de revisión del OCR.
 
 ### `DELETE /me/time-blocks/:id`
-`204` · `404` si el bloque no es del usuario.
+`204` · `404 TIME_BLOCK_NOT_FOUND` si el bloque no existe o no es del usuario.
 
 ### `GET /me/upcoming-plans`
 `200 Proposal[]`: propuestas `CONFIRMADO` de todos mis grupos con fecha futura, ordenadas. Alimenta el dashboard.

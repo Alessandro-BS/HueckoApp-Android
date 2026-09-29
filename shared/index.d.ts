@@ -19,6 +19,9 @@ export type TimeBlock = {
   date: string | null;      // "YYYY-MM-DD" si es puntual; null si es recurrente
 };
 
+// Cuerpo de POST /me/time-blocks (y de cada elemento de /bulk): el servidor pone id y userId.
+export type TimeBlockInput = Omit<TimeBlock, 'id' | 'userId'>;
+
 export type GroupMember = User & { role: 'OWNER' | 'MEMBER'; isEssential: boolean };
 
 export type GroupSummary = {
