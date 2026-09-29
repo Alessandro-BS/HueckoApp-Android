@@ -59,9 +59,19 @@ describe('contexto de los planes', () => {
 });
 
 describe('draftDeadline (D7)', () => {
-  it('ahora + horas, en punto', () => {
-    expect(draftDeadline(new Date(2026, 8, 29, 10, 25), 24, null)).toBe(at(8, 30, 10));
+  it('ahora + horas, redondeado hacia arriba a la hora en punto', () => {
+    expect(draftDeadline(new Date(2026, 8, 29, 10, 25), 24, null)).toBe(at(8, 30, 11));
+    expect(draftDeadline(NOW, 24, null)).toBe(at(8, 30, 10));
   });
+
+  it.each([new Date(2026, 8, 29, 10, 59), new Date(2026, 8, 29, 10, 25), new Date(2026, 8, 29, 10, 0, 30)])(
+    'con 1 h nunca queda a menos de 1 h de ahora (%s)',
+    (now) => {
+      const deadline = new Date(draftDeadline(now, 1, null));
+      expect(deadline.getTime()).toBeGreaterThanOrEqual(now.getTime() + 3_600_000);
+      expect([deadline.getMinutes(), deadline.getSeconds()]).toEqual([0, 0]);
+    },
+  );
 
   it('con franja: cierra 1 h antes de su próximo inicio si eso llega antes', () => {
     // Miércoles 08:00 → cierre el miércoles 30 a las 07:00 (antes que ahora + 48 h).

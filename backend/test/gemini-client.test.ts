@@ -42,7 +42,7 @@ describe('createGeminiClient', () => {
         response_format: { type: 'text', mime_type: 'application/json', schema: SCHEMA },
         store: false,
       },
-      { timeout_ms: 30_000, retries: NO_RETRIES },
+      { timeout_ms: 20_000, retries: NO_RETRIES },
     );
   });
 
@@ -106,7 +106,7 @@ describe('modelo de respaldo', () => {
     });
     create.mockResolvedValueOnce({ output_text: '{}' });
     await createGeminiClient(OPTIONS).generateJson(REQUEST);
-    expect(create.mock.calls[0][1].timeout_ms).toBe(30_000);
+    expect(create.mock.calls[0][1].timeout_ms).toBe(20_000);
     expect(create.mock.calls[1][1].timeout_ms).toBe(18_000);
   });
 
@@ -118,6 +118,32 @@ describe('modelo de respaldo', () => {
       throw providerError({ status: 503 });
     });
     await expect(createGeminiClient(OPTIONS).generateJson(REQUEST)).rejects.toThrow('error del proveedor');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('si el principal agota su tiempo (2/3) prueba el respaldo con el tiempo que queda', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 29, 10, 0, 0));
+    create.mockImplementationOnce(async () => {
+      vi.advanceTimersByTime(20_000);
+      throw Object.assign(new Error('Request timed out.'), { name: 'APIConnectionTimeoutError' });
+    });
+    create.mockResolvedValueOnce({ output_text: '{"ok":true}' });
+    await expect(createGeminiClient(OPTIONS).generateJson(REQUEST)).resolves.toBe('{"ok":true}');
+    expect(create.mock.calls[1][0].model).toBe('gemini-3.5-flash');
+    expect(create.mock.calls[1][1].timeout_ms).toBe(10_000);
+  });
+
+  it('si el respaldo también agota su tiempo, el error sale y askAi responde 503', async () => {
+    const timeout = () => Object.assign(new Error('Request timed out.'), { name: 'APIConnectionTimeoutError' });
+    create.mockRejectedValue(timeout());
+    await expect(askAi(createGeminiClient(OPTIONS), REQUEST, z.object({}))).rejects.toMatchObject({ status: 503, code: 'AI_UNAVAILABLE' });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('sin modelo de respaldo distinto no hay segundo intento', async () => {
+    create.mockRejectedValue(Object.assign(new Error('t'), { name: 'APIConnectionTimeoutError' }));
+    await expect(createGeminiClient({ ...OPTIONS, fallbackModel: OPTIONS.model }).generateJson(REQUEST)).rejects.toThrow();
     expect(create).toHaveBeenCalledTimes(1);
   });
 });

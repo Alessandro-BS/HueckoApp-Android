@@ -262,7 +262,7 @@ La «votación exprés». Solo quien la creó, y solo con el plan `CONFIRMADO` o
 Toda llamada a la IA pasa por el backend (Google Gemini, modelo `GEMINI_MODEL`): la API key **nunca** va en la app. Reglas comunes:
 - Todas las rutas exigen token. Las que llaman a la IA comparten un límite de **20 llamadas cada 15 min por usuario** (`429 TOO_MANY_REQUESTS`); `GET /ai/status` no cuenta.
 - La respuesta de la IA se valida siempre: si no cumple el formato → `502 AI_BAD_RESPONSE`; si el proveedor falla o tarda más de 30 s → `503 AI_UNAVAILABLE`. Nunca se devuelven datos inventados para tapar un fallo.
-- Si el modelo principal está saturado (503) o sin cuota (429), el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL`; `GEMINI_TIMEOUT_MS` (30 s) es el tope total de los dos intentos.
+- Si el modelo principal está saturado (503) o sin cuota (429), o agota su tiempo (el principal solo puede usar 2/3 de `GEMINI_TIMEOUT_MS`), el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL`; `GEMINI_TIMEOUT_MS` (30 s) es el tope total de los dos intentos.
 - La IA **solo sugiere**: ninguna de estas rutas guarda nada. El usuario revisa el resultado y lo confirma con los endpoints de siempre.
 - **Modo demostración:** si el servidor no tiene `GEMINI_API_KEY`, las respuestas son datos de ejemplo fijos (validados igual).
 
@@ -297,7 +297,8 @@ Convierte una frase en un borrador para «Nueva propuesta». Solo miembros (`403
 ```
 - `category` ∈ `ESTUDIO | REUNION | COMIDA | DEPORTE | SALIDA | OTRO` (`PlanCategory`; una desconocida → `OTRO`). No se guarda en la propuesta.
 - `window` es **siempre** uno de los huecos reales de `GET /groups/:id/availability` (a la IA se le pasan numerados y responde con el número; si da uno que no existe, `window` es `null`).
-- `votingDeadline`: ahora + las horas que sugiere la IA (1–168; 48 si no dice nada), en punto; con `window`, como tarde 1 h antes de su próximo inicio si eso deja al menos 1 h de margen.
+- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. Con `window`, el cierre se adelanta a 1 h antes de su próximo inicio (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
+- A la IA se le pasan como máximo 30 huecos (los primeros de `GET /groups/:id/availability`), así que `window` siempre es uno de ellos.
 - Títulos de más de 80 y lugares de más de 100 caracteres se recortan; un lugar vacío es `null`.
 
 `200` · `400 VALIDATION_ERROR` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`

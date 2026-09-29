@@ -84,12 +84,16 @@ export function draftPrompt({ text, group, windows, now }: { text: string; group
 }
 
 /**
- * D7: ahora + las horas que propone la IA, redondeado a la hora en punto. Con franja, la votación cierra como tarde
+ * D7: ahora + las horas que propone la IA, redondeado hacia arriba a la hora en punto (y siempre a 1 h o más de ahora). Con franja, la votación cierra como tarde
  * 1 h antes de su próximo inicio, siempre que eso deje al menos 1 h desde ahora (si no, se ignora la franja).
  */
 export function draftDeadline(now: Date, hours: number, window: MatchWindow | null): string {
-  let deadline = new Date(now.getTime() + hours * HOUR);
-  deadline.setMinutes(0, 0, 0);
+  // Hacia arriba a la hora en punto: nunca queda a menos de 1 h de ahora (la creación exige un plazo futuro).
+  const deadline0 = new Date(now.getTime() + hours * HOUR);
+  if (deadline0.getMinutes() + deadline0.getSeconds() + deadline0.getMilliseconds() > 0) {
+    deadline0.setHours(deadline0.getHours() + 1, 0, 0, 0);
+  }
+  let deadline = new Date(Math.max(deadline0.getTime(), now.getTime() + HOUR));
   if (window) {
     const cutoff = new Date(nextOccurrence(window.dayOfWeek, window.startTime, now).getTime() - HOUR);
     if (cutoff.getTime() >= now.getTime() + HOUR && cutoff.getTime() < deadline.getTime()) deadline = cutoff;
