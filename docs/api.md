@@ -167,7 +167,7 @@ Reglas:
 ## Propuestas y votación
 
 ### `GET /groups/:id/proposals`
-`200 Proposal[]` del grupo, las más recientes primero.
+`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app las oculta). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
 
 ### `POST /groups/:id/proposals`
 ```json
@@ -178,18 +178,31 @@ Reglas:
   "windows": [ { "dayOfWeek": 5, "startTime": "16:00", "endTime": "18:00" } ]
 }
 ```
-Si `windows` viene vacío u omitido, el servidor propone las 3 mejores franjas de `/availability`.
-`201 Proposal`
+Cuerpo = `ProposalInput` de `shared`. Reglas:
+- `title` obligatorio, 1–80 caracteres tras `trim` («El título no puede estar vacío.»).
+- `location` opcional (`null` u omitido = sin lugar). `name` 1–100 tras `trim`; `latitude` (−90…90) y `longitude` (−180…180) van **juntas** o ambas `null`/omitidas.
+- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura»). Se guarda y se devuelve en UTC.
+- `windows` opcional, hasta 10 y sin repetir; cada una `{ dayOfWeek 1–7, startTime, endTime }` en `HH:mm` con `startTime < endTime` (`TimeWindowInput`). El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`).
+- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability`: mayor `availabilityPercentage`, luego mayor duración, luego día y hora más tempranos. Si el grupo no tiene ninguna franja, la propuesta nace sin franjas.
+- Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
+
+`201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`
 
 ### `GET /proposals/:id`
-`200 Proposal`
+`200 Proposal`. `windows` van por día y hora; `myVoteWindowId` es la franja que votó quien pregunta.
+`404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
 
 ### `PUT /proposals/:id/vote`
-`{ "windowId": "..." }`. El voto es **excluyente**: si ya había votado, se reemplaza.
-`200 Proposal` · `409 VOTING_CLOSED` si pasó el `votingDeadline` o el estado no es `PROPUESTO`.
+`{ "windowId": "..." }`. Un voto por persona y propuesta: votar otra franja **mueve** el voto; votar la misma otra vez **no cambia nada** (idempotente). El «tocar otra vez retira el voto» de la app Kotlin se hace desde la app con `DELETE`.
+`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta.
 
 ### `DELETE /proposals/:id/vote`
-Retira mi voto. `200 Proposal`
+Retira mi voto (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
+
+### `POST /proposals/:id/windows`
+Añadir una franja a una propuesta en votación. Cualquier miembro. `{ "dayOfWeek": 5, "startTime": "18:00", "endTime": "19:30" }` (`TimeWindowInput`, mismas reglas de formato y orden).
+El servidor calcula su `availabilityPercentage` con los horarios **actuales** del grupo: para cada hora que toca la franja (mismo redondeo que `/availability`: inicio truncado, fin hacia arriba) calcula el % de miembros libres y se queda con el **peor**. No se aplica el umbral del grupo ni el rango 08–20. Los porcentajes no se recalculan después.
+`201 Proposal` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» · `409 VOTING_CLOSED`
 
 ### `POST /proposals/:id/confirm`
 Solo quien la creó. `{ "windowId": "..." }` (opcional: si falta, gana la más votada). Pasa a `CONFIRMADO`. `200 Proposal`
