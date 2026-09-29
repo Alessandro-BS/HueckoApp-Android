@@ -2,7 +2,7 @@ import type { User } from '@hueckoapp/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../api/auth';
-import { setAuthToken, setUnauthorizedHandler } from '../api/client';
+import { ApiError, setAuthToken, setUnauthorizedHandler } from '../api/client';
 import { tokenStorage } from '../auth/tokenStorage';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
@@ -23,9 +23,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     setAuthToken(null);
-    await tokenStorage.clear();
     setUser(null);
     setStatus('signedOut');
+    await tokenStorage.clear();
   }, []);
 
   const startSession = useCallback(async ({ token, user }: AuthResponse) => {
@@ -51,8 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(me);
           setStatus('signedIn');
         }
-      } catch {
-        if (!cancelled) await logout();
+      } catch (e) {
+        if (cancelled) return;
+        if (e instanceof ApiError && e.status === 401) {
+          await logout();
+        } else {
+          // Sin red o error del servidor: conservar el token para reintentar en el próximo arranque.
+          setAuthToken(null);
+          setStatus('signedOut');
+        }
       }
     })();
     return () => {

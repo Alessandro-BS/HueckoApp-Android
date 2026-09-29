@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { ReactNode } from 'react';
 
 import * as authApi from '../../api/auth';
+import { ApiError } from '../../api/client';
 import { AuthProvider, useAuth } from '../AuthContext';
 
 jest.mock('../../api/auth');
@@ -31,10 +32,18 @@ it('con token válido restaura la sesión', async () => {
 
 it('con token inválido lo borra y queda signedOut', async () => {
   await SecureStore.setItemAsync('hueckoapp.token', 'viejo');
-  mocked.meRequest.mockRejectedValue(new Error('401'));
+  mocked.meRequest.mockRejectedValue(new ApiError(401, 'UNAUTHORIZED', 'x'));
   const { result } = await renderHook(() => useAuth(), { wrapper });
   await waitFor(() => expect(result.current.status).toBe('signedOut'));
   expect(await SecureStore.getItemAsync('hueckoapp.token')).toBeNull();
+});
+
+it('con error de red conserva el token guardado y queda signedOut', async () => {
+  await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+  mocked.meRequest.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'sin red'));
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  expect(await SecureStore.getItemAsync('hueckoapp.token')).toBe('tok');
 });
 
 it('login guarda el token y logout lo borra', async () => {
