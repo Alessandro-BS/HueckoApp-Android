@@ -1,19 +1,12 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-/.idea/markdown.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+# Dependencias y builds (cada subproyecto tiene además su propio .gitignore)
+node_modules/
+dist/
 
-# Directorio de cache del compilador de Kotlin (K2), generado en cada build.
-.kotlin
+# Variables de entorno: nunca se suben. Usa los .env.example como plantilla.
+.env
+.env.local
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.vscode/
