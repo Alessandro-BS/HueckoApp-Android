@@ -35,7 +35,9 @@ export const uploadScheduleImage: RequestHandler = (req, res, next) => {
       if (error.code === 'LIMIT_FILE_SIZE') return next(new ApiError(413, 'PAYLOAD_TOO_LARGE', 'La imagen supera los 5 MB.'));
       return next(new ApiError(400, 'INVALID_UPLOAD', 'Envía una sola imagen en el campo «image».'));
     }
-    if (error) return next(error);
+    if (error instanceof ApiError) return next(error);
+    // Cuerpo multipart roto o cortado (los errores del analizador llegan como Error sin más).
+    if (error) return next(new ApiError(400, 'INVALID_UPLOAD', 'La subida no es válida. Envía una sola imagen en el campo «image».'));
     const file = req.file;
     // El tipo declarado lo escribe el cliente: se comprueba también con los primeros bytes del archivo.
     if (file && detectImageType(file.buffer) !== file.mimetype) {
