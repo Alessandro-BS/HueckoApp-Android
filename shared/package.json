@@ -1,0 +1,12 @@
+{
+  "name": "@hueckoapp/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tipos del contrato de la API compartidos entre mobile y backend",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  }
+}
