@@ -14,7 +14,14 @@ export function BottomSheet({ title, subtitle, onDismiss, dismissable = true, ch
   return (
     <Modal transparent visible animationType="slide" onRequestClose={dismiss}>
       <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable accessibilityLabel="Cerrar" style={StyleSheet.absoluteFill} onPress={dismiss} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar"
+          accessibilityState={{ disabled: !dismissable }}
+          disabled={!dismissable}
+          style={StyleSheet.absoluteFill}
+          onPress={dismiss}
+        />
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.handle} />
           <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{title}</Text>

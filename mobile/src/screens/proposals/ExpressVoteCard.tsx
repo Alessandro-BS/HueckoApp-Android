@@ -7,6 +7,7 @@ import { useAction } from '../../hooks/useAction';
 import { colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
 import { showToast } from '../../utils/toast';
+import { confirmCancelPlan } from './confirmCancelPlan';
 
 type Choice = { state: 'PROPUESTO' | 'CANCELADO' | 'CONFIRMADO'; label: string };
 const REPROGRAM: Choice = { state: 'PROPUESTO', label: 'Reprogramar' };
@@ -84,6 +85,8 @@ export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, crea
   const choose = (choice: Choice) => {
     if (action.loading) return;
     if (choice.state === 'PROPUESTO') setReprogramming(true);
+    // Cancelar pide la misma confirmación que «Cancelar plan» del detalle.
+    else if (choice.state === 'CANCELADO') confirmCancelPlan(planTitle, () => void run(choice, { newState: 'CANCELADO' }));
     else void run(choice, { newState: choice.state });
   };
 

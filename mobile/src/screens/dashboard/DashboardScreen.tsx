@@ -87,7 +87,7 @@ function PendingVoteCard({ proposal, now, disabled, onVote }: {
 
 export function DashboardScreen({ navigation }: DrawerScreen<'Dashboard'>) {
   const { user } = useAuth();
-  const { dashboard, loaded, loading, refreshing, error, reload, blocks, toggleVote, voting, voteError } = useDashboard();
+  const { dashboard, loaded, loading, refreshing, error, failedLoads, reload, blocks, toggleVote, voting, voteError } = useDashboard();
   const [now, setNow] = useState(today);
   // Al volver a Inicio se recarga todo y se actualiza «hoy» (saludo, horario del día y plazos).
   const refresh = useCallback(async () => {
@@ -95,7 +95,7 @@ export function DashboardScreen({ navigation }: DrawerScreen<'Dashboard'>) {
     await reload();
   }, [reload]);
   useRefreshOnFocus(refresh);
-  useRefreshErrorToast(error, loaded);
+  useRefreshErrorToast(error, loaded, failedLoads);
   const [creatingGroup, setCreatingGroup] = useState(false);
 
   const goGroups = () => navigation.navigate('Groups');
@@ -134,6 +134,7 @@ export function DashboardScreen({ navigation }: DrawerScreen<'Dashboard'>) {
             <>
               {dashboard.expressAlert ? (
                 <ExpressVoteCard
+                  key={dashboard.expressAlert.proposalId}
                   kind={dashboard.expressAlert.kind}
                   who={dashboard.expressAlert.who}
                   reason={dashboard.expressAlert.reason}

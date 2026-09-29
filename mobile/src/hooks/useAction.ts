@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { errorMessage } from '../api/client';
 
@@ -13,7 +13,9 @@ export function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>
   const busy = useRef(false);
   const mounted = useRef(true);
 
-  useEffect(() => {
+  // En useLayoutEffect (síncrono con el commit): una llamada hecha justo después de un render con una
+  // fn nueva (p. ej. desde otro efecto de layout) ya usa la nueva, no la del render anterior.
+  useLayoutEffect(() => {
     fnRef.current = fn;
   }, [fn]);
 

@@ -34,28 +34,28 @@ export function DateTimeField({ label, value, onChange, mode = 'datetime', minim
 
   const handleChange = useCallback(
     (event: DateTimePickerEvent, selected?: Date) => {
-    const close = () => {
-      setStep(null);
-      setPickedDay(null);
-    };
-    if (event.type !== 'set' || !selected) {
-      close();
-      return;
-    }
-    if (step === 'date') {
-      const day = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
-      if (mode === 'date') {
+      const close = () => {
+        setStep(null);
+        setPickedDay(null);
+      };
+      if (event.type !== 'set' || !selected) {
         close();
-        latest.current.onChange(day);
         return;
       }
-      setPickedDay(day);
-      setStep('time');
-      return;
-    }
-    const day = pickedDay ?? latest.current.initial;
-    close();
-    latest.current.onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), selected.getHours(), selected.getMinutes()));
+      if (step === 'date') {
+        const day = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
+        if (mode === 'date') {
+          close();
+          latest.current.onChange(day);
+          return;
+        }
+        setPickedDay(day);
+        setStep('time');
+        return;
+      }
+      const day = pickedDay ?? latest.current.initial;
+      close();
+      latest.current.onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), selected.getHours(), selected.getMinutes()));
     },
     [step, pickedDay, mode],
   );

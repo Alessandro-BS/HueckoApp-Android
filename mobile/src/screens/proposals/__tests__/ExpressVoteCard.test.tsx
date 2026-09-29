@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import { ApiError } from '../../../api/client';
 import { showToast } from '../../../utils/toast';
@@ -31,10 +32,22 @@ it('aviso: título y texto; «Mantener» resuelve con CONFIRMADO y avisa', async
   expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: mantener.');
 });
 
-it('«Cancelar» resuelve con CANCELADO', async () => {
+it('«Cancelar» pide la misma confirmación que «Cancelar plan» y solo resuelve con CANCELADO al confirmar', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   const onResolve = jest.fn().mockResolvedValue(undefined);
   await render(<ExpressVoteCard {...base} onResolve={onResolve} />);
   await fireEvent.press(screen.getByText('Cancelar'));
+  expect(alert).toHaveBeenCalledWith(
+    'Cancelar plan',
+    '¿Seguro que quieres cancelar «Reunión de avance del proyecto»? El grupo dejará de verlo como pendiente.',
+    expect.any(Array),
+  );
+  const [volver, cancelar] = alert.mock.calls[0][2]!;
+  expect([volver.text, cancelar.text]).toEqual(['Volver', 'Cancelar plan']);
+  // Mientras no se confirma, no se envía nada.
+  expect(onResolve).not.toHaveBeenCalled();
+
+  await act(async () => cancelar.onPress!());
   await waitFor(() => expect(onResolve).toHaveBeenCalledWith({ newState: 'CANCELADO' }));
   expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: cancelar.');
 });

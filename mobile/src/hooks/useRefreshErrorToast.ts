@@ -4,8 +4,10 @@ import { showToast } from '../utils/toast';
 
 // Si una RECARGA falla con datos ya en pantalla, se avisa con un toast y el contenido se queda como estaba.
 // (Si falla la primera carga, LoadState ya muestra el error con «Reintentar».)
-export function useRefreshErrorToast(error: string | null, hasData: boolean) {
+// `failedLoads` (de useResource) sube en cada fallo: dos recargas fallidas seguidas con el mismo
+// mensaje avisan dos veces.
+export function useRefreshErrorToast(error: string | null, hasData: boolean, failedLoads: number) {
   useEffect(() => {
     if (error && hasData) showToast(error);
-  }, [error, hasData]);
+  }, [error, hasData, failedLoads]);
 }

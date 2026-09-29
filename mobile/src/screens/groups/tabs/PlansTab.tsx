@@ -48,10 +48,10 @@ function PlanCard({ proposal, now, onDetails, onVote }: CardProps) {
 // «Planes» del grupo: las propuestas que no están canceladas (D7, igual que proposalsOf en Kotlin).
 export function PlansTab({ groupId, groupName }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
-  const { proposals, loaded, loading, refreshing, error, reload } = useProposals(groupId);
+  const { proposals, loaded, loading, refreshing, error, failedLoads, reload } = useProposals(groupId);
   // Al volver de «Nueva propuesta», «Votar» o «Detalle del plan» se recarga la lista.
   useRefreshOnFocus(reload);
-  useRefreshErrorToast(error, loaded);
+  useRefreshErrorToast(error, loaded, failedLoads);
   const now = today();
   const visible = proposals.filter((p) => p.state !== 'CANCELADO');
 

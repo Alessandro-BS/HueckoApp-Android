@@ -21,7 +21,7 @@ export type { VoteOutcome } from './useVoteToggle';
 // { ok } y expone `voteError`); las demás acciones LANZAN si fallan y la pantalla decide cómo avisar.
 export function useProposal(proposalId: string) {
   const load = useCallback(() => getProposal(proposalId), [proposalId]);
-  const { data, loading, refreshing, error, reload, mutate } = useResource(load);
+  const { data, loading, refreshing, error, failedLoads, reload, mutate } = useResource(load);
 
   const apply = useCallback(
     (proposal: Proposal) => {
@@ -52,7 +52,7 @@ export function useProposal(proposalId: string) {
   );
 
   return {
-    proposal: data, loading, refreshing, error, reload,
+    proposal: data, loading, refreshing, error, failedLoads, reload,
     toggleVote, voting, voteError, clearVoteError,
     addWindow, confirm, cancel, reportIncidence, resolve,
   };

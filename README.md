@@ -35,6 +35,8 @@ cp backend/.env.example backend/.env   # completa JWT_SECRET (el archivo explica
 npm run backend                        # http://localhost:3000/api/health
 ```
 
+> **Zona horaria:** `TZ` en `backend/.env` (por defecto `America/Lima`) es la zona en la que el servidor calcula la fecha y hora de los planes confirmados (`scheduledAt` y `scheduledDate`). En el despliegue hay que fijarla siempre: sin ella el servidor usa la suya (normalmente UTC) y los planes caerían en otra fecha u hora.
+
 ### 2b. Datos de ejemplo (opcional)
 ```bash
 npm run seed -w backend   # usuarios, grupos y horarios de prueba; se puede repetir sin duplicar nada
@@ -68,7 +70,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 | Tema | Dónde |
 |---|---|
-| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`) |
+| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`) |
 | **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend |
 | **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto del permiso en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
@@ -81,7 +83,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 - [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
 - [x] **Fase 3** — Propuestas, votación y ubicación
 - [ ] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
-- [ ] **Fase 5** — Tests, despliegue del backend y APK con EAS Build
+- [ ] **Fase 5** — Tests, despliegue del backend (con `TZ` fijada, ver «Zona horaria») y APK con EAS Build
 
 ## Flujo de trabajo (git flow)
 

@@ -1,6 +1,6 @@
 import type { Incidence } from '@hueckoapp/shared';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorMessage } from '../../api/client';
 import { Badge, HueckoCard, LoadState, PrimaryButton, SecondaryButton, VoteWindowRow } from '../../components';
@@ -11,9 +11,10 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
-import { CRITICALITY_BADGE, INCIDENCE_LABEL, isVotingOpen, openIncidence } from '../../utils/proposals';
+import { CRITICALITY_BADGE, INCIDENCE_LABEL, isUpcoming, isVotingOpen, openIncidence } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { ConfirmPlanDialog } from './ConfirmPlanDialog';
+import { confirmCancelPlan } from './confirmCancelPlan';
 import { ExpressVoteCard } from './ExpressVoteCard';
 import { ProposalHeader } from './ProposalHeader';
 import { ReportIncidenceSheet } from './ReportIncidenceSheet';
@@ -41,9 +42,9 @@ function IncidenceRow({ incidence }: { incidence: Incidence }) {
 export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDetail'>) {
   const { proposalId } = route.params;
   const { user } = useAuth();
-  const { proposal, loading, refreshing, error, reload, confirm, cancel, reportIncidence, resolve } = useProposal(proposalId);
+  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, resolve } = useProposal(proposalId);
   useRefreshOnFocus(reload);
-  useRefreshErrorToast(error, proposal !== undefined);
+  useRefreshErrorToast(error, proposal !== undefined, failedLoads);
   const [sheet, setSheet] = useState<'confirm' | 'incidence' | null>(null);
 
   if (!proposal) {
@@ -59,7 +60,9 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   const now = today();
   const isCreator = proposal.createdBy.id === user?.id;
   const active = proposal.state === 'CONFIRMADO' || proposal.state === 'EN_RECOORDINACION';
-  const alertIncidence = active ? openIncidence(proposal) : null;
+  // La votación exprés y «Reportar imprevisto» solo tienen sentido si el plan aún no ocurrió (D3).
+  const activeUpcoming = active && isUpcoming(proposal, now);
+  const alertIncidence = activeUpcoming ? openIncidence(proposal) : null;
 
   const doCancel = async () => {
     try {
@@ -70,11 +73,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
     }
   };
 
-  const confirmCancel = () =>
-    Alert.alert('Cancelar plan', `¿Seguro que quieres cancelar «${proposal.title}»? El grupo dejará de verlo como pendiente.`, [
-      { text: 'Volver', style: 'cancel' },
-      { text: 'Cancelar plan', style: 'destructive', onPress: () => void doCancel() },
-    ]);
+  const confirmCancel = () => confirmCancelPlan(proposal.title, () => void doCancel());
 
   return (
     <>
@@ -122,7 +121,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
             ) : (
               proposal.incidences.map((i) => <IncidenceRow key={i.id} incidence={i} />)
             )}
-            {active ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
+            {activeUpcoming ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
           </View>
         ) : null}
 

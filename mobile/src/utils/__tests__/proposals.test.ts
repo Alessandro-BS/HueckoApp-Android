@@ -1,6 +1,6 @@
 import { makeConfirmed, makeProposal, makeWindow } from '../../testing/fixtures';
 import {
-  availabilityLabel, deadlineLabel, isVotingOpen, openIncidence, scheduleLabel, STATE_BADGE, voteCountLabel, windowLabel,
+  availabilityLabel, deadlineLabel, isUpcoming, isVotingOpen, openIncidence, scheduleLabel, STATE_BADGE, voteCountLabel, windowLabel,
 } from '../proposals';
 
 const NOW = new Date(2026, 8, 29, 10, 0);
@@ -26,6 +26,13 @@ it('isVotingOpen (C1): PROPUESTO y antes del plazo', () => {
   expect(isVotingOpen(makeConfirmed(), NOW)).toBe(false);
 });
 
+it('isUpcoming (D3): sin fecha o con scheduledAt en el futuro', () => {
+  expect(isUpcoming(makeProposal(), NOW)).toBe(true);
+  expect(isUpcoming(makeConfirmed(), NOW)).toBe(true);
+  expect(isUpcoming(makeConfirmed({ scheduledAt: NOW.toISOString() }), NOW)).toBe(false);
+  expect(isUpcoming(makeConfirmed({ scheduledAt: new Date(2026, 8, 28, 11, 0).toISOString() }), NOW)).toBe(false);
+});
+
 it('deadlineLabel: «Cierra» si es futuro, «Cerró» si pasó', () => {
   const iso = new Date(2026, 8, 29, 20, 0).toISOString();
   expect(deadlineLabel(iso, NOW)).toBe('Cierra: Mar 29 sep, 20:00');
@@ -38,8 +45,9 @@ it('scheduleLabel: fecha y franja elegida de un plan confirmado; null si no lo e
 });
 
 it('scheduleLabel (F10): usa scheduledDate del servidor, no scheduledAt en la zona del teléfono', () => {
-  // scheduledAt cae en otro día local (23:30 UTC-…): la fecha mostrada sigue siendo la del servidor.
-  const p = makeConfirmed({ scheduledAt: '2026-10-01T03:30:00.000Z', scheduledDate: '2026-09-30' });
+  // scheduledAt cae varios días después (sábado 3 de octubre, hora local) en cualquier zona horaria:
+  // si la etiqueta saliera de scheduledAt diría «Sáb 3 oct»; sale de scheduledDate, «Mié 30 sep».
+  const p = makeConfirmed({ scheduledAt: new Date(2026, 9, 3, 11, 0).toISOString(), scheduledDate: '2026-09-30' });
   expect(scheduleLabel(p)).toBe('Mié 30 sep · 11:00 - 13:00');
 });
 

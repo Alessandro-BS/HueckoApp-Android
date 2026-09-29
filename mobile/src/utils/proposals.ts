@@ -40,6 +40,10 @@ export const availabilityLabel = (percentage: number) => `${percentage}% del gru
 export const isVotingOpen = (p: Pick<Proposal, 'state' | 'votingDeadline'>, now: Date) =>
   p.state === 'PROPUESTO' && new Date(p.votingDeadline).getTime() > now.getTime();
 
+/** El plan aún no ocurrió: sin fecha o con `scheduledAt` en el futuro (misma regla que la alerta exprés del Inicio, D3). */
+export const isUpcoming = (p: Pick<Proposal, 'scheduledAt'>, now: Date) =>
+  p.scheduledAt === null || new Date(p.scheduledAt).getTime() > now.getTime();
+
 /** «Cierra: Vie 2 oct, 20:00», o «Cerró: …» si el plazo ya pasó. */
 export const deadlineLabel = (iso: string, now: Date) => {
   const date = new Date(iso);

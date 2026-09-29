@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { useLayoutEffect } from 'react';
 
 import { ApiError } from '../../api/client';
 import { useAction, type ActionResult } from '../useAction';
@@ -51,4 +52,50 @@ it('ignora un segundo envío mientras el primero sigue en curso', async () => {
   await act(async () => resolve());
   await expect(first).resolves.toEqual({ ok: true, value: undefined });
   expect(fn).toHaveBeenCalledTimes(1);
+});
+
+it('usa la última fn aunque se llame justo después de un render con una fn nueva (en un efecto de layout)', async () => {
+  const first = jest.fn(async () => 'primera');
+  const second = jest.fn(async () => 'segunda');
+  type Props = { fn: () => Promise<string>; call: boolean };
+  let pending: Promise<ActionResult<string>> | undefined;
+  const { rerender } = await renderHook(
+    ({ fn, call }: Props) => {
+      const { run } = useAction(fn);
+      // Se llama en el mismo commit en que llega la fn nueva, antes de cualquier efecto pasivo.
+      useLayoutEffect(() => {
+        if (call) pending = run();
+      }, [call, run]);
+    },
+    { initialProps: { fn: first, call: false } as Props },
+  );
+
+  await rerender({ fn: second, call: true });
+  await expect(pending).resolves.toEqual({ ok: true, value: 'segunda' });
+  expect(first).not.toHaveBeenCalled();
+  expect(second).toHaveBeenCalledTimes(1);
+});
+
+it('un nuevo envío borra el error del anterior', async () => {
+  let resolve!: () => void;
+  const fn = jest
+    .fn<Promise<void>, []>()
+    .mockRejectedValueOnce(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'))
+    .mockImplementationOnce(() => new Promise<void>((r) => (resolve = r)));
+  const { result } = await renderHook(() => useAction(fn));
+
+  await act(async () => {
+    await result.current.run();
+  });
+  expect(result.current.error).toBe('La votación ya cerró.');
+
+  let pending!: Promise<ActionResult<void>>;
+  await act(async () => {
+    pending = result.current.run();
+  });
+  // Mientras el nuevo envío sigue en curso, el error anterior ya no se muestra.
+  expect(result.current.error).toBeNull();
+  await act(async () => resolve());
+  await expect(pending).resolves.toEqual({ ok: true, value: undefined });
+  expect(result.current.error).toBeNull();
 });

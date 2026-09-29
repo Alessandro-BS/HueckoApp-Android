@@ -35,6 +35,22 @@ it('si falla deja el mensaje de error listo para mostrar', async () => {
   expect(result.current.data).toBeUndefined();
 });
 
+it('failedLoads cuenta cada carga fallida, aunque el mensaje se repita', async () => {
+  const load = jest
+    .fn<Promise<string[]>, []>()
+    .mockResolvedValueOnce(['a'])
+    .mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'Error inesperado del servidor'));
+  const { result } = await renderHook(() => useResource(load));
+  await waitFor(() => expect(result.current.data).toEqual(['a']));
+  expect(result.current.failedLoads).toBe(0);
+
+  await act(async () => result.current.reload());
+  await act(async () => result.current.reload());
+  expect(result.current.error).toBe('Error inesperado del servidor');
+  expect(result.current.failedLoads).toBe(2);
+  expect(result.current.data).toEqual(['a']);
+});
+
 it('reload con datos en pantalla usa refreshing (no loading) y limpia el error al acertar', async () => {
   const d = deferred<string[]>();
   const load = jest

@@ -126,3 +126,20 @@ it('quien creó el plan resuelve el aviso desde el detalle', async () => {
   expect(mocked.resolveIncidences).toHaveBeenCalledWith('prop_1', { newState: 'CONFIRMADO' });
   expect(screen.getByText('Resuelto')).toBeTruthy();
 });
+
+it('un plan confirmado que ya pasó no muestra la votación exprés ni «Reportar imprevisto» (D3)', async () => {
+  // Control positivo: el mismo plan, aún por ocurrir (fixture: miércoles 30), sí los muestra.
+  mocked.getProposal.mockResolvedValue(makeConfirmed());
+  const first = await renderScreen();
+  expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
+  expect(screen.getByText('Reportar imprevisto')).toBeTruthy();
+  await first.unmount();
+
+  // Hoy es martes 29 a las 10:00: el plan del lunes 28 ya ocurrió.
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ scheduledAt: new Date(2026, 8, 28, 11, 0).toISOString(), scheduledDate: '2026-09-28' }));
+  await renderScreen();
+  expect(await screen.findByText('Reunión de avance del proyecto')).toBeTruthy();
+  expect(screen.getByText('Ana · Imprevisto')).toBeTruthy();
+  expect(screen.queryByText('Aviso de imprevisto')).toBeNull();
+  expect(screen.queryByText('Reportar imprevisto')).toBeNull();
+});

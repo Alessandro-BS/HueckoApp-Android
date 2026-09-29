@@ -12,16 +12,16 @@ export function DaySelector({ selected, onSelect, captionFor }: Props) {
       {WEEK_DAYS.map((iso) => {
         const caption = captionFor(iso);
         return (
-        <ChoiceChip
-          key={iso}
-          variant="title"
-          label={dayShort(iso)}
-          caption={caption || undefined}
-          accessibilityLabel={caption ? `${dayLong(iso)}, ${caption}` : dayLong(iso)}
-          selected={iso === selected}
-          onPress={() => onSelect(iso)}
-          style={styles.chip}
-        />
+          <ChoiceChip
+            key={iso}
+            variant="title"
+            label={dayShort(iso)}
+            caption={caption || undefined}
+            accessibilityLabel={caption ? `${dayLong(iso)}, ${caption}` : dayLong(iso)}
+            selected={iso === selected}
+            onPress={() => onSelect(iso)}
+            style={styles.chip}
+          />
         );
       })}
     </ScrollView>

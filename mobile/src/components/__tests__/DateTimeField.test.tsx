@@ -51,11 +51,20 @@ it('muestra el valor con fecha y hora, y el error', async () => {
   expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();
 });
 
-it('un re-render del padre conserva el mismo onChange del selector (no reabre el diálogo en Android)', async () => {
-  const props = { label: 'Fecha límite de votación', value: null, onChange: jest.fn() };
-  const { rerender } = await render(<DateTimeField {...props} />);
+it('un re-render del padre con un onChange nuevo conserva el mismo onChange del selector (no reabre el diálogo en Android)', async () => {
+  const first = jest.fn();
+  const fresh = jest.fn();
+  const { rerender } = await render(<DateTimeField label="Fecha límite de votación" value={null} onChange={first} />);
   await fireEvent.press(screen.getByLabelText('Fecha límite de votación'));
   const before = screen.getByTestId('datetimepicker-date').props.onChange;
-  await rerender(<DateTimeField {...props} />);
+  // El padre pasa una función NUEVA (como un onChange en línea): el selector sigue con la misma.
+  await rerender(<DateTimeField label="Fecha límite de votación" value={null} onChange={fresh} />);
   expect(screen.getByTestId('datetimepicker-date').props.onChange).toBe(before);
+
+  // Y al elegir se avisa a la función más reciente, no a la del render anterior.
+  const picked = new Date(2026, 9, 2, 18, 30);
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'change', { type: 'set' }, picked);
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, picked);
+  expect(fresh).toHaveBeenCalledWith(picked);
+  expect(first).not.toHaveBeenCalled();
 });

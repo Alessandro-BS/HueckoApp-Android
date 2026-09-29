@@ -119,6 +119,29 @@ it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)'
   expect(screen.getByLabelText('Tu voto')).toBeTruthy();
 });
 
+it('tocar la franja que ya voté retira el voto y avisa (B8)', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowId: 'w_21' }), groupName: 'Proyecto Integrador' }] }),
+  );
+  proposals.removeVote.mockResolvedValue(makeProposal());
+  await renderScreen();
+  const mine = await screen.findByText('Mar · 16:00 - 18:00');
+  expect(screen.getByLabelText('Tu voto')).toBeTruthy();
+  await fireEvent.press(mine);
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto se ha retirado.'));
+  expect(proposals.removeVote).toHaveBeenCalledWith('prop_2');
+  expect(proposals.voteWindow).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('Tu voto')).toBeNull();
+});
+
+it('si votar falla muestra el error en «Votaciones en curso» y no avisa', async () => {
+  proposals.voteWindow.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  expect(await screen.findByText('La votación ya cerró.')).toBeTruthy();
+  expect(showToast).not.toHaveBeenCalled();
+});
+
 it('«Nuevo grupo» abre ahí mismo el diálogo de crear grupo y recarga Inicio (quirk 5)', async () => {
   const created: Group = {
     id: 'g2', name: 'Estudio', description: '', memberCount: 1, availabilityThreshold: 80, inviteCode: 'ABCDEFGH', members: [],

@@ -16,9 +16,9 @@ import { ProposalHeader } from './ProposalHeader';
 
 export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
   const { proposalId } = route.params;
-  const { proposal, loading, refreshing, error, reload, toggleVote, voting, voteError, addWindow } = useProposal(proposalId);
+  const { proposal, loading, refreshing, error, failedLoads, reload, toggleVote, voting, voteError, addWindow } = useProposal(proposalId);
   useRefreshOnFocus(reload);
-  useRefreshErrorToast(error, proposal !== undefined);
+  useRefreshErrorToast(error, proposal !== undefined, failedLoads);
   const [adding, setAdding] = useState(false);
 
   if (!proposal) {

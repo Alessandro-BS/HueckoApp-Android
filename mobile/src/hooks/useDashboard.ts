@@ -18,7 +18,7 @@ const loadDashboard = async (): Promise<DashboardData> => {
 };
 
 export function useDashboard() {
-  const { data, loaded, loading, refreshing, error, reload, mutate } = useResource(loadDashboard);
+  const { data, loaded, loading, refreshing, error, failedLoads, reload, mutate } = useResource(loadDashboard);
 
   // Actualiza solo esa votación; conserva el nombre del grupo, que la respuesta no trae.
   const replacePending = (updated: Proposal) =>
@@ -41,7 +41,7 @@ export function useDashboard() {
   });
 
   return {
-    dashboard: data?.dashboard, blocks: data?.blocks ?? NO_BLOCKS, loaded, loading, refreshing, error, reload,
+    dashboard: data?.dashboard, blocks: data?.blocks ?? NO_BLOCKS, loaded, loading, refreshing, error, failedLoads, reload,
     toggleVote, voting, voteError, clearVoteError,
   };
 }
