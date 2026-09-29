@@ -1,4 +1,6 @@
-import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { DrawerScreenProps } from '@react-navigation/drawer';
+import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 export type AuthStackParamList = { Login: undefined; Register: undefined };
 
@@ -9,10 +11,19 @@ export type DrawerParamList = {
   Profile: undefined;
 };
 
-// Pantallas que se apilan sobre el drawer (sin menú). Se completan en fases siguientes.
+// Pantallas que se apilan sobre el drawer (sin menú, con cabecera nativa y botón atrás).
 export type AppStackParamList = {
   Main: NavigatorScreenParams<DrawerParamList>;
+  AddSchedule: { initialDay?: number } | undefined;
 };
+
+export type AppStackScreen<K extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, K>;
+
+// Pantallas del drawer que también abren pantallas apiladas (p. ej. Horario → Nuevo bloque).
+export type DrawerScreen<K extends keyof DrawerParamList> = CompositeScreenProps<
+  DrawerScreenProps<DrawerParamList, K>,
+  NativeStackScreenProps<AppStackParamList>
+>;
 
 declare global {
   namespace ReactNavigation {

@@ -6,12 +6,16 @@ import { colors, radius, typography } from '../theme';
 import type { IconName } from './icons';
 
 type Props = {
-  label: string;
+  /** Etiqueta encima del campo. Si se omite, pasar accessibilityLabel. */
+  label?: string;
+  accessibilityLabel?: string;
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
   leadingIcon?: IconName;
   error?: string;
+  /** Texto de ayuda bajo el campo cuando no hay error. */
+  helperText?: string;
   secureToggle?: boolean;
   keyboardType?: TextInputProps['keyboardType'];
   autoCapitalize?: TextInputProps['autoCapitalize'];
@@ -19,17 +23,20 @@ type Props = {
   textContentType?: TextInputProps['textContentType'];
   returnKeyType?: TextInputProps['returnKeyType'];
   onSubmitEditing?: TextInputProps['onSubmitEditing'];
+  maxLength?: number;
   inputRef?: Ref<TextInput>;
   testID?: string;
 };
 
 export function TextField({
   label,
+  accessibilityLabel,
   value,
   onChangeText,
   placeholder,
   leadingIcon,
   error,
+  helperText,
   secureToggle = false,
   keyboardType,
   autoCapitalize,
@@ -37,6 +44,7 @@ export function TextField({
   textContentType,
   returnKeyType,
   onSubmitEditing,
+  maxLength,
   inputRef,
   testID,
 }: Props) {
@@ -47,14 +55,18 @@ export function TextField({
 
   return (
     <View>
-      <Text style={[typography.labelMedium, { color: colors.onSurfaceVariant }]}>{label}</Text>
-      <View style={{ height: 6 }} />
+      {label ? (
+        <>
+          <Text style={[typography.labelMedium, { color: colors.onSurfaceVariant }]}>{label}</Text>
+          <View style={{ height: 6 }} />
+        </>
+      ) : null}
       <View style={[styles.container, { borderColor, borderWidth }]}>
         {leadingIcon ? <MaterialIcons name={leadingIcon} size={20} color={colors.onSurfaceVariant} style={styles.leading} /> : null}
         <TextInput
           ref={inputRef}
           testID={testID}
-          accessibilityLabel={label}
+          accessibilityLabel={accessibilityLabel ?? label}
           style={[typography.bodyLarge, styles.input, { color: colors.onSurface }]}
           value={value}
           onChangeText={onChangeText}
@@ -68,6 +80,7 @@ export function TextField({
           textContentType={textContentType}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
+          maxLength={maxLength}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
@@ -83,9 +96,11 @@ export function TextField({
         ) : null}
       </View>
       {error ? (
-        <Text accessibilityLiveRegion="polite" style={[typography.bodySmall, { color: colors.error, marginTop: 4 }]}>
+        <Text accessibilityLiveRegion="polite" style={[typography.bodySmall, styles.hint, { color: colors.error }]}>
           {error}
         </Text>
+      ) : helperText ? (
+        <Text style={[typography.bodySmall, styles.hint, { color: colors.onSurfaceVariant }]}>{helperText}</Text>
       ) : null}
     </View>
   );
@@ -96,4 +111,5 @@ const styles = StyleSheet.create({
   leading: { marginRight: 10 },
   input: { flex: 1, paddingVertical: 0 },
   toggle: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: -12 },
+  hint: { marginTop: 4 },
 });

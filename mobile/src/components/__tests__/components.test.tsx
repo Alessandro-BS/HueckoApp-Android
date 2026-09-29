@@ -36,3 +36,18 @@ describe('EmptyState', () => {
     expect(onAction).toHaveBeenCalled();
   });
 });
+
+describe('TextField con pista', () => {
+  it('muestra helperText sin error; el error la reemplaza; sin label usa accessibilityLabel', async () => {
+    const { rerender } = await render(
+      <TextField accessibilityLabel="Hora de inicio" value="08:00" onChangeText={() => {}} helperText="Inicio" />,
+    );
+    expect(screen.getByText('Inicio')).toBeTruthy();
+    expect(screen.getByLabelText('Hora de inicio')).toBeTruthy();
+    await rerender(
+      <TextField accessibilityLabel="Hora de inicio" value="8:00" onChangeText={() => {}} helperText="Inicio" error="Formato HH:mm" />,
+    );
+    expect(screen.queryByText('Inicio')).toBeNull();
+    expect(screen.getByText('Formato HH:mm')).toBeTruthy();
+  });
+});

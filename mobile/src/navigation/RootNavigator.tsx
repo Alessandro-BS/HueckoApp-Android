@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { AddScheduleScreen } from '../screens/schedule/AddScheduleScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { colors } from '../theme';
 import { AppDrawer } from './AppDrawer';
@@ -26,8 +27,16 @@ export function RootNavigator() {
   }
 
   return (
-    <AppStack.Navigator screenOptions={{ contentStyle: { backgroundColor: colors.surface } }}>
+    <AppStack.Navigator
+      screenOptions={{
+        contentStyle: { backgroundColor: colors.surface },
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.onSurface,
+        headerShadowVisible: false,
+      }}
+    >
       <AppStack.Screen name="Main" component={AppDrawer} options={{ headerShown: false }} />
+      <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
     </AppStack.Navigator>
   );
 }
