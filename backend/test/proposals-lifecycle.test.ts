@@ -22,6 +22,9 @@ beforeEach(async () => {
 const postTo = (path: string, token: string, body: object = {}) =>
   request(app).post(`/api/proposals/${path}`).set(bearer(token)).send(body);
 const vote = (p: Proposal, dayOfWeek: number, token: string) => voteFor(app, p.id, windowOf(p, dayOfWeek).id, token);
+// Ana pasa a ser imprescindible: su FALTA lleva el plan a EN_RECOORDINACION.
+const makeEssential = () =>
+  request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true });
 
 // Martes 16–18, jueves 10–12 y viernes 16–18, creada por yo para poder confirmarla.
 const threeWindows = () =>
@@ -46,6 +49,23 @@ async function confirmedPlan(): Promise<Proposal> {
   await vote(p, 3, ana.token);
   const res = await postTo(`${p.id}/confirm`, yo.token);
   if (res.status !== 200) throw new Error(`confirmar falló: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body;
+}
+
+// Plan confirmado en el que falta Ana (imprescindible): queda EN_RECOORDINACION.
+async function recoordinatingPlan(): Promise<Proposal> {
+  const p = await confirmedPlan();
+  await makeEssential();
+  const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+  if (res.body.state !== 'EN_RECOORDINACION') throw new Error(`reportar falló: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body;
+}
+
+// Plan confirmado y después cancelado por quien lo creó.
+async function cancelledPlan(): Promise<Proposal> {
+  const p = await confirmedPlan();
+  const res = await postTo(`${p.id}/cancel`, yo.token);
+  if (res.body.state !== 'CANCELADO') throw new Error(`cancelar falló: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;
 }
 
@@ -114,6 +134,15 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect((await postTo(`${p.id}/confirm`, yo.token)).body.error.code).toBe('INVALID_STATE');
   });
 
+  it('409 INVALID_STATE al confirmar un plan CANCELADO o EN_RECOORDINACION', async () => {
+    const cancelado = await cancelledPlan();
+    const res = await postTo(`${cancelado.id}/confirm`, yo.token);
+    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
+    const enRecoordinacion = await recoordinatingPlan();
+    const res2 = await postTo(`${enRecoordinacion.id}/confirm`, yo.token);
+    expect([res2.status, res2.body.error.code]).toEqual([409, 'INVALID_STATE']);
+  });
+
   it('se puede confirmar después del plazo', async () => {
     const p = await threeWindows();
     await vote(p, 4, ana.token);
@@ -141,8 +170,6 @@ describe('POST /api/proposals/:id/cancel (C3)', () => {
 
 describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
   const report = (p: Proposal, token: string, body: object) => postTo(`${p.id}/incidences`, token, body);
-  const makeEssential = () =>
-    request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true });
 
   it('solo en planes confirmados: 409 INVALID_STATE en PROPUESTO', async () => {
     const p = await threeWindows();
@@ -211,6 +238,12 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
     expect(res.body.error.details).toContainEqual(expect.objectContaining({ path: [field], message }));
   });
 
+  it('409 INVALID_STATE en un plan CANCELADO', async () => {
+    const p = await cancelledPlan();
+    const res = await report(p, ana.token, { type: 'FALTA', reason: 'Enferma' });
+    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
+  });
+
   it('403 a quien no es miembro', async () => {
     const p = await confirmedPlan();
     const otra = await registerUser(app);
@@ -274,12 +307,33 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
   });
 
   it('de EN_RECOORDINACION a CONFIRMADO', async () => {
-    const p = await confirmedPlan();
-    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true });
-    const reportada = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
-    expect(reportada.body.state).toBe('EN_RECOORDINACION');
+    const p = await recoordinatingPlan();
     const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
     expect(res.body.state).toBe('CONFIRMADO');
+  });
+
+  it('de EN_RECOORDINACION a PROPUESTO: sin votos ni franja elegida, con el plazo nuevo e incidencias resueltas', async () => {
+    const p = await recoordinatingPlan();
+    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
+    });
+    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0]);
+    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
+  });
+
+  it('de EN_RECOORDINACION a CANCELADO: incidencias resueltas', async () => {
+    const p = await recoordinatingPlan();
+    const res = await resolve(p, yo.token, { newState: 'CANCELADO' });
+    expect([res.status, res.body.state]).toEqual([200, 'CANCELADO']);
+    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
+  });
+
+  it('409 INVALID_STATE al resolver un plan CANCELADO', async () => {
+    const p = await cancelledPlan();
+    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
+    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
   it('403 si no la creé; 400 con un estado inválido; 409 si no está confirmada', async () => {

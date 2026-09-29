@@ -203,6 +203,13 @@ describe('PUT/DELETE /api/proposals/:id/vote', () => {
     expect((await unvoteFor(app, p.id, yo.token)).body.error.code).toBe('VOTING_CLOSED');
   });
 
+  it('justo en el plazo la votación ya está cerrada: 409 VOTING_CLOSED', async () => {
+    const p = await prop2();
+    clock.set(new Date(DEADLINE));
+    const res = await voteFor(app, p.id, windowOf(p, 2).id, yo.token);
+    expect([res.status, res.body.error.code]).toEqual([409, 'VOTING_CLOSED']);
+  });
+
   it('404 WINDOW_NOT_FOUND con una franja de otra propuesta; 400 sin windowId', async () => {
     const p = await prop2();
     const otra = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
@@ -216,6 +223,7 @@ describe('PUT/DELETE /api/proposals/:id/vote', () => {
     const p = await prop2();
     const otra = await registerUser(app);
     expect((await voteFor(app, p.id, windowOf(p, 2).id, otra.token)).status).toBe(403);
+    expect((await unvoteFor(app, p.id, otra.token)).status).toBe(403);
   });
 });
 
@@ -243,5 +251,14 @@ describe('POST /api/proposals/:id/windows (G2)', () => {
     expect(alReves.body.error.details).toContainEqual(expect.objectContaining({ path: ['endTime'] }));
     clock.set(AFTER_DEADLINE);
     expect((await addWindow(p.id, { dayOfWeek: 6, startTime: '10:00', endTime: '11:00' })).body.error.code).toBe('VOTING_CLOSED');
+  });
+
+  it('403 a quien no es miembro; 404 PROPOSAL_NOT_FOUND si la propuesta no existe', async () => {
+    const p = await prop2();
+    const otra = await registerUser(app);
+    const ajena = await addWindow(p.id, { dayOfWeek: 6, startTime: '10:00', endTime: '11:00' }, otra.token);
+    expect([ajena.status, ajena.body.error.code]).toEqual([403, 'NOT_A_MEMBER']);
+    const nada = await addWindow('no-existe', { dayOfWeek: 6, startTime: '10:00', endTime: '11:00' });
+    expect([nada.status, nada.body.error.code]).toEqual([404, 'PROPOSAL_NOT_FOUND']);
   });
 });
