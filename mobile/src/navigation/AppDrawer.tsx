@@ -10,6 +10,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { GroupListScreen } from '../screens/groups/GroupListScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MyScheduleScreen } from '../screens/schedule/MyScheduleScreen';
@@ -63,9 +64,7 @@ export function AppDrawer() {
         {() => <PlaceholderScreen title="Inicio" icon="dashboard" />}
       </Drawer.Screen>
       <Drawer.Screen name="Schedule" component={MyScheduleScreen} options={{ title: 'Horario', drawerIcon: icon('calendar-month') }} />
-      <Drawer.Screen name="Groups" options={{ title: 'Grupos', drawerIcon: icon('group') }}>
-        {() => <PlaceholderScreen title="Mis grupos" icon="group" />}
-      </Drawer.Screen>
+      <Drawer.Screen name="Groups" component={GroupListScreen} options={{ title: 'Grupos', drawerIcon: icon('group') }} />
       <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil', drawerIcon: icon('person-outline') }} />
     </Drawer.Navigator>
   );

@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
 import { AddScheduleScreen } from '../screens/schedule/AddScheduleScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { colors } from '../theme';
@@ -37,6 +38,7 @@ export function RootNavigator() {
     >
       <AppStack.Screen name="Main" component={AppDrawer} options={{ headerShown: false }} />
       <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
+      <AppStack.Screen name="GroupDetail" component={GroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
     </AppStack.Navigator>
   );
 }

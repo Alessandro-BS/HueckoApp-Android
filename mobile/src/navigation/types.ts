@@ -15,7 +15,11 @@ export type DrawerParamList = {
 export type AppStackParamList = {
   Main: NavigatorScreenParams<DrawerParamList>;
   AddSchedule: { initialDay?: number } | undefined;
+  GroupDetail: { groupId: string; name: string };
 };
+
+// Pestañas del detalle de grupo.
+export type GroupTabsParamList = { Plans: undefined; Availability: undefined; Members: undefined };
 
 export type AppStackScreen<K extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, K>;
 

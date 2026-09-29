@@ -68,7 +68,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 | Tema | Dónde |
 |---|---|
-| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios (`useGroups`, `useSchedule`, `useProposals`) en `mobile/src/hooks/` |
+| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useRefreshOnFocus`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`) |
 | **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend |
 | **Localización** | `expo-location` para la ubicación de los planes |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
@@ -78,7 +78,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 - [x] **Fase 0** — Monorepo, base de `mobile/` y `backend/`, contrato de la API
 - [x] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
-- [ ] **Fase 2** — Grupos, horarios y cruce de disponibilidad
+- [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
 - [ ] **Fase 3** — Propuestas, votación y ubicación
 - [ ] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
 - [ ] **Fase 5** — Tests, despliegue del backend y APK con EAS Build

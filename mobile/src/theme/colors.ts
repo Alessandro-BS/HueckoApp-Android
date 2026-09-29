@@ -49,4 +49,8 @@ export const colors = {
   inverseSurface: '#322F35',
   inverseOnSurface: '#F4EFF4',
   scrim: '#1D1B20',
+
+  // Botones deshabilitados (M3: onSurface al 12 % y al 38 %).
+  disabledContainer: 'rgba(29,27,32,0.12)',
+  disabledContent: 'rgba(29,27,32,0.38)',
 } as const;

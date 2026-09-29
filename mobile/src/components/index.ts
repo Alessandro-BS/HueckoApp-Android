@@ -1,4 +1,5 @@
 export type { IconName } from './icons';
+export { AppDialog } from './AppDialog';
 export { Avatar } from './Avatar';
 export { Badge } from './Badge';
 export { EmptyState } from './EmptyState';
