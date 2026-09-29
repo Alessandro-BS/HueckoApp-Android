@@ -68,9 +68,9 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 | Tema | Dónde |
 |---|---|
-| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useRefreshOnFocus`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`) |
+| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`) |
 | **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend |
-| **Localización** | `expo-location` para la ubicación de los planes |
+| **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto del permiso en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
 | **Navegación** | `native-stack` (flujos), `drawer` (menú principal) y `material-top-tabs` (pestañas del grupo) |
 
@@ -79,7 +79,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 - [x] **Fase 0** — Monorepo, base de `mobile/` y `backend/`, contrato de la API
 - [x] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
 - [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
-- [ ] **Fase 3** — Propuestas, votación y ubicación
+- [x] **Fase 3** — Propuestas, votación y ubicación
 - [ ] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
 - [ ] **Fase 5** — Tests, despliegue del backend y APK con EAS Build
 
