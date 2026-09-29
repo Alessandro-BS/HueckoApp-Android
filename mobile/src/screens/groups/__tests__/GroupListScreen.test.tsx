@@ -1,8 +1,9 @@
 import type { Group, GroupSummary } from '@hueckoapp/shared';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../../api/client';
 import * as groupsApi from '../../../api/groups';
+import { useRefreshOnFocus } from '../../../hooks/useRefreshOnFocus';
 import { showToast } from '../../../utils/toast';
 import { GroupListScreen } from '../GroupListScreen';
 
@@ -23,6 +24,19 @@ it('sin grupos muestra el estado vacío', async () => {
   await renderScreen();
   expect(await screen.findByText('Aún no tienes ningún grupo')).toBeTruthy();
   expect(screen.getByText('Crea uno para invitar a tus compañeros, o únete con el código que te hayan pasado.')).toBeTruthy();
+});
+
+it('si falla la recarga de una lista vacía ya cargada, sigue el estado vacío (no la caja de error)', async () => {
+  mocked.listGroups.mockResolvedValueOnce([]);
+  mocked.listGroups.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'Algo falló.'));
+  await renderScreen();
+  expect(await screen.findByText('Aún no tienes ningún grupo')).toBeTruthy();
+
+  const reload = jest.mocked(useRefreshOnFocus).mock.calls[0][0];
+  await act(async () => reload());
+  expect(mocked.listGroups).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('Aún no tienes ningún grupo')).toBeTruthy();
+  expect(screen.queryByText('Reintentar')).toBeNull();
 });
 
 it('si la carga falla sin datos muestra el error y Reintentar vuelve a pedir', async () => {

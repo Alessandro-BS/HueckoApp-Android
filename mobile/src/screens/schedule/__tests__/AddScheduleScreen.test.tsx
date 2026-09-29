@@ -37,6 +37,21 @@ it('valida formato y orden de las horas y no guarda si no son válidas', async (
   expect(mocked.createTimeBlock).not.toHaveBeenCalled();
 });
 
+it('control positivo: con nombre y horas válidas, enviar desde «Hora de fin» sí guarda', async () => {
+  mocked.createTimeBlock.mockResolvedValue({} as any);
+  await renderScreen({ initialDay: 2 });
+  await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), 'Cálculo');
+  await fireEvent.changeText(screen.getByLabelText('Hora de inicio'), '10:00');
+  await fireEvent.changeText(screen.getByLabelText('Hora de fin'), '11:30');
+  await fireEvent(screen.getByLabelText('Hora de fin'), 'submitEditing');
+
+  await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  expect(mocked.createTimeBlock).toHaveBeenCalledWith({
+    label: 'Cálculo', type: 'CLASE', startTime: '10:00', endTime: '11:30',
+    isRecurring: true, dayOfWeek: 2, date: null,
+  });
+});
+
 it('sin nombre no guarda (sin mensaje, como en Kotlin)', async () => {
   await renderScreen();
   await fireEvent(screen.getByLabelText('Hora de fin'), 'submitEditing');

@@ -8,7 +8,7 @@ const NO_BLOCKS: TimeBlock[] = [];
 
 // Mi horario: la lista de bloques y cómo borrarlos. Crear se hace en AddSchedule con useAction.
 export function useSchedule() {
-  const { data, loading, refreshing, error, reload, mutate } = useResource(listTimeBlocks);
+  const { data, loaded, loading, refreshing, error, reload, mutate } = useResource(listTimeBlocks);
 
   // Lanza si falla: la pantalla decide cómo avisar.
   const removeBlock = useCallback(
@@ -19,5 +19,5 @@ export function useSchedule() {
     [mutate],
   );
 
-  return { blocks: data ?? NO_BLOCKS, loading, refreshing, error, reload, removeBlock };
+  return { blocks: data ?? NO_BLOCKS, loaded, loading, refreshing, error, reload, removeBlock };
 }

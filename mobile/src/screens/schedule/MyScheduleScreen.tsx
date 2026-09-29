@@ -13,7 +13,7 @@ import { blocksForDay, dayShort, formatShortDate, isoDayOf, laterPunctualBlocks 
 import { showToast } from '../../utils/toast';
 
 export function MyScheduleScreen({ navigation }: DrawerScreen<'Schedule'>) {
-  const { blocks, loading, refreshing, error, reload, removeBlock } = useSchedule();
+  const { blocks, loaded, loading, refreshing, error, reload, removeBlock } = useSchedule();
   useRefreshOnFocus(reload);
   const now = today();
   // Arranca en el día de hoy, no en lunes (UI spec §6, quirk 18).
@@ -61,7 +61,7 @@ export function MyScheduleScreen({ navigation }: DrawerScreen<'Schedule'>) {
           <PrimaryButton title="Añadir bloque" icon="add" style={styles.flex} onPress={addBlock} />
         </View>
       </View>
-      <LoadState loading={loading} error={error} hasData={blocks.length > 0} onRetry={() => void reload()}>
+      <LoadState loading={loading} error={error} hasData={loaded} onRetry={() => void reload()}>
         {blocks.length === 0 ? (
           <EmptyState
             title="Aún no tienes horarios registrados"

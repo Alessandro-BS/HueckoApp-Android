@@ -113,3 +113,71 @@ it('al cambiar load descarta los datos anteriores y vuelve al estado de primera 
   expect(result.current.loading).toBe(false);
   expect(result.current.refreshing).toBe(false);
 });
+
+it('mutate invalida una recarga en curso: la respuesta vieja no pisa el cambio local', async () => {
+  const old = deferred<string>();
+  const load = jest.fn<Promise<string>, []>().mockResolvedValueOnce('X').mockReturnValueOnce(old.promise);
+  const { result } = await renderHook(() => useResource(load));
+  await waitFor(() => expect(result.current.data).toBe('X'));
+
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = result.current.reload();
+  });
+  expect(result.current.refreshing).toBe(true);
+
+  await act(async () => result.current.mutate(() => 'Y'));
+  expect(result.current.data).toBe('Y');
+  expect(result.current.refreshing).toBe(false);
+
+  await act(async () => {
+    old.resolve('X_old');
+    await pending;
+  });
+  expect(result.current.data).toBe('Y');
+  expect(result.current.refreshing).toBe(false);
+  expect(result.current.loading).toBe(false);
+});
+
+it('al cambiar load ignora la respuesta pendiente del load anterior', async () => {
+  const a = deferred<string>();
+  const b = deferred<string>();
+  const loadA = jest.fn(() => a.promise);
+  const loadB = jest.fn(() => b.promise);
+  const { result, rerender } = await renderHook(({ load }: { load: () => Promise<string> }) => useResource(load), {
+    initialProps: { load: loadA },
+  });
+
+  await rerender({ load: loadB });
+  await act(async () => a.resolve('X'));
+  expect(result.current.data).toBeUndefined();
+  expect(result.current.loading).toBe(true);
+
+  await act(async () => b.resolve('Y'));
+  expect(result.current.data).toBe('Y');
+  expect(result.current.loading).toBe(false);
+});
+
+it('un mutate del load anterior no se aplica al recurso nuevo', async () => {
+  const loadA = jest.fn().mockResolvedValue('A');
+  const loadB = jest.fn().mockResolvedValue('B');
+  const { result, rerender } = await renderHook(({ load }: { load: () => Promise<string> }) => useResource(load), {
+    initialProps: { load: loadA },
+  });
+  await waitFor(() => expect(result.current.data).toBe('A'));
+  const mutateA = result.current.mutate;
+
+  await rerender({ load: loadB });
+  await waitFor(() => expect(result.current.data).toBe('B'));
+  await act(async () => mutateA(() => 'A editado'));
+  expect(result.current.data).toBe('B');
+});
+
+it('loaded pasa a true tras una carga correcta aunque venga vacía', async () => {
+  const d = deferred<string[]>();
+  const load = jest.fn(() => d.promise);
+  const { result } = await renderHook(() => useResource(load));
+  expect(result.current.loaded).toBe(false);
+  await act(async () => d.resolve([]));
+  expect(result.current.loaded).toBe(true);
+});

@@ -30,4 +30,33 @@ describe('withTransaction', () => {
     ).toThrow('boom');
     expect(count(db)).toBe(0);
   });
+
+  it('anidada: si la interna falla dentro de otra, la externa deshace todo', () => {
+    const db = openDatabase(':memory:');
+    expect(() =>
+      withTransaction(db, () => {
+        addUser(db, 'a');
+        withTransaction(db, () => {
+          addUser(db, 'b');
+          throw new Error('boom');
+        });
+      }),
+    ).toThrow('boom');
+    expect(db.isTransaction).toBe(false);
+    expect(count(db)).toBe(0);
+  });
+
+  it('anidada: si todo va bien, confirma las filas de ambas', () => {
+    const db = openDatabase(':memory:');
+    const result = withTransaction(db, () => {
+      addUser(db, 'a');
+      return withTransaction(db, () => {
+        addUser(db, 'b');
+        return 'listo';
+      });
+    });
+    expect(result).toBe('listo');
+    expect(db.isTransaction).toBe(false);
+    expect(count(db)).toBe(2);
+  });
 });

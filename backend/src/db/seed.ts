@@ -10,6 +10,7 @@ import type { BlockType } from '@hueckoapp/shared';
 import { hashPassword } from '../auth/passwords';
 import { env } from '../config/env';
 import { openDatabase, type Db } from './database';
+import { withTransaction } from './transaction';
 
 export const DEMO_PASSWORD = 'password123';
 
@@ -85,17 +86,12 @@ async function main() {
   const passwordHash = await hashPassword(DEMO_PASSWORD);
   mkdirSync(dirname(env.DATABASE_PATH), { recursive: true });
   const db = openDatabase(env.DATABASE_PATH);
-  db.exec('BEGIN');
   try {
-    const created = seed(db, passwordHash);
-    db.exec('COMMIT');
+    const created = withTransaction(db, () => seed(db, passwordHash));
     console.log(
       `Semilla aplicada en ${env.DATABASE_PATH}: ${created.users} usuarios, ${created.groups} grupos y ${created.blocks} bloques nuevos.`,
     );
     console.log(`Cuentas demo: test@test.com, ana@test.com y carlos@test.com — contraseña «${DEMO_PASSWORD}».`);
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
   } finally {
     db.close();
   }

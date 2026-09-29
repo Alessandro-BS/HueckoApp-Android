@@ -10,7 +10,7 @@ type Props = { groupId: string; threshold: number; memberCount: number };
 
 // «Huecos»: franjas en común calculadas por el servidor (GET /groups/:id/availability).
 export function AvailabilityTab({ groupId, threshold, memberCount }: Props) {
-  const { windows, loading, refreshing, error, reload } = useAvailability(groupId);
+  const { windows, loaded, loading, refreshing, error, reload } = useAvailability(groupId);
   const days = groupWindowsByDay(windows);
 
   return (
@@ -22,7 +22,7 @@ export function AvailabilityTab({ groupId, threshold, memberCount }: Props) {
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
         {`Franjas de 08:00 a 20:00 en las que está libre al menos el ${threshold}% del grupo, según los horarios recurrentes de cada miembro.`}
       </Text>
-      <LoadState loading={loading} error={error} hasData={windows.length > 0} onRetry={() => void reload()}>
+      <LoadState loading={loading} error={error} hasData={loaded} onRetry={() => void reload()}>
         {days.length === 0 ? (
           <EmptyState
             title="Sin huecos en común"

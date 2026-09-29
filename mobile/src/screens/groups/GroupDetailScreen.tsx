@@ -22,9 +22,11 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
   const { group, loading, error, reload, setEssential, leave } = useGroup(groupId);
 
   // La cabecera arranca con el nombre recibido y se actualiza si cambió en el servidor.
+  // Depende solo del nombre (no de `group`): mutar un miembro no vuelve a tocar la cabecera.
+  const groupName = group?.name;
   useEffect(() => {
-    if (group) navigation.setOptions({ title: group.name });
-  }, [group?.name, navigation]);
+    if (groupName) navigation.setOptions({ title: groupName });
+  }, [groupName, navigation]);
 
   if (!group) {
     return (
@@ -65,7 +67,9 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
           sceneStyle: { backgroundColor: colors.surface },
         }}
       >
-        <Tabs.Screen name="Plans" component={PlansTab} options={{ title: 'Planes' }} />
+        <Tabs.Screen name="Plans" options={{ title: 'Planes' }}>
+          {() => <PlansTab groupId={group.id} />}
+        </Tabs.Screen>
         <Tabs.Screen name="Availability" options={{ title: 'Huecos' }}>
           {() => <AvailabilityTab groupId={group.id} threshold={group.availabilityThreshold} memberCount={group.memberCount} />}
         </Tabs.Screen>

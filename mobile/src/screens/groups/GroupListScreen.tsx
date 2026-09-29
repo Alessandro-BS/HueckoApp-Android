@@ -33,7 +33,7 @@ function GroupCard({ group, onPress }: { group: GroupSummary; onPress: () => voi
 }
 
 export function GroupListScreen({ navigation }: DrawerScreen<'Groups'>) {
-  const { groups, loading, refreshing, error, reload, create, join } = useGroups();
+  const { groups, loaded, loading, refreshing, error, reload, create, join } = useGroups();
   useRefreshOnFocus(reload);
   const [dialog, setDialog] = useState<OpenDialog>(null);
   const close = () => setDialog(null);
@@ -64,7 +64,7 @@ export function GroupListScreen({ navigation }: DrawerScreen<'Groups'>) {
             <PrimaryButton title="Crear grupo" icon="group-add" style={styles.flex} onPress={() => setDialog('create')} />
           </View>
         </View>
-        <LoadState loading={loading} error={error} hasData={groups.length > 0} onRetry={() => void reload()}>
+        <LoadState loading={loading} error={error} hasData={loaded} onRetry={() => void reload()}>
           {groups.length === 0 ? (
             <EmptyState
               title="Aún no tienes ningún grupo"

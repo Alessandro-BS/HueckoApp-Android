@@ -13,7 +13,7 @@ jest.mock('../../../hooks/useGroup', () => ({
   useGroup: () => ({ group: mockGroup, loading: false, refreshing: false, error: null, reload: jest.fn(), setEssential: jest.fn(), leave: jest.fn() }),
 }));
 jest.mock('../../../hooks/useAvailability', () => ({
-  useAvailability: () => ({ windows: [], loading: false, refreshing: false, error: null, reload: jest.fn() }),
+  useAvailability: () => ({ windows: [], loaded: true, loading: false, refreshing: false, error: null, reload: jest.fn() }),
 }));
 jest.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 

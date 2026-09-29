@@ -25,6 +25,16 @@ describe('useGroups', () => {
     expect(result.current.groups).toEqual([summary]);
   });
 
+  it('loaded distingue «sin cargar» de «cargado y vacío»', async () => {
+    let finish!: (groups: GroupSummary[]) => void;
+    mocked.listGroups.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const { result } = await renderHook(() => useGroups());
+    expect(result.current.loaded).toBe(false);
+    await act(async () => finish([]));
+    expect(result.current.groups).toEqual([]);
+    expect(result.current.loaded).toBe(true);
+  });
+
   it('create recorta el nombre, crea y añade el resumen a la lista', async () => {
     mocked.listGroups.mockResolvedValue([]);
     mocked.createGroup.mockResolvedValue(group({ id: 'g2', name: 'Estudio', memberCount: 1, members: [owner] }));
@@ -78,6 +88,28 @@ describe('useGroup', () => {
     const { result } = await renderHook(() => useGroup('g1'));
     await act(async () => result.current.leave());
     expect(mocked.leaveGroup).toHaveBeenCalledWith('g1');
+  });
+
+  it('un setEssential que termina después de cambiar de grupo no toca el grupo nuevo', async () => {
+    mocked.getGroup.mockImplementation(async (id) => group({ id }));
+    let finishSetEssential!: (member: GroupMember) => void;
+    mocked.setMemberEssential.mockReturnValue(new Promise((resolve) => (finishSetEssential = resolve)));
+    const { result, rerender } = await renderHook(({ id }: { id: string }) => useGroup(id), { initialProps: { id: 'g1' } });
+    await waitFor(() => expect(result.current.group?.id).toBe('g1'));
+
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = result.current.setEssential('u2', true);
+    });
+    await rerender({ id: 'g2' });
+    await waitFor(() => expect(result.current.group?.id).toBe('g2'));
+
+    await act(async () => {
+      finishSetEssential({ ...ana, isEssential: true });
+      await pending;
+    });
+    expect(mocked.setMemberEssential).toHaveBeenCalledWith('g1', 'u2', true);
+    expect(result.current.group!.members).toEqual([owner, ana]);
   });
 
   it('vuelve a cargar si cambia el id', async () => {

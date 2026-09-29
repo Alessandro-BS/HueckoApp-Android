@@ -16,7 +16,7 @@ const toSummary = (g: Group): GroupSummary => ({
 
 // Mis grupos: la lista, crear y unirse. create/join lanzan si fallan (los diálogos usan useAction).
 export function useGroups() {
-  const { data, loading, refreshing, error, reload, mutate } = useResource(listGroups);
+  const { data, loaded, loading, refreshing, error, reload, mutate } = useResource(listGroups);
 
   const create = useCallback(
     async (name: string) => {
@@ -36,5 +36,5 @@ export function useGroups() {
     [mutate],
   );
 
-  return { groups: data ?? NO_GROUPS, loading, refreshing, error, reload, create, join };
+  return { groups: data ?? NO_GROUPS, loaded, loading, refreshing, error, reload, create, join };
 }
