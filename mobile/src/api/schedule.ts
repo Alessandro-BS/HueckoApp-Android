@@ -12,3 +12,7 @@ export const createTimeBlock = async (input: TimeBlockInput) =>
 export const deleteTimeBlock = async (id: string): Promise<void> => {
   await api.delete(`/me/time-blocks/${encodeURIComponent(id)}`);
 };
+
+// Todo o nada (lo usa la revisión del OCR).
+export const createTimeBlocksBulk = async (blocks: TimeBlockInput[]) =>
+  (await api.post<TimeBlock[]>('/me/time-blocks/bulk', { blocks })).data;

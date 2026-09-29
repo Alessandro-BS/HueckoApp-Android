@@ -1,4 +1,4 @@
-import type { Dashboard, Proposal, TimeWindow, User } from '@hueckoapp/shared';
+import type { Dashboard, PlanSuggestion, Proposal, ProposalDraft, TimeWindow, User, VotingSummary } from '@hueckoapp/shared';
 
 // Datos de prueba basados en la semilla (domain spec §3). Hoy, en los tests, es el martes 29/09/2026 a las 10:00.
 export const TEST_USER: User = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com' };
@@ -74,5 +74,31 @@ export const makeDashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
     proposalId: 'prop_1', planTitle: 'Reunión de avance del proyecto', groupName: 'Proyecto Integrador', who: 'Ana',
     reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, createdBy: TEST_USER,
   },
+  ...over,
+});
+
+// Respuestas de IA de ejemplo (la franja es un hueco real de la semilla).
+export const makeDraft = (over: Partial<ProposalDraft> = {}): ProposalDraft => ({
+  title: 'Estudiar para el parcial',
+  category: 'ESTUDIO',
+  placeName: 'Biblioteca central',
+  window: { dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+  votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
+  ...over,
+});
+
+export const makeSuggestion = (over: Partial<PlanSuggestion> = {}): PlanSuggestion => ({
+  title: 'Sesión de estudio antes del parcial',
+  category: 'ESTUDIO',
+  placeIdea: 'Biblioteca central',
+  window: { dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+  reason: 'Todo el grupo está libre el lunes por la tarde.',
+  ...over,
+});
+
+export const makeSummary = (over: Partial<VotingSummary> = {}): VotingSummary => ({
+  summary: 'Votó 1 de 2 integrantes: el jueves va ganando y no hay imprevistos.',
+  recommendation: 'CONFIRMAR',
+  reason: 'Hay una franja clara y nadie reportó problemas.',
   ...over,
 });

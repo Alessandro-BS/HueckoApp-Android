@@ -17,3 +17,4 @@ export { DateTimeField } from './DateTimeField';
 export { ProposalStateBadge } from './ProposalStateBadge';
 export { BottomSheet } from './BottomSheet';
 export { VoteWindowRow } from './VoteWindowRow';
+export { AiDemoHint } from './AiDemoHint';
