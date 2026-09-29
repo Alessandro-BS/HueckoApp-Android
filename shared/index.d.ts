@@ -152,3 +152,6 @@ export type Dashboard = {
 export type AiProvider = 'gemini' | 'mock';
 
 export type AiStatus = { provider: AiProvider };
+
+// Respuesta de POST /ai/schedule-ocr: bloques SIN guardar, para revisarlos y guardarlos con /me/time-blocks/bulk.
+export type ScheduleOcrResult = { blocks: TimeBlockInput[] };

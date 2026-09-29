@@ -67,6 +67,7 @@ Resumen de las entidades:
 | `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
 | `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
 | `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
+| `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
 
 ---
 
@@ -268,13 +269,19 @@ Toda llamada a la IA pasa por el backend (Google Gemini, modelo `GEMINI_MODEL`):
 `200 AiStatus`: `{ "provider": "gemini" }` o `{ "provider": "mock" }` (modo demostración; la app lo avisa).
 
 ### `POST /ai/schedule-ocr`
-`multipart/form-data` con el campo `image` (JPG o PNG, máx. 5 MB).
-Devuelve bloques **sin guardar**, para que el usuario los revise y los guarde con `POST /me/time-blocks/bulk`.
+`multipart/form-data` con el campo `image`: **una** foto JPG, PNG o WEBP de hasta 5 MB. Cuenta para el límite de IA.
+Devuelve `ScheduleOcrResult`: bloques **sin guardar**, para que el usuario los revise (puede editarlos o quitarlos) y los guarde con `POST /me/time-blocks/bulk`.
 ```json
 { "blocks": [ { "label": "Cálculo", "type": "CLASE", "startTime": "08:00", "endTime": "10:00",
                 "isRecurring": true, "dayOfWeek": 1, "date": null } ] }
 ```
-`200` · `422 AI_UNREADABLE` si la imagen no parece un horario.
+Reglas:
+- Cada bloque que lee la IA se valida por separado: `dayOfWeek` entero 1–7, horas `HH:mm` (`9:00` se corrige a `09:00`), inicio < fin y `label` no vacío (se recorta a 80). Los inválidos y los repetidos (mismo día, horas y nombre) **se descartan**.
+- Todos salen como clase recurrente: `type: "CLASE"`, `isRecurring: true`, `date: null`. Ordenados por día y hora; como máximo 100.
+- Si la foto no parece un horario o no se lee ningún bloque válido: `200 { "blocks": [] }` (no hay error `422`). Si la IA responde algo que no es JSON con esa forma: `502`; si el proveedor falla: `503`.
+- Además del tipo declarado, se comprueban los primeros bytes del archivo: si no son de un JPG, PNG o WEBP real → `400 INVALID_IMAGE`.
+
+`200` · `400 IMAGE_REQUIRED` (falta el archivo) · `400 INVALID_IMAGE` (no es JPG/PNG/WEBP) · `400 INVALID_UPLOAD` (otro campo o más de un archivo) · `413 PAYLOAD_TOO_LARGE` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
 ---
 
@@ -293,3 +300,4 @@ Devuelve bloques **sin guardar**, para que el usuario los revise y los guarde co
 - **Votación exprés:** solo quien creó el plan la decide (antes, el primero que pulsaba) y reprogramar pide una nueva fecha límite.
 - **Criticidad** calculada por el servidor según el tipo, si es imprescindible y los minutos de retraso.
 - **Plan confirmado con fecha:** `scheduledAt` y `scheduledDate`; el «próximo plan» usa la franja elegida, no la primera.
+- **OCR revisable y honesto:** los bloques leídos se validan uno a uno, salen como clases recurrentes (antes llegaban con `id`, `type` y `isRecurring` vacíos), se pueden corregir o quitar antes de guardarlos, y si la IA falla se muestra el error en vez de un horario inventado. El modelo `gemini-1.5-flash` (retirado) se sustituye por `GEMINI_MODEL`.
