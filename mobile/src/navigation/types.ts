@@ -1,4 +1,5 @@
 import type { OcrImage } from '../api/ai';
+import type { ProposalPrefill } from '../utils/ai';
 import type { DrawerScreenProps } from '@react-navigation/drawer';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,7 +19,8 @@ export type AppStackParamList = {
   AddSchedule: { initialDay?: number } | undefined;
   OcrReview: { image: OcrImage };
   GroupDetail: { groupId: string; name: string };
-  CreateProposal: { groupId: string; groupName: string };
+  // `prefill`: borrador o idea de Huecko IA que abre el formulario ya rellenado.
+  CreateProposal: { groupId: string; groupName: string; prefill?: ProposalPrefill };
   Voting: { proposalId: string };
   PlanDetail: { proposalId: string };
 };

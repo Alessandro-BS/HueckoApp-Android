@@ -1,10 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import * as aiApi from '../../../api/ai';
+import { ApiError } from '../../../api/client';
 import * as proposalsApi from '../../../api/proposals';
-import { makeConfirmed, makeProposal } from '../../../testing/fixtures';
+import { makeConfirmed, makeProposal, makeSuggestion } from '../../../testing/fixtures';
 import { PlansTab } from '../tabs/PlansTab';
 
 jest.mock('../../../api/proposals');
+jest.mock('../../../api/ai');
 jest.mock('../../../hooks/useRefreshOnFocus', () => ({ useRefreshOnFocus: jest.fn() }));
 jest.mock('../../../utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../../../utils/clock', () => ({ today: () => new Date(2026, 8, 29, 10, 0) }));
@@ -15,6 +18,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 const mocked = proposalsApi as jest.Mocked<typeof proposalsApi>;
+const mockedAi = aiApi as jest.Mocked<typeof aiApi>;
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -52,4 +56,53 @@ it('sin propuestas muestra el texto vacío (con tildes)', async () => {
   mocked.listGroupProposals.mockResolvedValue([]);
   await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
   expect(await screen.findByText('Nadie ha propuesto un plan todavía.')).toBeTruthy();
+});
+
+it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', async () => {
+  mocked.listGroupProposals.mockResolvedValue([]);
+  mockedAi.getAiStatus.mockResolvedValue({ provider: 'gemini' });
+  mockedAi.suggestPlans.mockResolvedValue({
+    suggestions: [
+      makeSuggestion(),
+      makeSuggestion({ title: 'Almuerzo del grupo', category: 'COMIDA', placeIdea: null, window: null, reason: 'Un plan corto.' }),
+      makeSuggestion({
+        title: 'Partido de fulbito', category: 'DEPORTE', placeIdea: 'Losa del campus',
+        window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+      }),
+    ],
+  });
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await fireEvent.press(await screen.findByText('Ideas con IA'));
+
+  expect(await screen.findByText('Sesión de estudio antes del parcial')).toBeTruthy();
+  expect(mockedAi.suggestPlans).toHaveBeenCalledWith('g1');
+  expect(screen.getByText('Ideas con Huecko IA')).toBeTruthy();
+  expect(screen.getByText('Lun · 12:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Sin hueco en común: elige la franja al crear.')).toBeTruthy();
+  expect(screen.getByText('Comida')).toBeTruthy();
+  expect(screen.getByText('Un plan corto.')).toBeTruthy();
+
+  await fireEvent.press(screen.getAllByText('Usar')[2]);
+  expect(mockNavigate).toHaveBeenCalledWith('CreateProposal', {
+    groupId: 'g1',
+    groupName: 'Proyecto Integrador',
+    prefill: {
+      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+      votingDeadline: null, category: 'DEPORTE',
+    },
+  });
+  expect(screen.queryByText('Ideas con Huecko IA')).toBeNull();
+});
+
+it('si la IA falla: el motivo y «Reintentar»', async () => {
+  mocked.listGroupProposals.mockResolvedValue([]);
+  mockedAi.suggestPlans
+    .mockRejectedValueOnce(new ApiError(429, 'TOO_MANY_REQUESTS', 'Usaste mucho la IA en poco tiempo. Espera unos minutos.'))
+    .mockResolvedValueOnce({ suggestions: [makeSuggestion()] });
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await fireEvent.press(await screen.findByText('Ideas con IA'));
+  expect(await screen.findByText('Usaste mucho la IA en poco tiempo. Espera unos minutos.')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Reintentar'));
+  expect(await screen.findByText('Sesión de estudio antes del parcial')).toBeTruthy();
 });

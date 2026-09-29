@@ -1,6 +1,7 @@
 import type { Proposal } from '@hueckoapp/shared';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { HueckoCard, LoadState, ProposalStateBadge, SecondaryButton } from '../../../components';
@@ -9,8 +10,10 @@ import { useRefreshErrorToast } from '../../../hooks/useRefreshErrorToast';
 import { useRefreshOnFocus } from '../../../hooks/useRefreshOnFocus';
 import type { AppStackParamList } from '../../../navigation/types';
 import { colors, typography } from '../../../theme';
+import type { ProposalPrefill } from '../../../utils/ai';
 import { today } from '../../../utils/clock';
 import { deadlineLabel, isVotingOpen, scheduleLabel } from '../../../utils/proposals';
+import { SuggestionsSheet } from '../SuggestionsSheet';
 
 type Props = { groupId: string; groupName: string };
 
@@ -54,14 +57,28 @@ export function PlansTab({ groupId, groupName }: Props) {
   useRefreshErrorToast(error, loaded, failedLoads);
   const now = today();
   const visible = proposals.filter((p) => p.state !== 'CANCELADO');
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const applyIdea = (prefill: ProposalPrefill) => {
+    setIdeasOpen(false);
+    navigation.navigate('CreateProposal', { groupId, groupName, prefill });
+  };
 
   return (
+    <>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload()} colors={[colors.primary]} />}
     >
-      <SecondaryButton title="Crear propuesta" icon="add" onPress={() => navigation.navigate('CreateProposal', { groupId, groupName })} />
+      <View style={styles.topActions}>
+        <SecondaryButton
+          title="Crear propuesta"
+          icon="add"
+          style={styles.flex}
+          onPress={() => navigation.navigate('CreateProposal', { groupId, groupName })}
+        />
+        <SecondaryButton title="Ideas con IA" icon="auto-awesome" style={styles.flex} onPress={() => setIdeasOpen(true)} />
+      </View>
       <Text style={[typography.titleMedium, { color: colors.onSurface }]}>Planes propuestos</Text>
       <LoadState loading={loading} error={error} hasData={loaded} onRetry={() => void reload()}>
         {visible.length === 0 ? (
@@ -79,6 +96,8 @@ export function PlansTab({ groupId, groupName }: Props) {
         )}
       </LoadState>
     </ScrollView>
+    {ideasOpen ? <SuggestionsSheet groupId={groupId} onUse={applyIdea} onDismiss={() => setIdeasOpen(false)} /> : null}
+    </>
   );
 }
 
@@ -90,5 +109,6 @@ const styles = StyleSheet.create({
   location: { color: colors.onSurfaceVariant, marginTop: 2 },
   when: { color: colors.onSurfaceVariant, marginTop: 4 },
   cardActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  topActions: { flexDirection: 'row', gap: 10 },
   textButton: { minHeight: 40, justifyContent: 'center', paddingRight: 12 },
 });

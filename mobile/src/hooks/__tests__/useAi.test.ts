@@ -108,3 +108,26 @@ it('useAiStatus: si falla la consulta no se muestra el aviso (ya resuelta)', asy
   await act(async () => reject(UNAVAILABLE));
   expect(result.current.demo).toBe(false);
 });
+
+it('useAiSuggestions y useVotingSummary olvidan lo del id anterior al cambiar de id (con control positivo)', async () => {
+  mocked.suggestPlans.mockResolvedValue({ suggestions: [makeSuggestion()] });
+  mocked.summarizeVoting.mockResolvedValue(makeSummary());
+  const ideas = await renderHook(({ id }: { id: string }) => useAiSuggestions(id), { initialProps: { id: 'g1' } });
+  const summary = await renderHook(({ id }: { id: string }) => useVotingSummary(id), { initialProps: { id: 'p1' } });
+  await act(async () => {
+    await ideas.result.current.fetch();
+    await summary.result.current.request();
+  });
+  expect(ideas.result.current.suggestions).toEqual([makeSuggestion()]);
+  expect(summary.result.current.summary).toEqual(makeSummary());
+
+  await ideas.rerender({ id: 'g1' });
+  await summary.rerender({ id: 'p1' });
+  expect(ideas.result.current.suggestions).toEqual([makeSuggestion()]);
+  expect(summary.result.current.summary).toEqual(makeSummary());
+
+  await ideas.rerender({ id: 'g2' });
+  await summary.rerender({ id: 'p2' });
+  expect(ideas.result.current.suggestions).toBeNull();
+  expect(summary.result.current.summary).toBeNull();
+});

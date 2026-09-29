@@ -103,3 +103,10 @@ describe('BottomSheet', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 });
+
+describe('TextField multiline', () => {
+  it('pasa multiline al campo', async () => {
+    await render(<TextField label="Describe tu plan" value="" onChangeText={() => {}} multiline />);
+    expect(screen.getByLabelText('Describe tu plan').props.multiline).toBe(true);
+  });
+});

@@ -2,12 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { Linking } from 'react-native';
 
 import { ApiError } from '../../../api/client';
+import * as aiApi from '../../../api/ai';
 import * as proposalsApi from '../../../api/proposals';
-import { makeProposal } from '../../../testing/fixtures';
+import { makeDraft, makeProposal } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { CreateProposalScreen } from '../CreateProposalScreen';
 
 jest.mock('../../../api/proposals');
+jest.mock('../../../api/ai');
 jest.mock('../../../utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../../../utils/clock', () => ({ today: () => new Date(2026, 8, 29, 10, 0) }));
 const mockLocate = jest.fn();
@@ -23,6 +25,7 @@ jest.mock('../../../hooks/useCurrentLocation', () => ({
 }));
 
 const mocked = proposalsApi as jest.Mocked<typeof proposalsApi>;
+const mockedAi = aiApi as jest.Mocked<typeof aiApi>;
 const navigation = { goBack: jest.fn() } as any;
 const route = { key: 'k', name: 'CreateProposal', params: { groupId: 'g1', groupName: 'Proyecto Integrador' } } as any;
 const renderScreen = () => render(<CreateProposalScreen navigation={navigation} route={route} />);
@@ -155,4 +158,95 @@ it('muestra el error del servidor y se queda en la pantalla', async () => {
   await fireEvent.press(screen.getByText('Crear propuesta'));
   expect(await screen.findByText('No perteneces a este grupo.')).toBeTruthy();
   expect(navigation.goBack).not.toHaveBeenCalled();
+});
+
+const routeWith = (prefill: object) => ({ ...route, params: { ...route.params, prefill } }) as any;
+
+it('abre rellenada con una idea de la IA y la envía con su franja', async () => {
+  const prefill = {
+    title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+    votingDeadline: null, category: 'DEPORTE',
+  };
+  await render(<CreateProposalScreen navigation={navigation} route={routeWith(prefill)} />);
+  expect(screen.getByLabelText('Título del plan').props.value).toBe('Partido de fulbito');
+  expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Losa del campus');
+  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Categoría sugerida: Deporte')).toBeTruthy();
+
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
+  expect(mocked.createProposal.mock.calls[0][1]).toEqual({
+    title: 'Partido de fulbito',
+    location: { name: 'Losa del campus', latitude: null, longitude: null },
+    votingDeadline: new Date(2026, 9, 2, 20, 0).toISOString(),
+    windows: [{ dayOfWeek: 4, startTime: '08:00', endTime: '20:00' }],
+  });
+});
+
+it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franja', async () => {
+  mockedAi.draftProposal.mockResolvedValue(makeDraft());
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), '  Estudiar el martes en la biblioteca ');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+
+  await waitFor(() => expect(screen.getByLabelText('Título del plan').props.value).toBe('Estudiar para el parcial'));
+  expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes en la biblioteca');
+  expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca central');
+  expect(screen.getByText('Mié 30 sep, 10:00')).toBeTruthy();
+  expect(screen.getByText('Mar · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Categoría sugerida: Estudio')).toBeTruthy();
+  expect(showToast).toHaveBeenCalledWith('Borrador listo: revísalo antes de crear la propuesta.');
+
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
+  expect(mocked.createProposal.mock.calls[0][1]).toEqual({
+    title: 'Estudiar para el parcial',
+    location: { name: 'Biblioteca central', latitude: null, longitude: null },
+    votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
+    windows: [{ dayOfWeek: 2, startTime: '08:00', endTime: '20:00' }],
+  });
+});
+
+it('un borrador sin franja deja «las 3 mejores»', async () => {
+  mockedAi.draftProposal.mockResolvedValue(makeDraft({ window: null, placeName: null }));
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Algo tranqui');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await waitFor(() => expect(screen.getByLabelText('Título del plan').props.value).toBe('Estudiar para el parcial'));
+  expect(screen.getByText('Huecko elegirá las 3 franjas en las que más gente del grupo está libre.')).toBeTruthy();
+  expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('');
+});
+
+it('si la IA falla muestra el motivo y no toca el formulario', async () => {
+  mockedAi.draftProposal.mockRejectedValue(new ApiError(503, 'AI_UNAVAILABLE', 'La IA no está disponible en este momento. Inténtalo en unos minutos.'));
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Mi título');
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Estudiar');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  expect(await screen.findByText('La IA no está disponible en este momento. Inténtalo en unos minutos.')).toBeTruthy();
+  expect(screen.getByLabelText('Título del plan').props.value).toBe('Mi título');
+});
+
+it('guarda: con menos de 3 caracteres no pide borrador; control positivo con 3', async () => {
+  mockedAi.draftProposal.mockResolvedValue(makeDraft());
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), ' ab ');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  expect(mockedAi.draftProposal).not.toHaveBeenCalled();
+
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'abc');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'abc'));
+});
+
+it('un borrador con plazo pasado sigue pasando por la validación del formulario', async () => {
+  mockedAi.draftProposal.mockResolvedValue(makeDraft({ votingDeadline: new Date(2026, 8, 1, 10, 0).toISOString() }));
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Estudiar');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await waitFor(() => expect(screen.getByLabelText('Título del plan').props.value).toBe('Estudiar para el parcial'));
+  expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  expect(mocked.createProposal).not.toHaveBeenCalled();
 });
