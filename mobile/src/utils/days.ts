@@ -61,3 +61,7 @@ export function laterPunctualBlocks(blocks: readonly TimeBlock[], today: Date): 
     .filter((b) => !b.isRecurring && b.date !== null && b.date > sunday)
     .sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : byStartTime(a, b)));
 }
+
+/** «Vie 2 oct, 20:00» en hora local (plazos de votación). */
+export const formatDateTime = (date: Date) =>
+  `${formatDateLabel(toDateKey(date))}, ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;

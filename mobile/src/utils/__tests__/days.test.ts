@@ -4,6 +4,7 @@ import {
   blocksForDay,
   dayShort,
   formatDateLabel,
+  formatDateTime,
   isoDayOf,
   laterPunctualBlocks,
   toDateKey,
@@ -75,4 +76,8 @@ describe('laterPunctualBlocks', () => {
     ];
     expect(laterPunctualBlocks(blocks, TUESDAY).map((x) => x.id)).toEqual(['lunes', 'temprano', 'tarde']);
   });
+});
+
+it('formatDateTime: «Vie 2 oct, 20:05» en hora local', () => {
+  expect(formatDateTime(new Date(2026, 9, 2, 20, 5))).toBe('Vie 2 oct, 20:05');
 });
