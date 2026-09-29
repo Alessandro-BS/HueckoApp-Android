@@ -82,10 +82,66 @@ export type Proposal = {
   title: string;
   location: Location | null;
   createdBy: User;
-  votingDeadline: string;          // ISO 8601
+  votingDeadline: string;          // ISO 8601 (UTC); solo se vota antes de esta hora
   state: ProposalState;
-  windows: TimeWindow[];
+  windows: TimeWindow[];           // ordenadas por día y hora
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
   chosenWindowId: string | null;   // se llena al confirmar
+  scheduledAt: string | null;      // ISO: próxima vez que ocurre la franja elegida, calculada al confirmar
+  scheduledDate: string | null;    // "YYYY-MM-DD": la misma fecha en la zona horaria del servidor (para mostrarla sin depender de la del teléfono)
   incidences: Incidence[];
+  createdAt: string;               // ISO; GET /groups/:id/proposals ordena por aquí (más recientes primero)
+};
+
+// Cuerpos de las peticiones de propuestas (docs/api.md, «Propuestas y votación»).
+export type TimeWindowInput = { dayOfWeek: number; startTime: string; endTime: string };
+
+export type ProposalInput = {
+  title: string;
+  location?: Location | null;
+  votingDeadline: string;          // ISO 8601 futura
+  windows?: TimeWindowInput[];     // vacío u omitido: el servidor propone las 3 mejores franjas
+};
+
+export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes?: number | null };
+
+export type ResolveIncidencesInput =
+  | { newState: 'CONFIRMADO' | 'CANCELADO' }
+  | { newState: 'PROPUESTO'; votingDeadline: string };
+
+// Propuesta con el nombre de su grupo (Inicio y /me/upcoming-plans).
+export type ProposalWithGroup = Proposal & { groupName: string };
+
+export type AttendeeStatus = 'PUNTUAL' | 'RETRASADO' | 'NO_ASISTE';
+
+export type Attendee = { user: User; isEssential: boolean; status: AttendeeStatus; delayMinutes: number | null };
+
+export type UpcomingPlan = ProposalWithGroup & { attendees: Attendee[] };
+
+export type ExpressAlert = {
+  proposalId: string;
+  planTitle: string;
+  groupName: string;
+  who: string;                          // nombre de quien reportó la incidencia
+  reason: string;
+  kind: 'RECOORDINACION' | 'AVISO';     // EN_RECOORDINACION, o CONFIRMADO con incidencias sin resolver
+  canResolve: boolean;                  // true si el usuario actual creó el plan
+  createdBy: User;
+};
+
+export type DashboardGroup = {
+  id: string;
+  name: string;
+  memberCount: number;
+  nextWindow: Omit<TimeWindow, 'id' | 'voteCount'> | null;
+};
+
+export type DashboardMetrics = { activeGroups: number; openVotes: number; matchingHours: number; totalBlocks: number };
+
+export type Dashboard = {
+  metrics: DashboardMetrics;
+  nextPlan: UpcomingPlan | null;
+  groups: DashboardGroup[];
+  pendingVotes: ProposalWithGroup[];
+  expressAlert: ExpressAlert | null;
 };

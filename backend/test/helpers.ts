@@ -9,15 +9,32 @@ export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-export function makeTestApp(options?: { authRateLimit?: number }): { app: Express; db: Db } {
+// «Ahora» fijo de los tests de propuestas: martes 29 de septiembre de 2026, 10:00, hora local.
+export const NOW = new Date(2026, 8, 29, 10, 0);
+// Plazo de votación válido respecto a NOW (sábado 3 de octubre, 20:00).
+export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
+
+export function makeTestApp(options?: { authRateLimit?: number; now?: () => Date }): { app: Express; db: Db } {
   const db = openDatabase(':memory:');
   const app = createApp({
     db,
     jwtSecret: TEST_SECRET,
     jwtExpiresIn: '1h',
     authRateLimit: options?.authRateLimit ?? 10_000,
+    now: options?.now,
   });
   return { app, db };
+}
+
+// Reloj que el test mueve a mano: makeTestApp({ now: clock.now }) y después clock.set(...).
+export function makeClock(start: Date) {
+  let current = start;
+  return {
+    now: () => current,
+    set: (date: Date) => {
+      current = date;
+    },
+  };
 }
 
 let counter = 0;

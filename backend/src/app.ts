@@ -15,11 +15,18 @@ export type AppDeps = {
   jwtExpiresIn: string;
   // Intentos por IP cada 15 min en /auth (20 si se omite); las pruebas lo suben.
   authRateLimit?: number;
+  // Reloj de la app (plazos de votación, scheduledAt). Los tests lo fijan; por defecto, la hora real.
+  now?: () => Date;
 };
+
+// El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
+export const systemClock = (): Date => new Date();
+export type ResolvedDeps = AppDeps & { now: () => Date };
 
 // La app se crea aparte de index.ts para poder probarla sin abrir un puerto
 // y con una base de datos en memoria.
-export function createApp(deps: AppDeps) {
+export function createApp(appDeps: AppDeps) {
+  const deps: ResolvedDeps = { ...appDeps, now: appDeps.now ?? systemClock };
   const app = express();
 
   app.use(helmet());
