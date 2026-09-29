@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import type { PlanCategory, TimeWindowInput } from '@hueckoapp/shared';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createProposal } from '../../api/proposals';
@@ -33,6 +33,15 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const [auto, setAuto] = useState(!prefill?.window);
   const [windows, setWindows] = useState<TimeWindowInput[]>(prefill?.window ? [prefill.window] : []);
   const [category, setCategory] = useState<PlanCategory | null>(prefill?.category ?? null);
+  // La IA no encontró hueco en común: se avisa en «Franjas» (el formulario queda en «las 3 mejores»).
+  const [noWindow, setNoWindow] = useState(Boolean(prefill && !prefill.window));
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const location = useCurrentLocation();
   const save = useAction(createProposal);
   const draft = useProposalDraft(groupId);
@@ -64,6 +73,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
     setAuto(!p.window);
     setWindows(p.window ? [p.window] : []);
     setCategory(p.category);
+    setNoWindow(!p.window);
   };
 
   const generateDraft = async (text: string) => {
@@ -148,6 +158,11 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
             <ChoiceChip label="Que Huecko proponga las 3 mejores" selected={auto} onPress={() => setAuto(true)} />
             <ChoiceChip label="Elegir yo las franjas" selected={!auto} onPress={() => setAuto(false)} />
           </View>
+          {noWindow ? (
+            <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+              Huecko IA no encontró un hueco en común: elige una franja o deja que Huecko elija las mejores.
+            </Text>
+          ) : null}
           {auto ? (
             <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
               Huecko elegirá las 3 franjas en las que más gente del grupo está libre.

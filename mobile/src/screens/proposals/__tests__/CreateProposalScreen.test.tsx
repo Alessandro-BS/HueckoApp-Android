@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
 import { ApiError } from '../../../api/client';
@@ -249,4 +249,40 @@ it('un borrador con plazo pasado sigue pasando por la validación del formulario
   expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();
   await fireEvent.press(screen.getByText('Crear propuesta'));
   expect(mocked.createProposal).not.toHaveBeenCalled();
+});
+
+const NO_WINDOW_HINT = 'Huecko IA no encontró un hueco en común: elige una franja o deja que Huecko elija las mejores.';
+
+it('avisa en «Franjas» solo si la IA no encontró hueco (control positivo y negativos)', async () => {
+  const base = { title: 'Algo', placeName: null, votingDeadline: null, category: 'OTRO' };
+  const { unmount } = await render(<CreateProposalScreen navigation={navigation} route={routeWith({ ...base, window: null })} />);
+  expect(screen.getByText(NO_WINDOW_HINT)).toBeTruthy();
+  await unmount();
+
+  const withWindow = { ...base, window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' } };
+  const second = await render(<CreateProposalScreen navigation={navigation} route={routeWith(withWindow)} />);
+  expect(screen.queryByText(NO_WINDOW_HINT)).toBeNull();
+  await second.unmount();
+
+  await renderScreen();
+  expect(screen.queryByText(NO_WINDOW_HINT)).toBeNull();
+});
+
+it('un borrador sin franja muestra el aviso', async () => {
+  mockedAi.draftProposal.mockResolvedValue(makeDraft({ window: null }));
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Algo tranqui');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  expect(await screen.findByText(NO_WINDOW_HINT)).toBeTruthy();
+});
+
+it('si se sale de la pantalla mientras el borrador está pendiente, no se aplica ni avisa', async () => {
+  let resolve: (d: ReturnType<typeof makeDraft>) => void = () => {};
+  mockedAi.draftProposal.mockReturnValue(new Promise((r) => { resolve = r; }));
+  const view = await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Estudiar');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await view.unmount();
+  await act(async () => resolve(makeDraft()));
+  expect(showToast).not.toHaveBeenCalled();
 });

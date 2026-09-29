@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import type { PlanSuggestion } from '@hueckoapp/shared';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { AiDemoHint, Badge, BottomSheet, ErrorBanner, HueckoCard, PrimaryButton, SecondaryButton } from '../../components';
@@ -28,7 +28,7 @@ function SuggestionCard({ suggestion, onUse }: { suggestion: PlanSuggestion; onU
       <View style={styles.line}>
         <MaterialIcons name="schedule" size={16} color={colors.onSurfaceVariant} />
         <Text style={[typography.bodySmall, styles.muted]}>
-          {suggestion.window ? windowLabel(suggestion.window) : 'Sin hueco en común: elige la franja al crear.'}
+          {suggestion.window ? windowLabel(suggestion.window) : 'Sin hueco en común: elige una franja al crear o deja que Huecko elija las mejores.'}
         </Text>
       </View>
       <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{suggestion.reason}</Text>
@@ -40,6 +40,13 @@ function SuggestionCard({ suggestion, onUse }: { suggestion: PlanSuggestion; onU
 // «Ideas con IA» (pestaña Planes): 3 ideas para los huecos reales del grupo. Se piden al abrir la hoja.
 export function SuggestionsSheet({ groupId, onUse, onDismiss }: Props) {
   const { suggestions, loading, error, fetch } = useAiSuggestions(groupId);
+  const used = useRef(false);
+  // Un doble toque en «Usar» no debe abrir el formulario dos veces.
+  const use = (prefill: ProposalPrefill) => {
+    if (used.current) return;
+    used.current = true;
+    onUse(prefill);
+  };
 
   useEffect(() => {
     void fetch();
@@ -61,7 +68,7 @@ export function SuggestionsSheet({ groupId, onUse, onDismiss }: Props) {
         </>
       ) : null}
       {suggestions?.map((s, i) => (
-        <SuggestionCard key={`${i}-${s.title}`} suggestion={s} onUse={() => onUse(prefillFromSuggestion(s))} />
+        <SuggestionCard key={`${i}-${s.title}`} suggestion={s} onUse={() => use(prefillFromSuggestion(s))} />
       ))}
     </BottomSheet>
   );

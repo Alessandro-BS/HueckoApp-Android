@@ -126,8 +126,19 @@ it('useAiSuggestions y useVotingSummary olvidan lo del id anterior al cambiar de
   expect(ideas.result.current.suggestions).toEqual([makeSuggestion()]);
   expect(summary.result.current.summary).toEqual(makeSummary());
 
+  mocked.suggestPlans.mockRejectedValueOnce(UNAVAILABLE);
+  mocked.summarizeVoting.mockRejectedValueOnce(UNAVAILABLE);
+  await act(async () => {
+    await ideas.result.current.fetch();
+    await summary.result.current.request();
+  });
+  expect(ideas.result.current.error).toBe(UNAVAILABLE.message);
+  expect(summary.result.current.error).toBe(UNAVAILABLE.message);
+
   await ideas.rerender({ id: 'g2' });
   await summary.rerender({ id: 'p2' });
   expect(ideas.result.current.suggestions).toBeNull();
   expect(summary.result.current.summary).toBeNull();
+  expect(ideas.result.current.error).toBeNull();
+  expect(summary.result.current.error).toBeNull();
 });

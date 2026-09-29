@@ -79,11 +79,14 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
   expect(screen.getByText('Ideas con Huecko IA')).toBeTruthy();
   expect(screen.getByText('Lun · 12:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
-  expect(screen.getByText('Sin hueco en común: elige la franja al crear.')).toBeTruthy();
+  expect(screen.getByText('Sin hueco en común: elige una franja al crear o deja que Huecko elija las mejores.')).toBeTruthy();
   expect(screen.getByText('Comida')).toBeTruthy();
   expect(screen.getByText('Un plan corto.')).toBeTruthy();
 
-  await fireEvent.press(screen.getAllByText('Usar')[2]);
+  const useButton = screen.getAllByText('Usar')[2];
+  await fireEvent.press(useButton);
+  await fireEvent.press(useButton);
+  expect(mockNavigate).toHaveBeenCalledTimes(1);
   expect(mockNavigate).toHaveBeenCalledWith('CreateProposal', {
     groupId: 'g1',
     groupName: 'Proyecto Integrador',
