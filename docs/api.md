@@ -152,8 +152,17 @@ Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_
 Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra.
 
 ### `GET /groups/:id/availability`
-Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo.
-`200 MatchWindow[]`, ordenadas por día y hora.
+Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`).
+`200 MatchWindow[]`, ordenadas por día (lunes a domingo) y hora · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+
+Reglas:
+- La agenda va de **08:00 a 20:00** en horas enteras; cada hora `h` es la franja `[h:00, h+1:00)`.
+- Un bloque ocupa **entera** cualquier hora que toque: el inicio trunca minutos (`10:30` → 10) y el fin redondea hacia arriba (`10:30` → 11).
+- Por hora: `libres = miembros − personas ocupadas` (una persona cuenta una vez aunque tenga bloques solapados); `% = round(libres × 100 / miembros)`.
+- Una hora vale si `% ≥ availabilityThreshold` (inclusivo). Las horas válidas seguidas se fusionan en una franja, que muestra el **peor** `%` y el **menor** `freeMembers` de sus horas.
+- Solo cuentan los bloques **recurrentes**; los puntuales no entran en esta vista semanal (un filtro `?weekOf=YYYY-MM-DD` queda pendiente).
+- Los bloques de tipo **`LIBRE` no ocupan**.
+- Grupo sin miembros → `[]`.
 
 ## Propuestas y votación
 
@@ -223,3 +232,5 @@ Ayuda en votaciones y demás funciones: se agregan aquí cuando el equipo las de
 - **Votos por usuario, no por email:** el servidor sabe quién vota por el token; la app ya no envía `userEmail`.
 - **Un solo usuario actual:** el `id` sale siempre del token. Esto elimina el desajuste `mock_123` / `user_1` de la versión Kotlin.
 - **Ubicación con coordenadas:** `location` pasa de texto libre a `{ name, latitude, longitude }` para usar `expo-location`.
+- **Código de invitación:** 8 caracteres sin símbolos ambiguos, generado y garantizado único por el servidor (antes: 3 letras del nombre + 3 cifras, podía repetirse). Se acepta en minúsculas y con espacios.
+- **Cruce de agendas:** los bloques `LIBRE` ya no cuentan como ocupados.

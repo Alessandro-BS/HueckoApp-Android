@@ -1,9 +1,11 @@
-import type { GroupMember } from '@hueckoapp/shared';
+import type { GroupMember, MatchWindow } from '@hueckoapp/shared';
 import { Router } from 'express';
 
 import type { AppDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
+import { groupAvailability } from '../availability/group-availability';
 import { ApiError } from '../middleware/errors';
+import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { groupsRepository } from './groups.repository';
 import { createGroupSchema, joinGroupSchema, updateGroupSchema, updateMemberSchema } from './groups.schemas';
 
@@ -11,6 +13,7 @@ import { createGroupSchema, joinGroupSchema, updateGroupSchema, updateMemberSche
 export function groupsRouter({ db }: AppDeps) {
   const router = Router();
   const groups = groupsRepository(db);
+  const blocks = timeBlocksRepository(db);
 
   // 404 si el grupo no existe; 403 si existe pero no soy miembro.
   const loadForMember = (groupId: string, userId: string) => {
@@ -76,6 +79,16 @@ export function groupsRouter({ db }: AppDeps) {
     const { group } = loadForMember(req.params.id, userId);
     groups.leave(group.id, userId);
     res.status(204).end();
+  });
+
+  router.get('/:id/availability', (req, res) => {
+    const { group } = loadForMember(req.params.id, getUserId(res));
+    const memberIds = group.members.map((m) => m.id);
+    const windows: MatchWindow[] = groupAvailability(
+      { memberIds, availabilityThreshold: group.availabilityThreshold },
+      blocks.listRecurringByUsers(memberIds),
+    );
+    res.json(windows);
   });
 
   return router;
