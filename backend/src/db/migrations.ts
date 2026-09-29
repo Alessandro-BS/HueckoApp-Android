@@ -25,4 +25,22 @@ export const migrations: string[] = [
          OR (is_recurring = 0 AND day_of_week IS NULL AND date IS NOT NULL))
    );
    CREATE INDEX time_blocks_user_idx ON time_blocks (user_id);`,
+  // 2 — Fase 2: grupos y sus miembros. GROUPS es palabra clave "fallback" de SQLite: vale como nombre de tabla.
+  `CREATE TABLE groups (
+     id                     TEXT PRIMARY KEY,
+     name                   TEXT NOT NULL,
+     description            TEXT NOT NULL DEFAULT '',
+     invite_code            TEXT NOT NULL UNIQUE,
+     availability_threshold INTEGER NOT NULL DEFAULT 80 CHECK (availability_threshold BETWEEN 0 AND 100),
+     created_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+   );
+   CREATE TABLE group_members (
+     group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     role         TEXT NOT NULL CHECK (role IN ('OWNER', 'MEMBER')),
+     is_essential INTEGER NOT NULL DEFAULT 0 CHECK (is_essential IN (0, 1)),
+     joined_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+     PRIMARY KEY (group_id, user_id)
+   );
+   CREATE INDEX group_members_user_idx ON group_members (user_id);`,
 ];

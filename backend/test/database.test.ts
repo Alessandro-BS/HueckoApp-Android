@@ -59,3 +59,18 @@ describe('migración de time_blocks', () => {
     expect(n).toBe(0);
   });
 });
+
+describe('migración de grupos', () => {
+  it('borrar un grupo borra sus miembros y el código de invitación es único', () => {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')").run();
+    const insertGroup = db.prepare("INSERT INTO groups (id, name, invite_code) VALUES (?, 'Grupo', ?)");
+    insertGroup.run('g1', 'PROY2026');
+    expect(() => insertGroup.run('g2', 'PROY2026')).toThrow();
+    db.prepare("INSERT INTO group_members (group_id, user_id, role) VALUES ('g1', 'u1', 'OWNER')").run();
+    expect(() => db.prepare("INSERT INTO group_members (group_id, user_id, role) VALUES ('g1', 'u1', 'MEMBER')").run()).toThrow();
+    db.prepare("DELETE FROM groups WHERE id = 'g1'").run();
+    const { n } = db.prepare('SELECT COUNT(*) AS n FROM group_members').get() as { n: number };
+    expect(n).toBe(0);
+  });
+});

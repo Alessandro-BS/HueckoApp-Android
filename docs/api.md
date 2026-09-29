@@ -125,28 +125,31 @@ Cuerpo = `TimeBlockInput` de `shared`. Reglas:
 ## Grupos
 
 ### `GET /groups`
-`200 GroupSummary[]`: grupos de los que soy miembro.
+`200 GroupSummary[]`: grupos de los que soy miembro, en el orden en que me uní.
 
 ### `POST /groups`
 ```json
 { "name": "Proyecto Integrador", "description": "", "availabilityThreshold": 80 }
 ```
-El servidor genera el `inviteCode` y deja al creador como `OWNER`. `201 Group`
+`name` obligatorio (1–60 tras `trim`); `description` opcional (≤ 200, por defecto `""`); `availabilityThreshold` entero 0–100 (por defecto 80).
+El servidor genera el `inviteCode`: **8 caracteres** de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin `0/O/1/I`), único. Los códigos de la semilla (`PROY2026`, `HUECKO123`) no siguen ese formato y siguen siendo válidos. El creador queda como `OWNER`. `201 Group`
 
 ### `POST /groups/join`
-`{ "inviteCode": "PROY2026" }` → `200 Group` · `404` si el código no existe · `409 ALREADY_MEMBER`
+`{ "inviteCode": "PROY2026" }` → `200 Group`. El código se normaliza con `trim` y mayúsculas (`" proy2026 "` sirve).
+`404 INVALID_INVITE_CODE` «Código de invitación inválido.» · `409 ALREADY_MEMBER` «Ya perteneces a este grupo.» · `400` si viene vacío.
 
 ### `GET /groups/:id`
-`200 Group` con la lista completa de miembros · `403` si no soy miembro.
+`200 Group` con la lista completa de miembros, en orden de llegada.
+`404 GROUP_NOT_FOUND` si no existe · `403 NOT_A_MEMBER` si existe pero no soy miembro. (Igual en todas las rutas `/groups/:id/...`.)
 
 ### `PATCH /groups/:id`
-Solo el `OWNER`. Campos opcionales: `name`, `description`, `availabilityThreshold`. `200 Group`
+Solo el `OWNER` (`403 NOT_OWNER`). Campos opcionales con las mismas reglas que al crear: `name`, `description`, `availabilityThreshold`; hay que enviar al menos uno. `200 Group`
 
 ### `PATCH /groups/:id/members/:userId`
-Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember`
+Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. El `OWNER` puede marcarse a sí mismo.
 
 ### `DELETE /groups/:id/members/me`
-Salir del grupo. `204`
+Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra.
 
 ### `GET /groups/:id/availability`
 Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo.
