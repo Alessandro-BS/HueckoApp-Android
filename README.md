@@ -35,13 +35,24 @@ cp backend/.env.example backend/.env   # completa JWT_SECRET (el archivo explica
 npm run backend                        # http://localhost:3000/api/health
 ```
 
+### 2b. Datos de ejemplo (opcional)
+```bash
+npm run seed -w backend   # usuarios, grupos y horarios de prueba; se puede repetir sin duplicar nada
+```
+
+| Correo | Contraseña | Qué tiene |
+|---|---|---|
+| `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) junto con Ana. Clases el lunes 08–10 y el miércoles 14–16 |
+| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Bloques el lunes, el miércoles y el viernes |
+| `carlos@test.com` | `password123` | Único miembro de «Amigos de la Uni»: prueba «Unirme» con el código `HUECKO123` |
+
 ### 3. App móvil (en otra terminal)
 ```bash
 cp mobile/.env.example mobile/.env     # si usas celular físico, pon la IP de tu PC en EXPO_PUBLIC_API_URL
 npm run mobile                         # escanea el QR con Expo Go, o presiona "a" para el emulador
 ```
 
-> **Primer usuario:** no hay usuarios precargados; el primero se crea desde la pantalla de registro de la app («Regístrate»).
+> **Primer usuario:** créalo desde la pantalla de registro («Regístrate») o carga los datos de ejemplo del paso 2b.
 
 > **Importante:** en el emulador de Android, `localhost` es el propio emulador. Para llegar al backend de tu PC se usa `10.0.2.2`. En un celular físico, usa la IP de tu PC en la red Wi-Fi (y que ambos estén en la misma red).
 
