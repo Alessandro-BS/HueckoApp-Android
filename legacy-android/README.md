@@ -9,43 +9,49 @@ Coordinar planes suele ser tedioso a través de chats. **HueckoApp** soluciona e
 
 ---
 
-## ✅ Cambios Realizados
+## 📱 Componentes y Conceptos de Android Implementados
 
-### Fase 1: Arquitectura y Seguridad
-- **Estructura MVVM:** Implementación de paquetes organizados por capas (`ui`, `data`, `domain`) para asegurar la mantenibilidad (RNF-10).
-- **Seguridad de API Keys:** Configuración de `BuildConfig` y `local.properties` para proteger las claves de Google Gemini y evitar filtraciones en el repositorio.
-- **Navegación Robusta:** Implementación de `Navigation Compose` con gestión de pila de navegación (backstack) para flujos de usuario seguros.
+El proyecto cumple y demuestra el dominio de los conceptos fundamentales y avanzados del desarrollo en Android:
 
-### Fase 2: Autenticación (Módulo de Acceso)
-- **Login y Registro:** Creación de interfaces modernas con Material 3 para el acceso de usuarios.
-- **Gestión de Estado:** Uso de `ViewModels` para manejar de forma reactiva los formularios y estados de carga.
-- **Repositorio de Autenticación:** Implementación de lógica de dominio para manejar sesiones de usuario (simulada/Mock para desarrollo inicial).
-
-### Fase 3: Gestión de Disponibilidad e IA (Módulo 1)
-- **Mi Horario:** Pantalla de visualización de bloques horarios cargados por el usuario (HU-01).
-- **Formulario de Registro Manual:** Interfaz para añadir bloques recurrentes con selectores de día (Lunes-Domingo) y hora (HH:mm).
-- **Escaneo con IA (OCR):** Integración con **Google Gemini (Vertex AI)** para extraer automáticamente horarios desde fotos de la galería (HU-02).
-- **Validación Humana:** Pantalla de revisión de bloques detectados por la IA antes de su persistencia final (RF-03, RNF-06).
+1. **Anclaje:** Uso de restricciones y sistemas de alineación mediante modificadores y layouts en Jetpack Compose (`Alignment`, `Arrangement`, `Modifier.fillMaxSize()`, etc.).
+2. **Botón ("Boton"):** Integración de componentes interactivos de Material 3 (`Button`, `OutlinedButton`, `TextButton` y botones de acción personalizados).
+3. **`onClick`:** Gestión de eventos de clic en botones, tarjetas (`HueckoCard`), selectores de días, opciones de voto y elementos de navegación.
+4. **Desarrollo de un diseño utilizando layouts:** Organización visual adaptativa empleando `Column`, `Row`, `Box`, `LazyColumn` y `FlowRow`.
+5. **Aplicación de estilos básicos:** Sistema de diseño centralizado en `ui/theme/` (`Theme.kt`, `Color.kt`, `Shape.kt`, `Type.kt`) aplicando Material 3, paleta de colores morada/lavanda y tipografías tipificadas.
+6. **Activity y Menús:** 
+   - **Activity:** `MainActivity.kt` como punto de entrada de la aplicación.
+   - **Menú:** Barra de navegación inferior (`HueckoBottomBar`) para alternar entre las vistas principales (Dashboard, Grupos, Horario, Perfil).
+7. **ListView:** Uso del equivalente moderno en Jetpack Compose (**`LazyColumn`** y `LazyRow`) para renderizar listas eficientes de bloques horarios, grupos y votaciones.
+8. **Ciclo de vida de la Activity:** Implementación explícita de los métodos del ciclo de vida en `MainActivity.kt` (`onCreate`, `onStart`, `onResume`, `onPause`, `onStop`, `onDestroy`) con registros de depuración.
 
 ---
 
-## 🛠️ Próximas Funcionalidades
+## ✅ Funcionalidades Implementadas (Technical Changelog)
 
-Siguiendo el Documento de Producto y Arquitectura:
+### Módulo 1: Acceso, Perfil y Dashboard Principal
+- **Autenticación y Sesión:** Pantallas de Login y Registro con validación en cliente, manejo reactivo mediante `AuthViewModel` y notificación emergente (Toast/Snackbar) de bienvenida al ingresar a la cuenta.
+- **Dashboard Principal:** Vista de inicio con saludo contextual, métricas rápidas (grupos activos, votaciones abiertas, horas coincidentes, bloques totales), próximo plan confirmado, horario de hoy y votaciones en curso.
+- **Perfil de Usuario:** Pantalla de perfil con visualización de datos de cuenta y opción de cierre de sesión seguro.
 
-### Módulo 2: Cruce Inteligente (El Corazón de la App)
-- [ ] **Gestión de Grupos:** Creación de grupos, invitaciones mediante códigos y lista de miembros.
-- [ ] **Algoritmo de Intersección:** Lógica para cruzar la disponibilidad de todos los miembros del grupo.
-- [ ] **Heatmap Dinámico:** Visualización gráfica de los "huecos" libres del grupo con intensidad según el quórum (HU-05).
-- [ ] **Filtros de Coincidencia:** Configuración de umbral mínimo (ej. 70%) para ver huecos no unánimes (HU-06).
+### Módulo 2: Gestión de Horarios e IA (OCR con Mock Data)
+- **Mi Horario:** Visualización de bloques horarios registrados por el usuario.
+- **Registro Manual Recurrente y Puntual:** Formulario avanzado para añadir bloques de horario seleccionando si son recurrentes semanales (con selector de días de la semana) o puntuales de única vez (`dayOfWeek = null`).
+- **Escaneo con IA (OCR) + Mock Fallback:** Integración con **Google Gemini (Vertex AI)** para extraer horarios desde fotos, con un robusto modo de datos mock (fallback offline automático cuando la API key está vacía o falla la red).
+- **Validación Humana:** Pantalla de revisión de bloques detectados por el OCR antes de guardarlos en el calendario del usuario.
 
-### Módulo 3: Votación y Planes
-- [ ] **Propuesta de Planes:** Selección de ventanas de tiempo sugeridas por el sistema (HU-08).
-- [ ] **Votación Grupal:** Sistema de votos con plazo límite y confirmación automática (HU-09, HU-10).
+### Módulo 3: Cruce Inteligente, Grupos y Votaciones
+- **Gestión de Grupos y Detalle:** Creación de grupos, unión mediante código de invitación (con copiado al portapapeles) y listado de miembros con distinción de integrantes imprescindibles.
+- **Cruce de Agendas y Horario en Común:** Cálculo de franjas libres que cumplen con el umbral de coincidencia del grupo (Heatmap).
+- **Propuestas de Planes y Votación:** Creación de propuestas y sistema de votos excluyentes con plazos límite.
 
-### Módulo 4 & 5: Tiempo Real e IA Avanzada
-- [ ] **Notificaciones de Retraso:** Alertas persistentes en el chat y vista de evento (HU-11, HU-12).
-- [ ] **IA ante Imprevistos:** Evaluación automática de criticidad de ausencias y votaciones exprés (HU-14, HU-15).
+---
+
+## 🧪 Pruebas Unitarias y Calidad
+- Suite de pruebas unitarias implementada con JUnit y Coroutines Test (`kotlinx-coroutines-test`) cubriendo:
+  - `DashboardViewModelTest`
+  - `AuthViewModelTest`
+  - `OcrViewModelTest`
+  - `ScheduleViewModelTest`
 
 ---
 
@@ -53,10 +59,10 @@ Siguiendo el Documento de Producto y Arquitectura:
 - **Lenguaje:** Kotlin
 - **UI:** Jetpack Compose (Material 3)
 - **Arquitectura:** MVVM (Model-View-ViewModel)
-- **Inyección de Dependencias:** Hilt (Próximamente)
+- **Navegación:** Jetpack Navigation Compose
 - **Red:** Retrofit + Gson
-- **IA:** Firebase Vertex AI (Gemini 1.5 Flash)
-- **Persistencia:** StateFlow (Memoria) / Room (Local) / Backend Java (Próximamente)
+- **IA:** Firebase Vertex AI (Gemini 1.5 Flash) + Modo Mock Offline
+- **Pruebas:** JUnit, Coroutines Test
 
 ---
-*Este proyecto sigue las metodologías de gestión de requerimientos (REQM) para asegurar la trazabilidad y calidad del software.*
+*Este proyecto sigue las metodologías de gestión de requerimientos (REQM) y Scrum para asegurar la trazabilidad y calidad del software.*
