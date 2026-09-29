@@ -30,6 +30,14 @@
         {
           "locationWhenInUsePermission": "HueckoApp usa tu ubicación para proponer dónde se reúne tu grupo."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HueckoApp usa tus fotos para leer tu horario de clases con Huecko IA.",
+          "cameraPermission": "HueckoApp usa la cámara para fotografiar tu horario y leerlo con Huecko IA.",
+          "microphonePermission": false
+        }
       ]
     ]
   }

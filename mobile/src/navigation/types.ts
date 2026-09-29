@@ -1,3 +1,4 @@
+import type { OcrImage } from '../api/ai';
 import type { DrawerScreenProps } from '@react-navigation/drawer';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -15,6 +16,7 @@ export type DrawerParamList = {
 export type AppStackParamList = {
   Main: NavigatorScreenParams<DrawerParamList>;
   AddSchedule: { initialDay?: number } | undefined;
+  OcrReview: { image: OcrImage };
   GroupDetail: { groupId: string; name: string };
   CreateProposal: { groupId: string; groupName: string };
   Voting: { proposalId: string };

@@ -1,6 +1,6 @@
 import type { TimeBlock } from '@hueckoapp/shared';
 import { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorMessage } from '../../api/client';
 import { DaySelector, EmptyState, LoadState, PrimaryButton, SecondaryButton, TimeBlockItem } from '../../components';
@@ -10,6 +10,7 @@ import type { DrawerScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
 import { today } from '../../utils/clock';
 import { blocksForDay, dayShort, formatShortDate, isoDayOf, laterPunctualBlocks } from '../../utils/days';
+import { pickScheduleImage, type ImageSource } from '../../utils/scheduleImage';
 import { showToast } from '../../utils/toast';
 
 export function MyScheduleScreen({ navigation }: DrawerScreen<'Schedule'>) {
@@ -40,6 +41,34 @@ export function MyScheduleScreen({ navigation }: DrawerScreen<'Schedule'>) {
       { text: 'Eliminar', style: 'destructive', onPress: () => void deleteBlock(block) },
     ]);
 
+  // «Escanear» (UI spec §1.4): foto → OcrReview. Cancelar el selector no hace nada.
+  const scan = async (source: ImageSource) => {
+    const result = await pickScheduleImage(source);
+    if (result.kind === 'picked') {
+      navigation.navigate('OcrReview', { image: result.image });
+    } else if (result.kind === 'error') {
+      if (result.canOpenSettings) {
+        Alert.alert('Escanear horario', result.message, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir ajustes', onPress: () => void Linking.openSettings() },
+        ]);
+      } else {
+        showToast(result.message);
+      }
+    }
+  };
+
+  const chooseScanSource = () =>
+    Alert.alert(
+      'Escanear horario',
+      'Toma una foto de tu horario o elige una de la galería. Huecko IA leerá los bloques y podrás revisarlos antes de guardarlos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Galería', onPress: () => void scan('gallery') },
+        { text: 'Cámara', onPress: () => void scan('camera') },
+      ],
+    );
+
   const captionFor = (iso: number) => {
     const count = blocksForDay(blocks, iso, now).length;
     return count === 0 ? 'libre' : String(count);
@@ -57,7 +86,7 @@ export function MyScheduleScreen({ navigation }: DrawerScreen<'Schedule'>) {
           Registra tus clases y turnos. Lo que no esté aquí cuenta como hueco libre para tus grupos.
         </Text>
         <View style={styles.actions}>
-          <SecondaryButton title="Escanear" icon="document-scanner" style={styles.flex} onPress={() => showToast('Disponible en la Fase 4')} />
+          <SecondaryButton title="Escanear" icon="document-scanner" style={styles.flex} onPress={chooseScanSource} />
           <PrimaryButton title="Añadir bloque" icon="add" style={styles.flex} onPress={addBlock} />
         </View>
       </View>

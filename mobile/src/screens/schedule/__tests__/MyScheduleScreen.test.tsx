@@ -1,9 +1,11 @@
 import type { TimeBlock } from '@hueckoapp/shared';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Alert, Linking } from 'react-native';
 
 import { ApiError } from '../../../api/client';
 import * as scheduleApi from '../../../api/schedule';
+import { IMAGE_MESSAGES } from '../../../utils/scheduleImage';
 import { showToast } from '../../../utils/toast';
 import { MyScheduleScreen } from '../MyScheduleScreen';
 
@@ -22,6 +24,7 @@ const block = (over: Partial<TimeBlock>): TimeBlock => ({
 const renderScreen = () => render(<MyScheduleScreen navigation={navigation} route={{} as any} />);
 
 beforeEach(() => jest.clearAllMocks());
+afterEach(() => jest.restoreAllMocks());
 
 it('sin bloques muestra el estado vacío y su acción abre el formulario en el día de hoy', async () => {
   mocked.listTimeBlocks.mockResolvedValue([]);
@@ -100,11 +103,49 @@ it('pide confirmación antes de borrar y solo borra al confirmar', async () => {
   expect(showToast).toHaveBeenCalledWith('Bloque eliminado.');
 });
 
-it('"Escanear" avisa que llega en la Fase 4', async () => {
-  mocked.listTimeBlocks.mockResolvedValue([]);
-  await renderScreen();
+const pressScanOption = async (alert: jest.SpyInstance, option: 'Galería' | 'Cámara') => {
   await fireEvent.press(screen.getByText('Escanear'));
-  expect(showToast).toHaveBeenCalledWith('Disponible en la Fase 4');
+  const buttons = alert.mock.calls[0][2]!;
+  expect(buttons.map((b: { text: string }) => b.text)).toEqual(['Cancelar', 'Galería', 'Cámara']);
+  await act(async () => buttons.find((b: { text: string }) => b.text === option)!.onPress!());
+};
+
+it('«Escanear» → «Galería» abre la revisión con la foto elegida', async () => {
+  mocked.listTimeBlocks.mockResolvedValue([]);
+  jest.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+    canceled: false, assets: [{ uri: 'file:///h.jpg', mimeType: 'image/jpeg', fileName: 'h.jpg', fileSize: 1000, width: 10, height: 10 }],
+  } as any);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await renderScreen();
+  await pressScanOption(alert, 'Galería');
+  expect(alert.mock.calls[0][0]).toBe('Escanear horario');
+  await waitFor(() =>
+    expect(navigation.navigate).toHaveBeenCalledWith('OcrReview', { image: { uri: 'file:///h.jpg', mimeType: 'image/jpeg', fileName: 'h.jpg' } }),
+  );
+});
+
+it('«Cámara» sin permiso: avisa y no navega', async () => {
+  mocked.listTimeBlocks.mockResolvedValue([]);
+  jest.mocked(ImagePicker.requestCameraPermissionsAsync).mockResolvedValue({ granted: false, canAskAgain: true } as any);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await renderScreen();
+  await pressScanOption(alert, 'Cámara');
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith(IMAGE_MESSAGES.cameraDenied));
+  expect(navigation.navigate).not.toHaveBeenCalled();
+});
+
+it('«Cámara» denegada para siempre: ofrece «Abrir ajustes»', async () => {
+  mocked.listTimeBlocks.mockResolvedValue([]);
+  jest.mocked(ImagePicker.requestCameraPermissionsAsync).mockResolvedValue({ granted: false, canAskAgain: false } as any);
+  const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await renderScreen();
+  await pressScanOption(alert, 'Cámara');
+  await waitFor(() => expect(alert).toHaveBeenCalledTimes(2));
+  expect(alert.mock.calls[1][1]).toBe(IMAGE_MESSAGES.cameraDenied);
+  await act(async () => alert.mock.calls[1][2]!.find((b: { text?: string }) => b.text === 'Abrir ajustes')!.onPress!());
+  expect(openSettings).toHaveBeenCalledTimes(1);
+  openSettings.mockRestore();
 });
 
 it('si falla la carga muestra el error y permite reintentar', async () => {
