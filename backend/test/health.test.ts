@@ -1,10 +1,10 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { createApp } from '../src/app';
+import { makeTestApp } from './helpers';
 
 describe('API base', () => {
-  const app = createApp();
+  const { app } = makeTestApp();
 
   it('GET /api/health responde ok', async () => {
     const res = await request(app).get('/api/health');
