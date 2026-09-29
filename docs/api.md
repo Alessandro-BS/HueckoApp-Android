@@ -68,6 +68,7 @@ Resumen de las entidades:
 | `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
 | `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
 | `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
+| `ProposalDraft` / `PlanSuggestion` / `PlanCategory` | Borrador e ideas de plan de la IA (sin guardar) |
 
 ---
 
@@ -282,6 +283,30 @@ Reglas:
 - Además del tipo declarado, se comprueban los primeros bytes del archivo: si no son de un JPG, PNG o WEBP real → `400 INVALID_IMAGE`.
 
 `200` · `400 IMAGE_REQUIRED` (falta el archivo) · `400 INVALID_IMAGE` (no es JPG/PNG/WEBP) · `400 INVALID_UPLOAD` (otro campo o más de un archivo) · `413 PAYLOAD_TOO_LARGE` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /groups/:id/ai/proposal-draft`
+Convierte una frase en un borrador para «Nueva propuesta». Solo miembros (`403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`). Cuerpo = `ProposalDraftInput`:
+```json
+{ "text": "Estudiar para el parcial el martes en la biblioteca" }
+```
+`text` obligatorio, 3–500 caracteres tras `trim`. Responde `200 ProposalDraft` (no guarda nada):
+```json
+{ "title": "Estudiar para el parcial", "category": "ESTUDIO", "placeName": "Biblioteca central",
+  "window": { "dayOfWeek": 2, "startTime": "08:00", "endTime": "20:00", "availabilityPercentage": 100, "freeMembers": 2 },
+  "votingDeadline": "2026-09-30T15:00:00.000Z" }
+```
+- `category` ∈ `ESTUDIO | REUNION | COMIDA | DEPORTE | SALIDA | OTRO` (`PlanCategory`; una desconocida → `OTRO`). No se guarda en la propuesta.
+- `window` es **siempre** uno de los huecos reales de `GET /groups/:id/availability` (a la IA se le pasan numerados y responde con el número; si da uno que no existe, `window` es `null`).
+- `votingDeadline`: ahora + las horas que sugiere la IA (1–168; 48 si no dice nada), en punto; con `window`, como tarde 1 h antes de su próximo inicio si eso deja al menos 1 h de margen.
+- Títulos de más de 80 y lugares de más de 100 caracteres se recortan; un lugar vacío es `null`.
+
+`200` · `400 VALIDATION_ERROR` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /groups/:id/ai/suggestions`
+Sin cuerpo. 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta su descripción y sus últimas 5 propuestas (para no repetir). Solo miembros.
+`200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` sigue la misma regla que en el borrador. La app abre «Nueva propuesta» rellenada con la idea elegida.
+
+`200` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
 ---
 

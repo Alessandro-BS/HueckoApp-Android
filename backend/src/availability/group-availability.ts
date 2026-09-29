@@ -1,5 +1,6 @@
-import type { MatchWindow, TimeBlock, TimeWindowInput } from '@hueckoapp/shared';
+import type { Group, MatchWindow, TimeBlock, TimeWindowInput } from '@hueckoapp/shared';
 
+import type { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { endHour, startHour, weeklyWindows, type MatcherGroup } from './matcher';
 
 // Reglas añadidas sobre el matcher de Kotlin (domain spec G13 y B14), documentadas en docs/api.md:
@@ -27,4 +28,10 @@ export function windowAvailability(group: MatcherGroup, blocks: readonly TimeBlo
     worst = Math.min(worst, Math.round(((size - busy.size) * 100) / size));
   }
   return worst;
+}
+
+/** Huecos en común de un grupo (lo que devuelve GET /groups/:id/availability), leyendo los bloques de sus miembros. */
+export function groupWindows(group: Group, blocks: ReturnType<typeof timeBlocksRepository>): MatchWindow[] {
+  const memberIds = group.members.map((m) => m.id);
+  return groupAvailability({ memberIds, availabilityThreshold: group.availabilityThreshold }, blocks.listRecurringByUsers(memberIds));
 }

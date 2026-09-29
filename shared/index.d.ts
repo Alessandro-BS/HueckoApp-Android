@@ -155,3 +155,29 @@ export type AiStatus = { provider: AiProvider };
 
 // Respuesta de POST /ai/schedule-ocr: bloques SIN guardar, para revisarlos y guardarlos con /me/time-blocks/bulk.
 export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
+
+// Tipo de plan que sugiere la IA (solo en sus respuestas: la propuesta no guarda categoría).
+export type PlanCategory = 'ESTUDIO' | 'REUNION' | 'COMIDA' | 'DEPORTE' | 'SALIDA' | 'OTRO';
+
+// Cuerpo de POST /groups/:id/ai/proposal-draft.
+export type ProposalDraftInput = { text: string };
+
+// Borrador para pre-rellenar «Nueva propuesta». No se guarda nada hasta que el usuario crea la propuesta.
+export type ProposalDraft = {
+  title: string;
+  category: PlanCategory;
+  placeName: string | null;
+  window: MatchWindow | null;      // uno de los huecos reales del grupo (GET /groups/:id/availability), o null
+  votingDeadline: string;          // ISO futura sugerida
+};
+
+export type PlanSuggestion = {
+  title: string;
+  category: PlanCategory;
+  placeIdea: string | null;
+  window: MatchWindow | null;      // uno de los huecos reales del grupo, o null
+  reason: string;
+};
+
+// Respuesta de POST /groups/:id/ai/suggestions: entre 1 y 3 ideas.
+export type PlanSuggestions = { suggestions: PlanSuggestion[] };

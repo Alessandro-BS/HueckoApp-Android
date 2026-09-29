@@ -4,7 +4,7 @@ import helmet from 'helmet';
 
 import type { AiClient } from './ai/ai-client';
 import { AI_RATE_LIMIT_DEFAULT, aiRateLimiter } from './ai/ai-limiter';
-import { aiRouter } from './ai/ai.routes';
+import { aiRouter, groupAiRouter } from './ai/ai.routes';
 import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
 import { requireAuth } from './auth/require-auth';
@@ -59,6 +59,8 @@ export function createApp(appDeps: AppDeps) {
   api.use('/groups', requireAuth(deps.jwtSecret), groupsRouter(deps));
   // groupsRouter no tiene /:id/proposals: esas peticiones pasan de largo y las atiende este router.
   api.use('/groups', requireAuth(deps.jwtSecret), groupProposalsRouter(deps));
+  // /groups/:id/ai/... tampoco lo atienden los dos routers anteriores: llega hasta aquí.
+  api.use('/groups', requireAuth(deps.jwtSecret), groupAiRouter(deps));
   api.use('/proposals', requireAuth(deps.jwtSecret), proposalsRouter(deps));
   api.use('/ai', requireAuth(deps.jwtSecret), aiRouter(deps));
 
