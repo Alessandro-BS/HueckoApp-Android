@@ -6,6 +6,7 @@ import { authRouter } from './auth/auth.routes';
 import { requireAuth } from './auth/require-auth';
 import type { Db } from './db/database';
 import { groupsRouter } from './groups/groups.routes';
+import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
 import { timeBlocksRouter } from './schedule/time-blocks.routes';
@@ -40,6 +41,7 @@ export function createApp(appDeps: AppDeps) {
   });
   api.use('/auth', authRouter(deps));
   api.use('/me/time-blocks', requireAuth(deps.jwtSecret), timeBlocksRouter(deps));
+  api.use('/me', requireAuth(deps.jwtSecret), meRouter(deps));
   api.use('/groups', requireAuth(deps.jwtSecret), groupsRouter(deps));
   // groupsRouter no tiene /:id/proposals: esas peticiones pasan de largo y las atiende este router.
   api.use('/groups', requireAuth(deps.jwtSecret), groupProposalsRouter(deps));

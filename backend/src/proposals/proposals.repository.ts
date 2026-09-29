@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Criticality, Incidence, IncidenceType, Location, Proposal, ProposalState, TimeWindow } from '@hueckoapp/shared';
+import type { Criticality, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
 
 import type { Db } from '../db/database';
 import { withTransaction } from '../db/transaction';
@@ -218,6 +218,14 @@ export function proposalsRepository(db: Db) {
           db.prepare('UPDATE proposals SET state = ? WHERE id = ?').run(newState, id);
         }
       });
+    },
+
+    // Todas las propuestas de mis grupos, de la más antigua a la más reciente (Inicio y /me/upcoming-plans).
+    listForUser(userId: string): ProposalWithGroup[] {
+      const rows = db
+        .prepare(`${SELECT_PROPOSAL} JOIN group_members m ON m.group_id = p.group_id AND m.user_id = ? ORDER BY p.created_at, p.rowid`)
+        .all(userId) as ProposalRow[];
+      return rows.map((r) => ({ ...toProposal(r, userId), groupName: r.group_name }));
     },
   };
 }

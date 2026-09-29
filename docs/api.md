@@ -62,6 +62,9 @@ Resumen de las entidades:
 | `TimeWindow` | Ventana horaria votable dentro de una propuesta |
 | `Incidence` | Imprevisto reportado sobre un plan confirmado |
 | `Location` | Lugar con nombre y coordenadas opcionales |
+| `ProposalWithGroup` | `Proposal` + `groupName` |
+| `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
+| `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
 
 ---
 
@@ -120,7 +123,20 @@ Cuerpo = `TimeBlockInput` de `shared`. Reglas:
 `204` · `404 TIME_BLOCK_NOT_FOUND` si el bloque no existe o no es del usuario.
 
 ### `GET /me/upcoming-plans`
-`200 Proposal[]`: propuestas `CONFIRMADO` de todos mis grupos con fecha futura, ordenadas. Alimenta el dashboard.
+`200 ProposalWithGroup[]`: propuestas `CONFIRMADO` de todos mis grupos cuyo `scheduledAt` todavía no llegó, de la más próxima a la más lejana. Cada una lleva `groupName`.
+
+### `GET /me/dashboard`
+Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`.
+- `metrics.activeGroups`: grupos de los que soy miembro.
+- `metrics.openVotes`: propuestas `PROPUESTO` de mis grupos (aunque su plazo haya pasado: siguen pendientes de hora hasta que alguien las confirme).
+- `metrics.matchingHours`: suma, sobre las franjas de las propuestas de mis grupos **que no están `CANCELADO`** (cualquier otro estado cuenta, también `EN_RECOORDINACION`) con `availabilityPercentage ≥ 80` (fijo, no el umbral del grupo), de `hora(endTime) − hora(startTime)` en horas enteras (se truncan los minutos), sin deduplicar solapes. Es la fórmula de la app Kotlin salvo que aquí las canceladas no cuentan.
+- `metrics.totalBlocks`: mis bloques de horario (recurrentes y puntuales).
+- `nextPlan`: el primero de `/me/upcoming-plans` con `attendees`, uno por miembro del grupo; su estado sale de su primera incidencia sin resolver: `TARDANZA` → `RETRASADO`, `FALTA`/`IMPREVISTO` → `NO_ASISTE`, ninguna → `PUNTUAL`. `null` si no hay.
+- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` = la franja elegida (o la primera) de su propuesta no cancelada más antigua que tenga franjas; `null` si no hay.
+- `pendingVotes`: propuestas `PROPUESTO` de mis grupos con `groupName`, las que cierran antes primero.
+- `expressAlert`: de los planes que aún no ocurrieron, el primero `EN_RECOORDINACION` (`kind: "RECOORDINACION"`) o, si no hay, el primero `CONFIRMADO` con incidencias sin resolver (`kind: "AVISO"`). `who` y `reason` salen de su incidencia sin resolver más crítica (`ALTA` primero; si no, la más antigua). `canResolve` es `true` si soy quien creó el plan. `null` si no hay.
+
+El «horario de hoy» no viene aquí: depende de la zona horaria del teléfono, así que la app lo calcula con `GET /me/time-blocks`.
 
 ## Grupos
 
