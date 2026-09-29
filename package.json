@@ -1,0 +1,15 @@
+{
+  "name": "hueckoapp",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "backend",
+    "mobile"
+  ],
+  "scripts": {
+    "backend": "npm run dev -w backend",
+    "mobile": "npm run start -w mobile",
+    "test": "npm test -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w mobile"
+  }
+}

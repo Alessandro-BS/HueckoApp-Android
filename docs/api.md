@@ -40,91 +40,25 @@ Todos los errores tienen la misma forma:
 
 ## Tipos
 
+Los tipos de cada respuesta están definidos **una sola vez** en [`shared/index.d.ts`](../shared/index.d.ts) y los importan tanto la app como el backend:
+
 ```ts
-type User = { id: string; name: string; email: string };
-
-type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';
-
-type TimeBlock = {
-  id: string;
-  userId: string;
-  label: string;           // "Clase de Cálculo"
-  type: BlockType;
-  startTime: string;       // "08:00"
-  endTime: string;         // "10:00"
-  isRecurring: boolean;
-  dayOfWeek: number | null; // 1–7 si es recurrente; null si es puntual
-  date: string | null;      // "YYYY-MM-DD" si es puntual; null si es recurrente
-};
-
-type GroupMember = User & { role: 'OWNER' | 'MEMBER'; isEssential: boolean };
-
-type GroupSummary = {
-  id: string;
-  name: string;
-  description: string;
-  memberCount: number;
-  availabilityThreshold: number; // 0–100, % mínimo de coincidencia
-};
-
-type Group = GroupSummary & {
-  inviteCode: string;
-  members: GroupMember[];
-};
-
-type MatchWindow = {
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-  availabilityPercentage: number;
-  freeMembers: number;
-};
-
-type ProposalState = 'PROPUESTO' | 'CONFIRMADO' | 'CANCELADO' | 'EN_RECOORDINACION';
-
-type Location = {
-  name: string;               // "Cafetería central"
-  latitude: number | null;    // desde expo-location o el mapa
-  longitude: number | null;
-};
-
-type TimeWindow = {
-  id: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-  availabilityPercentage: number;
-  voteCount: number;
-};
-
-type IncidenceType = 'FALTA' | 'TARDANZA' | 'IMPREVISTO';
-type Criticality = 'BAJA' | 'MEDIA' | 'ALTA';
-
-type Incidence = {
-  id: string;
-  user: User;
-  type: IncidenceType;
-  reason: string;
-  delayMinutes: number | null;
-  criticality: Criticality;
-  resolved: boolean;
-  createdAt: string;
-};
-
-type Proposal = {
-  id: string;
-  groupId: string;
-  title: string;
-  location: Location | null;
-  createdBy: User;
-  votingDeadline: string;          // ISO 8601
-  state: ProposalState;
-  windows: TimeWindow[];
-  myVoteWindowId: string | null;   // ventana que votó el usuario actual
-  chosenWindowId: string | null;   // se llena al confirmar
-  incidences: Incidence[];
-};
+import type { Group, Proposal, TimeBlock } from '@hueckoapp/shared';
 ```
+
+Resumen de las entidades:
+
+| Tipo | Qué es |
+|---|---|
+| `User` | Usuario (`id`, `name`, `email`) |
+| `TimeBlock` | Bloque de horario: recurrente (`dayOfWeek`) o puntual (`date`) |
+| `GroupSummary` / `Group` | Grupo; el detalle incluye `inviteCode` y `members` |
+| `GroupMember` | Usuario + `role` (`OWNER`/`MEMBER`) + `isEssential` |
+| `MatchWindow` | Franja libre en común con su % de coincidencia |
+| `Proposal` | Propuesta de plan con ventanas, votos, ubicación e incidencias |
+| `TimeWindow` | Ventana horaria votable dentro de una propuesta |
+| `Incidence` | Imprevisto reportado sobre un plan confirmado |
+| `Location` | Lugar con nombre y coordenadas opcionales |
 
 ---
 

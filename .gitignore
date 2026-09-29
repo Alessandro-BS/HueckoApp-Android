@@ -1,12 +1,45 @@
-# Dependencias y builds (cada subproyecto tiene además su propio .gitignore)
+# Un solo .gitignore para todo el monorepo.
+# legacy-android/ conserva el suyo porque es un proyecto Gradle independiente.
+
+# --- Dependencias y builds -----------------------------------------------
 node_modules/
 dist/
+coverage/
+*.tsbuildinfo
 
-# Variables de entorno: nunca se suben. Usa los .env.example como plantilla.
+# --- Variables de entorno: NUNCA se suben (usa los .env.example) --------
 .env
-.env.local
+.env*.local
 
-# Sistema operativo / editores
+# --- mobile/ (Expo) -------------------------------------------------------
+.expo/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+# Carpetas nativas generadas por Expo (Continuous Native Generation)
+mobile/android/
+mobile/ios/
+# Claves de firma
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# --- backend/ -------------------------------------------------------------
+*.db
+*.db-journal
+uploads/
+
+# --- Logs -------------------------------------------------------------------
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# --- Sistema operativo / editores ------------------------------------------
 .DS_Store
 Thumbs.db
 .vscode/
+# Configuración local de Claude Code de cada persona
+.claude/settings.local.json

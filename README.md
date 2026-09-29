@@ -8,8 +8,11 @@ HueckoApp centraliza la disponibilidad de grupos de amigos, compañeros de unive
 |---|---|---|
 | [`mobile/`](mobile/) | App móvil | React Native (Expo) + TypeScript, React Navigation |
 | [`backend/`](backend/) | API REST, base de datos e integración con IA | Node.js + Express + TypeScript |
+| [`shared/`](shared/) | Tipos del contrato, usados por la app y el backend (`@hueckoapp/shared`) | TypeScript |
 | [`docs/`](docs/) | Contrato de la API y documentación | Markdown |
 | [`legacy-android/`](legacy-android/) | Versión anterior nativa (congelada en `v1.0.0`) | Kotlin + Jetpack Compose |
+
+Es un **monorepo con npm workspaces**: un solo `npm install` en la raíz instala todo, con un único `package-lock.json`.
 
 El **contrato de la API** ([`docs/api.md`](docs/api.md)) es el acuerdo entre la app y el backend. Cualquier cambio de endpoint se actualiza ahí en el mismo PR.
 
@@ -21,20 +24,21 @@ El **contrato de la API** ([`docs/api.md`](docs/api.md)) es el acuerdo entre la 
 
 ## Cómo levantar el proyecto
 
-### 1. Backend
+### 1. Instalar dependencias (una sola vez, desde la raíz)
 ```bash
-cd backend
 npm install
-cp .env.example .env      # completa JWT_SECRET (el archivo explica cómo generarlo)
-npm run dev               # http://localhost:3000/api/health
 ```
 
-### 2. App móvil
+### 2. Backend
 ```bash
-cd mobile
-npm install
-cp .env.example .env      # si usas celular físico, pon la IP de tu PC en EXPO_PUBLIC_API_URL
-npm start                 # escanea el QR con Expo Go, o presiona "a" para el emulador
+cp backend/.env.example backend/.env   # completa JWT_SECRET (el archivo explica cómo generarlo)
+npm run backend                        # http://localhost:3000/api/health
+```
+
+### 3. App móvil (en otra terminal)
+```bash
+cp mobile/.env.example mobile/.env     # si usas celular físico, pon la IP de tu PC en EXPO_PUBLIC_API_URL
+npm run mobile                         # escanea el QR con Expo Go, o presiona "a" para el emulador
 ```
 
 > **Importante:** en el emulador de Android, `localhost` es el propio emulador. Para llegar al backend de tu PC se usa `10.0.2.2`. En un celular físico, usa la IP de tu PC en la red Wi-Fi (y que ambos estén en la misma red).
@@ -42,9 +46,8 @@ npm start                 # escanea el QR con Expo Go, o presiona "a" para el em
 ### Comandos útiles
 | Dónde | Comando | Para qué |
 |---|---|---|
-| `backend/` | `npm test` | Tests (Vitest + Supertest) |
-| `backend/` | `npm run typecheck` | Revisar tipos |
-| `mobile/` | `npm run typecheck` | Revisar tipos |
+| raíz | `npm test` | Tests del backend (Vitest + Supertest) |
+| raíz | `npm run typecheck` | Revisar tipos de backend y mobile |
 | `mobile/` | `npx expo install <paquete>` | Instalar paquetes (elige la versión compatible con el SDK; **no uses `npm install`** para librerías nativas) |
 | `mobile/` | `npx expo-doctor` | Diagnosticar dependencias |
 

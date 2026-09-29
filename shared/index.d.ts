@@ -1,5 +1,5 @@
-// Tipos del contrato de la API. Fuente de verdad: docs/api.md.
-// Si cambias algo aquí, cámbialo también allí (y en el backend) en el mismo PR.
+// Tipos del contrato de la API de HueckoApp, compartidos por mobile/ y backend/.
+// Documentación de cada endpoint: docs/api.md. Si cambias un tipo, revisa ambos lados en el mismo PR.
 
 export type User = { id: string; name: string; email: string };
 
