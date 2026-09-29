@@ -6,6 +6,8 @@ import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
 import { AddScheduleScreen } from '../screens/schedule/AddScheduleScreen';
 import { CreateProposalScreen } from '../screens/proposals/CreateProposalScreen';
+import { PlanDetailScreen } from '../screens/proposals/PlanDetailScreen';
+import { VotingScreen } from '../screens/proposals/VotingScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { colors } from '../theme';
 import { AppDrawer } from './AppDrawer';
@@ -41,6 +43,8 @@ export function RootNavigator() {
       <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
       <AppStack.Screen name="GroupDetail" component={GroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
       <AppStack.Screen name="CreateProposal" component={CreateProposalScreen} options={{ title: 'Nueva propuesta' }} />
+      <AppStack.Screen name="Voting" component={VotingScreen} options={{ title: 'Votar' }} />
+      <AppStack.Screen name="PlanDetail" component={PlanDetailScreen} options={{ title: 'Detalle del plan' }} />
     </AppStack.Navigator>
   );
 }
