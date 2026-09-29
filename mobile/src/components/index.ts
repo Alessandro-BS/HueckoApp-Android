@@ -14,3 +14,4 @@ export { DaySelector } from './DaySelector';
 export { LoadState } from './LoadState';
 export { TimeBlockItem } from './TimeBlockItem';
 export { DateTimeField } from './DateTimeField';
+export { ProposalStateBadge } from './ProposalStateBadge';

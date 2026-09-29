@@ -15,6 +15,9 @@ jest.mock('../../../hooks/useGroup', () => ({
 jest.mock('../../../hooks/useAvailability', () => ({
   useAvailability: () => ({ windows: [], loaded: true, loading: false, refreshing: false, error: null, reload: jest.fn() }),
 }));
+jest.mock('../../../hooks/useProposals', () => ({
+  useProposals: () => ({ proposals: [], loaded: true, loading: false, refreshing: false, error: null, reload: jest.fn() }),
+}));
 jest.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
 // La barra de pestañas pinta cada etiqueta dos veces (activa e inactiva, para el fundido), de ahí getAllByText.

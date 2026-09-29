@@ -82,3 +82,35 @@ it('locating mientras busca; una segunda llamada en curso no repite el permiso',
   expect(mocked.requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
   expect(result.current.locating).toBe(false);
 });
+
+it('denegado para siempre (canAskAgain false): canOpenSettings; si se puede volver a pedir, no', async () => {
+  mocked.requestForegroundPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false } as any);
+  const first = await locate();
+  expect(first.result.current.canOpenSettings).toBe(true);
+  expect(first.result.current.error).toBe(LOCATION_MESSAGES.denied);
+
+  mocked.requestForegroundPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: true } as any);
+  const second = await locate();
+  expect(second.result.current.canOpenSettings).toBe(false);
+});
+
+it('clearError y un intento con permiso apagan canOpenSettings', async () => {
+  mocked.requestForegroundPermissionsAsync.mockResolvedValue({ granted: false, canAskAgain: false } as any);
+  const { result } = await renderHook(() => useCurrentLocation());
+  await act(async () => {
+    await result.current.locate();
+  });
+  expect(result.current.canOpenSettings).toBe(true);
+  await act(async () => result.current.clearError());
+  expect(result.current.canOpenSettings).toBe(false);
+  await act(async () => {
+    await result.current.locate();
+  });
+  expect(result.current.canOpenSettings).toBe(true);
+  mocked.requestForegroundPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true } as any);
+  await act(async () => {
+    await result.current.locate();
+  });
+  expect(result.current.canOpenSettings).toBe(false);
+  expect(result.current.error).toBeNull();
+});

@@ -16,6 +16,8 @@ export const LOCATION_MESSAGES = {
 export function useCurrentLocation() {
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Denegado para siempre (el sistema ya no vuelve a preguntar): solo se arregla desde los ajustes del teléfono.
+  const [canOpenSettings, setCanOpenSettings] = useState(false);
   const busy = useRef(false);
   const mounted = useRef(true);
 
@@ -31,13 +33,17 @@ export function useCurrentLocation() {
     busy.current = true;
     setLocating(true);
     setError(null);
+    setCanOpenSettings(false);
     const fail = (message: string) => {
       if (mounted.current) setError(message);
       return null;
     };
     try {
-      const { granted } = await ExpoLocation.requestForegroundPermissionsAsync();
-      if (!granted) return fail(LOCATION_MESSAGES.denied);
+      const { granted, canAskAgain } = await ExpoLocation.requestForegroundPermissionsAsync();
+      if (!granted) {
+        if (mounted.current) setCanOpenSettings(canAskAgain === false);
+        return fail(LOCATION_MESSAGES.denied);
+      }
       if (!(await ExpoLocation.hasServicesEnabledAsync())) return fail(LOCATION_MESSAGES.servicesOff);
 
       const position = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced }).catch(() => null);
@@ -61,7 +67,10 @@ export function useCurrentLocation() {
     }
   }, []);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setCanOpenSettings(false);
+  }, []);
 
-  return { locate, locating, error, clearError };
+  return { locate, locating, error, canOpenSettings, clearError };
 }

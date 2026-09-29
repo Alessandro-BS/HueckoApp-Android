@@ -5,6 +5,7 @@ import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
 import { AddScheduleScreen } from '../screens/schedule/AddScheduleScreen';
+import { CreateProposalScreen } from '../screens/proposals/CreateProposalScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { colors } from '../theme';
 import { AppDrawer } from './AppDrawer';
@@ -39,6 +40,7 @@ export function RootNavigator() {
       <AppStack.Screen name="Main" component={AppDrawer} options={{ headerShown: false }} />
       <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
       <AppStack.Screen name="GroupDetail" component={GroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+      <AppStack.Screen name="CreateProposal" component={CreateProposalScreen} options={{ title: 'Nueva propuesta' }} />
     </AppStack.Navigator>
   );
 }

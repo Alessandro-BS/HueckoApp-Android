@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radius, typography } from '../theme';
@@ -27,13 +27,17 @@ export function DateTimeField({ label, value, onChange, mode = 'datetime', minim
   const [step, setStep] = useState<Step>(null);
   const [pickedDay, setPickedDay] = useState<Date | null>(null);
   const initial = value ?? minimumDate ?? today();
+  // Lo que cambia en cada render del padre (onChange en línea, fecha inicial) va en una ref: así handleChange
+  // solo cambia con el paso o el día elegido y el selector de Android no se reabre por un re-render ajeno.
+  const latest = useRef({ onChange, initial });
+  latest.current = { onChange, initial };
 
-  const close = () => {
-    setStep(null);
-    setPickedDay(null);
-  };
-
-  const handleChange = (event: DateTimePickerEvent, selected?: Date) => {
+  const handleChange = useCallback(
+    (event: DateTimePickerEvent, selected?: Date) => {
+    const close = () => {
+      setStep(null);
+      setPickedDay(null);
+    };
     if (event.type !== 'set' || !selected) {
       close();
       return;
@@ -42,17 +46,19 @@ export function DateTimeField({ label, value, onChange, mode = 'datetime', minim
       const day = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
       if (mode === 'date') {
         close();
-        onChange(day);
+        latest.current.onChange(day);
         return;
       }
       setPickedDay(day);
       setStep('time');
       return;
     }
-    const day = pickedDay ?? initial;
+    const day = pickedDay ?? latest.current.initial;
     close();
-    onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), selected.getHours(), selected.getMinutes()));
-  };
+    latest.current.onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), selected.getHours(), selected.getMinutes()));
+    },
+    [step, pickedDay, mode],
+  );
 
   const text = value ? (mode === 'date' ? formatDateLabel(toDateKey(value)) : formatDateTime(value)) : placeholder;
 

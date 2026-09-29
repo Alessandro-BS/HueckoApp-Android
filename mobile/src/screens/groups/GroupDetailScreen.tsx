@@ -68,7 +68,7 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
         }}
       >
         <Tabs.Screen name="Plans" options={{ title: 'Planes' }}>
-          {() => <PlansTab groupId={group.id} />}
+          {() => <PlansTab groupId={group.id} groupName={group.name} />}
         </Tabs.Screen>
         <Tabs.Screen name="Availability" options={{ title: 'Huecos' }}>
           {() => <AvailabilityTab groupId={group.id} threshold={group.availabilityThreshold} memberCount={group.memberCount} />}

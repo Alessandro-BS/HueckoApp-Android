@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import { EmptyState, PrimaryButton, TextField } from '..';
+import { DaySelector, EmptyState, PrimaryButton, ProposalStateBadge, SecondaryButton, TextField } from '..';
 
 describe('PrimaryButton', () => {
   it('llama a onPress', async () => {
@@ -49,5 +49,33 @@ describe('TextField con pista', () => {
     );
     expect(screen.queryByText('Inicio')).toBeNull();
     expect(screen.getByText('Formato HH:mm')).toBeTruthy();
+  });
+});
+
+describe('SecondaryButton', () => {
+  it('responde si está habilitado y no si está deshabilitado', async () => {
+    const onPress = jest.fn();
+    await render(<SecondaryButton title="Añadir franja" onPress={onPress} />);
+    await fireEvent.press(screen.getByText('Añadir franja'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+    await render(<SecondaryButton title="Añadir otra" onPress={onPress} disabled />);
+    await fireEvent.press(screen.getByText('Añadir otra'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ProposalStateBadge', () => {
+  it('pinta el estado con tildes', async () => {
+    await render(<ProposalStateBadge state="PROPUESTO" />);
+    expect(screen.getByText('En votación')).toBeTruthy();
+  });
+});
+
+describe('DaySelector', () => {
+  it('con subtítulo vacío no deja «, » en la etiqueta de accesibilidad', async () => {
+    await render(<DaySelector selected={1} onSelect={() => {}} captionFor={(iso) => (iso === 2 ? '3 bloques' : '')} />);
+    expect(screen.getByLabelText('Lunes')).toBeTruthy();
+    expect(screen.getByLabelText('Martes, 3 bloques')).toBeTruthy();
+    expect(screen.queryByLabelText('Lunes, ')).toBeNull();
   });
 });

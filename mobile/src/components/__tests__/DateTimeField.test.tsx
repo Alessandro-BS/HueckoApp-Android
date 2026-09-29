@@ -50,3 +50,12 @@ it('muestra el valor con fecha y hora, y el error', async () => {
   expect(screen.getByText('Vie 2 oct, 20:00')).toBeTruthy();
   expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();
 });
+
+it('un re-render del padre conserva el mismo onChange del selector (no reabre el diálogo en Android)', async () => {
+  const props = { label: 'Fecha límite de votación', value: null, onChange: jest.fn() };
+  const { rerender } = await render(<DateTimeField {...props} />);
+  await fireEvent.press(screen.getByLabelText('Fecha límite de votación'));
+  const before = screen.getByTestId('datetimepicker-date').props.onChange;
+  await rerender(<DateTimeField {...props} />);
+  expect(screen.getByTestId('datetimepicker-date').props.onChange).toBe(before);
+});
