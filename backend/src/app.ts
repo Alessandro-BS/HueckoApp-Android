@@ -1,7 +1,11 @@
 import cors from 'cors';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import helmet from 'helmet';
 
+import type { AiClient } from './ai/ai-client';
+import { AI_RATE_LIMIT_DEFAULT, aiRateLimiter } from './ai/ai-limiter';
+import { aiRouter } from './ai/ai.routes';
+import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
 import { requireAuth } from './auth/require-auth';
 import type { Db } from './db/database';
@@ -19,16 +23,26 @@ export type AppDeps = {
   authRateLimit?: number;
   // Reloj de la app (plazos de votación, scheduledAt). Los tests lo fijan; por defecto, la hora real.
   now?: () => Date;
+  // Cliente de IA. Si se omite, el de demostración (como sin GEMINI_API_KEY); los tests inyectan uno falso.
+  ai?: AiClient;
+  // Llamadas a la IA por usuario cada 15 min (20 si se omite); las pruebas lo suben.
+  aiRateLimit?: number;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
 export const systemClock = (): Date => new Date();
-export type ResolvedDeps = AppDeps & { now: () => Date };
+export type ResolvedDeps = AppDeps & { now: () => Date; ai: AiClient; aiLimiter: RequestHandler };
 
 // La app se crea aparte de index.ts para poder probarla sin abrir un puerto
 // y con una base de datos en memoria.
 export function createApp(appDeps: AppDeps) {
-  const deps: ResolvedDeps = { ...appDeps, now: appDeps.now ?? systemClock };
+  const deps: ResolvedDeps = {
+    ...appDeps,
+    now: appDeps.now ?? systemClock,
+    ai: appDeps.ai ?? createMockAiClient(),
+    // Una sola instancia: todas las rutas de IA cuentan contra el mismo límite.
+    aiLimiter: aiRateLimiter(appDeps.aiRateLimit ?? AI_RATE_LIMIT_DEFAULT),
+  };
   const app = express();
 
   app.use(helmet());
@@ -46,6 +60,7 @@ export function createApp(appDeps: AppDeps) {
   // groupsRouter no tiene /:id/proposals: esas peticiones pasan de largo y las atiende este router.
   api.use('/groups', requireAuth(deps.jwtSecret), groupProposalsRouter(deps));
   api.use('/proposals', requireAuth(deps.jwtSecret), proposalsRouter(deps));
+  api.use('/ai', requireAuth(deps.jwtSecret), aiRouter(deps));
 
   app.use('/api', api);
   app.use(notFound);

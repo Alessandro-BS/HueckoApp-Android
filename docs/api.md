@@ -34,10 +34,11 @@ Todos los errores tienen la misma forma:
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`) |
-| 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB) |
-| 422 | La IA no pudo interpretar la imagen |
-| 429 | Demasiados intentos en `/auth` (20 cada 15 min por IP) |
+| 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
+| 429 | `TOO_MANY_REQUESTS`: demasiados intentos en `/auth` (20 cada 15 min por IP) o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
 | 500 | Error inesperado del servidor |
+| 502 | `AI_BAD_RESPONSE`: la IA respondió algo que no cumple el formato esperado |
+| 503 | `AI_UNAVAILABLE`: la IA no respondió (proveedor caído o más de 30 s) |
 
 ---
 
@@ -65,6 +66,7 @@ Resumen de las entidades:
 | `ProposalWithGroup` | `Proposal` + `groupName` |
 | `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
 | `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
+| `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
 
 ---
 
@@ -255,7 +257,15 @@ La «votación exprés». Solo quien la creó, y solo con el plan `CONFIRMADO` o
 
 ## Inteligencia artificial
 
-Toda llamada a la IA pasa por el backend: la API key **nunca** va en la app.
+Toda llamada a la IA pasa por el backend (Google Gemini, modelo `GEMINI_MODEL`): la API key **nunca** va en la app. Reglas comunes:
+- Todas las rutas exigen token. Las que llaman a la IA comparten un límite de **20 llamadas cada 15 min por usuario** (`429 TOO_MANY_REQUESTS`); `GET /ai/status` no cuenta.
+- La respuesta de la IA se valida siempre: si no cumple el formato → `502 AI_BAD_RESPONSE`; si el proveedor falla o tarda más de 30 s → `503 AI_UNAVAILABLE`. Nunca se devuelven datos inventados para tapar un fallo.
+- Si el modelo principal está saturado (503) o sin cuota (429), el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL`; `GEMINI_TIMEOUT_MS` (30 s) es el tope total de los dos intentos.
+- La IA **solo sugiere**: ninguna de estas rutas guarda nada. El usuario revisa el resultado y lo confirma con los endpoints de siempre.
+- **Modo demostración:** si el servidor no tiene `GEMINI_API_KEY`, las respuestas son datos de ejemplo fijos (validados igual).
+
+### `GET /ai/status`
+`200 AiStatus`: `{ "provider": "gemini" }` o `{ "provider": "mock" }` (modo demostración; la app lo avisa).
 
 ### `POST /ai/schedule-ocr`
 `multipart/form-data` con el campo `image` (JPG o PNG, máx. 5 MB).
@@ -265,9 +275,6 @@ Devuelve bloques **sin guardar**, para que el usuario los revise y los guarde co
                 "isRecurring": true, "dayOfWeek": 1, "date": null } ] }
 ```
 `200` · `422 AI_UNREADABLE` si la imagen no parece un horario.
-
-### Otras funciones de IA (por definir)
-Ayuda en votaciones y demás funciones: se agregan aquí cuando el equipo las defina, con el mismo formato.
 
 ---
 

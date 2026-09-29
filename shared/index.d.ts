@@ -145,3 +145,10 @@ export type Dashboard = {
   pendingVotes: ProposalWithGroup[];
   expressAlert: ExpressAlert | null;
 };
+
+// ---- Inteligencia artificial (docs/api.md, «Inteligencia artificial») ----
+
+// 'mock' = el servidor no tiene GEMINI_API_KEY y responde con datos de demostración.
+export type AiProvider = 'gemini' | 'mock';
+
+export type AiStatus = { provider: AiProvider };
