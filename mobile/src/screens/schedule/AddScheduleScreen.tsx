@@ -1,14 +1,14 @@
 import type { BlockType } from '@hueckoapp/shared';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View, type TextInput } from 'react-native';
 
 import { createTimeBlock } from '../../api/schedule';
-import { ChoiceChip, ErrorBanner, PrimaryButton, TextField } from '../../components';
+import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, TextField } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
 import { today } from '../../utils/clock';
-import { dayLong, dayShort, formatDateLabel, upcomingDates, WEEK_DAYS } from '../../utils/days';
+import { dayLong, dayShort, parseDateKey, toDateKey, WEEK_DAYS } from '../../utils/days';
 import { endTimeHint, isValidRange, startTimeHint } from '../../utils/time';
 import { showToast } from '../../utils/toast';
 
@@ -18,7 +18,6 @@ const BLOCK_TYPES: { value: BlockType; label: string }[] = [
   { value: 'LIBRE', label: 'Libre' },
   { value: 'PUNTUAL', label: 'Puntual' },
 ];
-const PUNCTUAL_DAYS_AHEAD = 14;
 
 function FieldLabel({ children }: { children: string }) {
   return <Text style={[typography.labelMedium, { color: colors.onSurfaceVariant }]}>{children}</Text>;
@@ -26,11 +25,12 @@ function FieldLabel({ children }: { children: string }) {
 
 export function AddScheduleScreen({ navigation, route }: AppStackScreen<'AddSchedule'>) {
   const [now] = useState(today);
-  const dates = useMemo(() => upcomingDates(now, PUNCTUAL_DAYS_AHEAD), [now]);
   const [label, setLabel] = useState('');
   const [isRecurring, setIsRecurring] = useState(true);
   const [dayOfWeek, setDayOfWeek] = useState(route.params?.initialDay ?? 1);
-  const [date, setDate] = useState(dates[0]);
+  const [date, setDate] = useState(() => toDateKey(now));
+  // Un puntual no puede caer antes de hoy.
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const [type, setType] = useState<BlockType>('CLASE');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('09:00');
@@ -104,14 +104,13 @@ export function AddScheduleScreen({ navigation, route }: AppStackScreen<'AddSche
             </View>
           </View>
         ) : (
-          <View style={styles.section}>
-            <FieldLabel>Fecha</FieldLabel>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-              {dates.map((key) => (
-                <ChoiceChip key={key} label={formatDateLabel(key)} selected={date === key} onPress={() => setDate(key)} />
-              ))}
-            </ScrollView>
-          </View>
+          <DateTimeField
+            label="Fecha"
+            mode="date"
+            value={parseDateKey(date)}
+            minimumDate={startOfToday}
+            onChange={(value) => setDate(toDateKey(value))}
+          />
         )}
 
         <View style={styles.section}>

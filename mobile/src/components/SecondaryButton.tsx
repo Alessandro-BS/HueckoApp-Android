@@ -10,12 +10,20 @@ type Props = {
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
   color?: string;
+  disabled?: boolean;
 };
 
-export function SecondaryButton({ title, onPress, icon, style, color }: Props) {
-  const tint = color ?? colors.primary;
+export function SecondaryButton({ title, onPress, icon, style, color, disabled = false }: Props) {
+  const tint = disabled ? colors.disabledContent : (color ?? colors.primary);
+  const border = disabled ? colors.disabledContainer : (color ?? colors.outline);
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.button, { borderColor: color ?? colors.outline }, style]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.button, { borderColor: border }, style]}
+    >
       <View style={styles.row}>
         {icon ? (
           <>

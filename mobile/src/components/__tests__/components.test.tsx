@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import { EmptyState, PrimaryButton, TextField } from '..';
+import { BottomSheet, DaySelector, EmptyState, PrimaryButton, ProposalStateBadge, SecondaryButton, TextField } from '..';
 
 describe('PrimaryButton', () => {
   it('llama a onPress', async () => {
@@ -49,5 +49,57 @@ describe('TextField con pista', () => {
     );
     expect(screen.queryByText('Inicio')).toBeNull();
     expect(screen.getByText('Formato HH:mm')).toBeTruthy();
+  });
+});
+
+describe('SecondaryButton', () => {
+  it('responde si está habilitado y no si está deshabilitado', async () => {
+    const onPress = jest.fn();
+    await render(<SecondaryButton title="Añadir franja" onPress={onPress} />);
+    await fireEvent.press(screen.getByText('Añadir franja'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+    await render(<SecondaryButton title="Añadir otra" onPress={onPress} disabled />);
+    await fireEvent.press(screen.getByText('Añadir otra'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ProposalStateBadge', () => {
+  it('pinta el estado con tildes', async () => {
+    await render(<ProposalStateBadge state="PROPUESTO" />);
+    expect(screen.getByText('En votación')).toBeTruthy();
+  });
+});
+
+describe('DaySelector', () => {
+  it('con subtítulo vacío no deja «, » en la etiqueta de accesibilidad', async () => {
+    await render(<DaySelector selected={1} onSelect={() => {}} captionFor={(iso) => (iso === 2 ? '3 bloques' : '')} />);
+    expect(screen.getByLabelText('Lunes')).toBeTruthy();
+    expect(screen.getByLabelText('Martes, 3 bloques')).toBeTruthy();
+    expect(screen.queryByLabelText('Lunes, ')).toBeNull();
+  });
+});
+
+describe('BottomSheet', () => {
+  // La hoja lleva accessibilityViewIsModal (iOS oculta lo de fuera); en Android TalkBack sí llega al fondo,
+  // así que se busca incluyendo los elementos ocultos.
+  it('el fondo es un botón «Cerrar» que cierra la hoja', async () => {
+    const onDismiss = jest.fn();
+    await render(<BottomSheet title="Agregar franja" onDismiss={onDismiss}>{null}</BottomSheet>);
+    const backdrop = screen.getByLabelText('Cerrar', { includeHiddenElements: true });
+    expect(backdrop.props.accessibilityRole).toBe('button');
+    expect(backdrop.props.accessibilityState).toEqual({ disabled: false });
+    await fireEvent.press(backdrop);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('mientras no se puede cerrar, el fondo se anuncia deshabilitado y no cierra', async () => {
+    const onDismiss = jest.fn();
+    await render(<BottomSheet title="Agregar franja" onDismiss={onDismiss} dismissable={false}>{null}</BottomSheet>);
+    const backdrop = screen.getByLabelText('Cerrar', { includeHiddenElements: true });
+    expect(backdrop.props.accessibilityRole).toBe('button');
+    expect(backdrop.props.accessibilityState).toEqual({ disabled: true });
+    await fireEvent.press(backdrop);
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 });

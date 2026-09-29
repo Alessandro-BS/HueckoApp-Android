@@ -10,8 +10,8 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
 import { GroupListScreen } from '../screens/groups/GroupListScreen';
-import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MyScheduleScreen } from '../screens/schedule/MyScheduleScreen';
 import { categoryColor, colors, typography } from '../theme';
@@ -60,9 +60,7 @@ export function AppDrawer() {
         sceneStyle: { backgroundColor: colors.surface },
       }}
     >
-      <Drawer.Screen name="Dashboard" options={{ title: 'Inicio', drawerIcon: icon('dashboard') }}>
-        {() => <PlaceholderScreen title="Inicio" icon="dashboard" />}
-      </Drawer.Screen>
+      <Drawer.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Inicio', drawerIcon: icon('dashboard') }} />
       <Drawer.Screen name="Schedule" component={MyScheduleScreen} options={{ title: 'Horario', drawerIcon: icon('calendar-month') }} />
       <Drawer.Screen name="Groups" component={GroupListScreen} options={{ title: 'Grupos', drawerIcon: icon('group') }} />
       <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil', drawerIcon: icon('person-outline') }} />

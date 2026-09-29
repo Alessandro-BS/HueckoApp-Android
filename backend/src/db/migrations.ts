@@ -43,4 +43,58 @@ export const migrations: string[] = [
      PRIMARY KEY (group_id, user_id)
    );
    CREATE INDEX group_members_user_idx ON group_members (user_id);`,
+  // 3 — Fase 3: propuestas de plan, sus franjas, votos (uno por persona y propuesta) e incidencias.
+  // chosen_window_id no lleva FK para no crear un ciclo proposals ↔ proposal_windows: lo garantiza el código.
+  `CREATE TABLE proposals (
+     id               TEXT PRIMARY KEY,
+     group_id         TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+     title            TEXT NOT NULL,
+     location_name    TEXT,
+     latitude         REAL CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
+     longitude        REAL CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180),
+     created_by       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     voting_deadline  TEXT NOT NULL,
+     state            TEXT NOT NULL DEFAULT 'PROPUESTO'
+                      CHECK (state IN ('PROPUESTO', 'CONFIRMADO', 'CANCELADO', 'EN_RECOORDINACION')),
+     chosen_window_id TEXT,
+     scheduled_at     TEXT,
+     scheduled_date   TEXT,
+     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+     CHECK ((latitude IS NULL) = (longitude IS NULL)),
+     CHECK (location_name IS NOT NULL OR latitude IS NULL)
+   );
+   CREATE INDEX proposals_group_idx ON proposals (group_id, created_at);
+   CREATE TABLE proposal_windows (
+     id                      TEXT PRIMARY KEY,
+     proposal_id             TEXT NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+     day_of_week             INTEGER NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
+     start_time              TEXT NOT NULL,
+     end_time                TEXT NOT NULL,
+     availability_percentage INTEGER NOT NULL CHECK (availability_percentage BETWEEN 0 AND 100),
+     CHECK (start_time < end_time),
+     UNIQUE (proposal_id, day_of_week, start_time, end_time),
+     UNIQUE (id, proposal_id)
+   );
+   CREATE TABLE votes (
+     proposal_id TEXT NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     window_id   TEXT NOT NULL,
+     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+     PRIMARY KEY (proposal_id, user_id),
+     FOREIGN KEY (window_id, proposal_id) REFERENCES proposal_windows (id, proposal_id) ON DELETE CASCADE
+   );
+   CREATE INDEX votes_window_idx ON votes (window_id);
+   CREATE TABLE incidences (
+     id            TEXT PRIMARY KEY,
+     proposal_id   TEXT NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+     user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     type          TEXT NOT NULL CHECK (type IN ('FALTA', 'TARDANZA', 'IMPREVISTO')),
+     reason        TEXT NOT NULL,
+     delay_minutes INTEGER,
+     criticality   TEXT NOT NULL CHECK (criticality IN ('BAJA', 'MEDIA', 'ALTA')),
+     resolved      INTEGER NOT NULL DEFAULT 0 CHECK (resolved IN (0, 1)),
+     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+     CHECK ((type = 'TARDANZA' AND COALESCE(delay_minutes, 0) > 0) OR (type <> 'TARDANZA' AND delay_minutes IS NULL))
+   );
+   CREATE INDEX incidences_proposal_idx ON incidences (proposal_id);`,
 ];

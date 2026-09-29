@@ -1,6 +1,6 @@
-// Semilla de desarrollo (domain spec §3.2): usuarios, grupos y bloques de ejemplo.
+// Semilla de desarrollo (domain spec §3.2): usuarios, grupos, bloques y dos propuestas de ejemplo.
 // Uso: npm run seed -w backend. Idempotente: repetirla no duplica nada.
-// Nunca se ejecuta en los tests ni en producción. Las propuestas de la semilla llegan en la Fase 3.
+// Nunca se ejecuta en los tests ni en producción.
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -9,6 +9,8 @@ import type { BlockType } from '@hueckoapp/shared';
 
 import { hashPassword } from '../auth/passwords';
 import { env } from '../config/env';
+import { proposalsRepository } from '../proposals/proposals.repository';
+import { criticalityFor, scheduleFor } from '../proposals/rules';
 import { openDatabase, type Db } from './database';
 import { withTransaction } from './transaction';
 
@@ -39,8 +41,75 @@ const BLOCKS: { user: UserKey; label: string; type: BlockType; dayOfWeek: number
   { user: 'ana', label: 'Laboratorio', type: 'CLASE', dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
 ];
 
+const HOUR = 3_600_000;
+
+// prop_1 (confirmada, con el imprevisto de Ana → aviso en Inicio) y prop_2 (en votación, con el voto de Ana).
+// Los porcentajes son los fijos de la semilla Kotlin (w_23 figura con 50 % aunque el cruce dé 100 %, B15),
+// para que Inicio muestre los valores de domain spec §2.2 («Horas coincidentes» = 6).
+function seedProposals(db: Db, ids: Record<UserKey, string>, seedTime: Date): number {
+  const { id: groupId } = db.prepare("SELECT id FROM groups WHERE invite_code = 'PROY2026'").get() as { id: string };
+  const proposals = proposalsRepository(db);
+  const exists = (title: string) => db.prepare('SELECT 1 FROM proposals WHERE group_id = ? AND title = ?').get(groupId, title) !== undefined;
+  const ago = (hours: number) => new Date(seedTime.getTime() - hours * HOUR).toISOString();
+  let created = 0;
+
+  if (!exists('Reunión de avance del proyecto')) {
+    const id = proposals.create({
+      groupId,
+      createdBy: ids.test,
+      title: 'Reunión de avance del proyecto',
+      location: { name: 'Biblioteca central', latitude: null, longitude: null },
+      votingDeadline: ago(24),
+      windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
+      createdAt: ago(48),
+    });
+    const [w1] = proposals.findById(id, ids.test)!.windows;
+    proposals.vote(id, ids.test, w1.id, seedTime.toISOString());
+    proposals.vote(id, ids.ana, w1.id, seedTime.toISOString());
+    const { scheduledAt, scheduledDate } = scheduleFor(w1.dayOfWeek, w1.startTime, seedTime);
+    proposals.confirm(id, w1.id, scheduledAt, scheduledDate);
+    proposals.reportIncidence(
+      id,
+      {
+        userId: ids.ana,
+        type: 'IMPREVISTO',
+        reason: 'Cruce con un examen de laboratorio a última hora.',
+        delayMinutes: null,
+        criticality: criticalityFor('IMPREVISTO', false, null),
+        createdAt: seedTime.toISOString(),
+      },
+      false,
+    );
+    created++;
+  }
+
+  if (!exists('Repaso antes de la entrega')) {
+    // «Cierra hoy a las 20:00»; si ya pasó, mañana a esta hora.
+    const today20 = new Date(seedTime.getFullYear(), seedTime.getMonth(), seedTime.getDate(), 20, 0);
+    const deadline = today20.getTime() > seedTime.getTime() ? today20 : new Date(seedTime.getTime() + 24 * HOUR);
+    const id = proposals.create({
+      groupId,
+      createdBy: ids.ana,
+      title: 'Repaso antes de la entrega',
+      location: { name: 'Google Meet', latitude: null, longitude: null },
+      votingDeadline: deadline.toISOString(),
+      windows: [
+        { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
+        { dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 },
+        { dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 50 },
+      ],
+      createdAt: ago(1),
+    });
+    const w21 = proposals.findById(id, ids.ana)!.windows.find((w) => w.dayOfWeek === 2)!;
+    proposals.vote(id, ids.ana, w21.id, seedTime.toISOString());
+    created++;
+  }
+
+  return created;
+}
+
 function seed(db: Db, passwordHash: string) {
-  const created = { users: 0, groups: 0, blocks: 0 };
+  const created = { users: 0, groups: 0, blocks: 0, proposals: 0 };
   const ids = {} as Record<UserKey, string>;
 
   for (const u of USERS) {
@@ -78,6 +147,8 @@ function seed(db: Db, passwordHash: string) {
     created.blocks++;
   }
 
+  created.proposals = seedProposals(db, ids, new Date());
+
   return created;
 }
 
@@ -89,7 +160,7 @@ async function main() {
   try {
     const created = withTransaction(db, () => seed(db, passwordHash));
     console.log(
-      `Semilla aplicada en ${env.DATABASE_PATH}: ${created.users} usuarios, ${created.groups} grupos y ${created.blocks} bloques nuevos.`,
+      `Semilla aplicada en ${env.DATABASE_PATH}: ${created.users} usuarios, ${created.groups} grupos, ${created.blocks} bloques y ${created.proposals} propuestas nuevas.`,
     );
     console.log(`Cuentas demo: test@test.com, ana@test.com y carlos@test.com — contraseña «${DEMO_PASSWORD}».`);
   } finally {

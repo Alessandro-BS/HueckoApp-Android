@@ -1,4 +1,4 @@
-import type { Group, User } from '@hueckoapp/shared';
+import type { Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 
@@ -9,15 +9,34 @@ export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-export function makeTestApp(options?: { authRateLimit?: number }): { app: Express; db: Db } {
+// «Ahora» fijo de los tests de propuestas: martes 29 de septiembre de 2026, 10:00, hora local.
+export const NOW = new Date(2026, 8, 29, 10, 0);
+// Plazo de votación válido respecto a NOW (sábado 3 de octubre, 20:00).
+export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
+// Un minuto después del plazo: la votación ya cerró.
+export const AFTER_DEADLINE = new Date(2026, 9, 3, 20, 1);
+
+export function makeTestApp(options?: { authRateLimit?: number; now?: () => Date }): { app: Express; db: Db } {
   const db = openDatabase(':memory:');
   const app = createApp({
     db,
     jwtSecret: TEST_SECRET,
     jwtExpiresIn: '1h',
     authRateLimit: options?.authRateLimit ?? 10_000,
+    now: options?.now,
   });
   return { app, db };
+}
+
+// Reloj que el test mueve a mano: makeTestApp({ now: clock.now }) y después clock.set(...).
+export function makeClock(start: Date) {
+  let current = start;
+  return {
+    now: () => current,
+    set: (date: Date) => {
+      current = date;
+    },
+  };
 }
 
 let counter = 0;
@@ -52,3 +71,46 @@ export async function joinGroup(app: Express, token: string, inviteCode: string)
   if (res.status !== 200) throw new Error(`unirse falló: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;
 }
+
+export async function addWeeklyBlock(app: Express, token: string, dayOfWeek: number, startTime: string, endTime: string): Promise<void> {
+  const res = await request(app)
+    .post('/api/me/time-blocks')
+    .set(bearer(token))
+    .send({ label: 'Bloque', type: 'CLASE', startTime, endTime, isRecurring: true, dayOfWeek, date: null });
+  if (res.status !== 201) throw new Error(`crear bloque falló: ${res.status} ${JSON.stringify(res.body)}`);
+}
+
+// Escenario de la semilla (domain spec §3.1) montado por la API: «Usuario de Prueba» (OWNER) y Ana
+// en un grupo, cada uno con sus bloques. Con él, el cruce del grupo es exactamente el ejemplo E3.
+export async function setupSeedGroup(app: Express) {
+  const yo = await registerUser(app, { name: 'Usuario de Prueba' });
+  const ana = await registerUser(app, { name: 'Ana' });
+  const group = await createGroup(app, yo.token);
+  await joinGroup(app, ana.token, group.inviteCode);
+  await addWeeklyBlock(app, yo.token, 1, '08:00', '10:00');
+  await addWeeklyBlock(app, yo.token, 3, '14:00', '16:00');
+  await addWeeklyBlock(app, ana.token, 1, '08:00', '12:00');
+  await addWeeklyBlock(app, ana.token, 3, '15:00', '19:00');
+  await addWeeklyBlock(app, ana.token, 5, '09:00', '11:00');
+  return { yo, ana, group };
+}
+
+export async function createProposal(
+  app: Express,
+  token: string,
+  groupId: string,
+  body: Partial<ProposalInput> & { votingDeadline: string },
+): Promise<Proposal> {
+  const res = await request(app).post(`/api/groups/${groupId}/proposals`).set(bearer(token)).send({ title: 'Plan', ...body });
+  if (res.status !== 201) throw new Error(`crear propuesta falló: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body;
+}
+
+// Franja de una propuesta por su día de la semana.
+export const windowOf = (p: Proposal, dayOfWeek: number) => p.windows.find((w) => w.dayOfWeek === dayOfWeek)!;
+
+export const voteFor = (app: Express, proposalId: string, windowId: string, token: string) =>
+  request(app).put(`/api/proposals/${proposalId}/vote`).set(bearer(token)).send({ windowId });
+
+export const unvoteFor = (app: Express, proposalId: string, token: string) =>
+  request(app).delete(`/api/proposals/${proposalId}/vote`).set(bearer(token));

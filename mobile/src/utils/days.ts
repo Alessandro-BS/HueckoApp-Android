@@ -27,10 +27,6 @@ const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.
 /** Las 7 fechas (lunes a domingo) de la semana que contiene `today`. */
 export const weekDates = (today: Date) => WEEK_DAYS.map((iso) => toDateKey(addDays(today, iso - isoDayOf(today))));
 
-/** `count` fechas seguidas empezando hoy (para elegir el día de un bloque puntual). */
-export const upcomingDates = (today: Date, count: number) =>
-  Array.from({ length: count }, (_, i) => toDateKey(addDays(today, i)));
-
 /** "Vie 2 oct" */
 export const formatDateLabel = (key: string) => {
   const date = parseDateKey(key);
@@ -61,3 +57,7 @@ export function laterPunctualBlocks(blocks: readonly TimeBlock[], today: Date): 
     .filter((b) => !b.isRecurring && b.date !== null && b.date > sunday)
     .sort((a, b) => (a.date! < b.date! ? -1 : a.date! > b.date! ? 1 : byStartTime(a, b)));
 }
+
+/** «Vie 2 oct, 20:00» en hora local (plazos de votación). */
+export const formatDateTime = (date: Date) =>
+  `${formatDateLabel(toDateKey(date))}, ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;

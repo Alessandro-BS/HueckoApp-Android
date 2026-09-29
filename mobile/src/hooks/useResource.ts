@@ -8,6 +8,8 @@ export type Resource<T> = {
   loaded: boolean;
   /** Mensaje listo para mostrar si la última carga falló; null si fue bien. */
   error: string | null;
+  /** Cuántas cargas han fallado: sube en cada fallo, aunque el mensaje sea el mismo que el anterior. */
+  failedLoads: number;
   /** Primera carga, todavía sin datos. */
   loading: boolean;
   /** Recarga con datos ya en pantalla (deslizar para actualizar, volver a la pantalla). */
@@ -33,6 +35,7 @@ export type Resource<T> = {
 export function useResource<T>(load: () => Promise<T>): Resource<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [failedLoads, setFailedLoads] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentLoad, setCurrentLoad] = useState(() => load);
@@ -72,6 +75,7 @@ export function useResource<T>(load: () => Promise<T>): Resource<T> {
     } catch (e) {
       if (request !== lastRequest.current) return;
       setError(errorMessage(e));
+      setFailedLoads((n) => n + 1);
     } finally {
       if (request === lastRequest.current) {
         setLoading(false);
@@ -103,5 +107,5 @@ export function useResource<T>(load: () => Promise<T>): Resource<T> {
     [load],
   );
 
-  return { data, loaded: data !== undefined, error, loading, refreshing, reload, mutate };
+  return { data, loaded: data !== undefined, error, failedLoads, loading, refreshing, reload, mutate };
 }

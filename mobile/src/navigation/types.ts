@@ -16,6 +16,9 @@ export type AppStackParamList = {
   Main: NavigatorScreenParams<DrawerParamList>;
   AddSchedule: { initialDay?: number } | undefined;
   GroupDetail: { groupId: string; name: string };
+  CreateProposal: { groupId: string; groupName: string };
+  Voting: { proposalId: string };
+  PlanDetail: { proposalId: string };
 };
 
 // Pestañas del detalle de grupo.

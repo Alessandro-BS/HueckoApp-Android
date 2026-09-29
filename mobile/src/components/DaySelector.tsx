@@ -9,18 +9,21 @@ type Props = { selected: number; onSelect: (iso: number) => void; captionFor: (i
 export function DaySelector({ selected, onSelect, captionFor }: Props) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-      {WEEK_DAYS.map((iso) => (
-        <ChoiceChip
-          key={iso}
-          variant="title"
-          label={dayShort(iso)}
-          caption={captionFor(iso)}
-          accessibilityLabel={`${dayLong(iso)}, ${captionFor(iso)}`}
-          selected={iso === selected}
-          onPress={() => onSelect(iso)}
-          style={styles.chip}
-        />
-      ))}
+      {WEEK_DAYS.map((iso) => {
+        const caption = captionFor(iso);
+        return (
+          <ChoiceChip
+            key={iso}
+            variant="title"
+            label={dayShort(iso)}
+            caption={caption || undefined}
+            accessibilityLabel={caption ? `${dayLong(iso)}, ${caption}` : dayLong(iso)}
+            selected={iso === selected}
+            onPress={() => onSelect(iso)}
+            style={styles.chip}
+          />
+        );
+      })}
     </ScrollView>
   );
 }

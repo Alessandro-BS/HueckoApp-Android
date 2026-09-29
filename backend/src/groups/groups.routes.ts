@@ -6,6 +6,7 @@ import { getUserId } from '../auth/require-auth';
 import { groupAvailability } from '../availability/group-availability';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
+import { loadGroupForMember } from './group-access';
 import { groupsRepository } from './groups.repository';
 import { createGroupSchema, joinGroupSchema, updateGroupSchema, updateMemberSchema } from './groups.schemas';
 
@@ -16,13 +17,7 @@ export function groupsRouter({ db }: AppDeps) {
   const blocks = timeBlocksRepository(db);
 
   // 404 si el grupo no existe; 403 si existe pero no soy miembro.
-  const loadForMember = (groupId: string, userId: string) => {
-    const group = groups.findById(groupId);
-    if (!group) throw new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
-    const me = group.members.find((m) => m.id === userId);
-    if (!me) throw new ApiError(403, 'NOT_A_MEMBER', 'No perteneces a este grupo.');
-    return { group, me };
-  };
+  const loadForMember = (groupId: string, userId: string) => loadGroupForMember(groups, groupId, userId);
 
   const loadForOwner = (groupId: string, userId: string) => {
     const loaded = loadForMember(groupId, userId);

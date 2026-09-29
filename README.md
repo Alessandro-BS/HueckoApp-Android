@@ -35,6 +35,8 @@ cp backend/.env.example backend/.env   # completa JWT_SECRET (el archivo explica
 npm run backend                        # http://localhost:3000/api/health
 ```
 
+> **Zona horaria:** `TZ` en `backend/.env` (por defecto `America/Lima`) es la zona en la que el servidor calcula la fecha y hora de los planes confirmados (`scheduledAt` y `scheduledDate`). En el despliegue hay que fijarla siempre: sin ella el servidor usa la suya (normalmente UTC) y los planes caerían en otra fecha u hora.
+
 ### 2b. Datos de ejemplo (opcional)
 ```bash
 npm run seed -w backend   # usuarios, grupos y horarios de prueba; se puede repetir sin duplicar nada
@@ -42,8 +44,8 @@ npm run seed -w backend   # usuarios, grupos y horarios de prueba; se puede repe
 
 | Correo | Contraseña | Qué tiene |
 |---|---|---|
-| `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) junto con Ana. Clases el lunes 08–10 y el miércoles 14–16 |
-| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Bloques el lunes, el miércoles y el viernes |
+| `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) junto con Ana. Clases el lunes 08–10 y el miércoles 14–16. Creó «Reunión de avance del proyecto» (confirmada, con un imprevisto de Ana: sale el aviso en Inicio) |
+| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Bloques el lunes, el miércoles y el viernes. Propuso «Repaso antes de la entrega» (en votación, con su voto) |
 | `carlos@test.com` | `password123` | Único miembro de «Amigos de la Uni»: prueba «Unirme» con el código `HUECKO123` |
 
 ### 3. App móvil (en otra terminal)
@@ -68,9 +70,9 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 | Tema | Dónde |
 |---|---|
-| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useRefreshOnFocus`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`) |
+| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`) |
 | **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend |
-| **Localización** | `expo-location` para la ubicación de los planes |
+| **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto del permiso en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
 | **Navegación** | `native-stack` (flujos), `drawer` (menú principal) y `material-top-tabs` (pestañas del grupo) |
 
@@ -79,9 +81,9 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 - [x] **Fase 0** — Monorepo, base de `mobile/` y `backend/`, contrato de la API
 - [x] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
 - [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
-- [ ] **Fase 3** — Propuestas, votación y ubicación
+- [x] **Fase 3** — Propuestas, votación y ubicación
 - [ ] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
-- [ ] **Fase 5** — Tests, despliegue del backend y APK con EAS Build
+- [ ] **Fase 5** — Tests, despliegue del backend (con `TZ` fijada, ver «Zona horaria») y APK con EAS Build
 
 ## Flujo de trabajo (git flow)
 

@@ -74,13 +74,17 @@ it('guarda un bloque recurrente del día recibido, con el tipo elegido, y vuelve
   expect(showToast).toHaveBeenCalledWith('Bloque guardado.');
 });
 
-it('un bloque puntual lleva fecha (no día) y tipo PUNTUAL por defecto', async () => {
+it('un bloque puntual lleva fecha (no día), elegida con el selector nativo, y tipo PUNTUAL por defecto', async () => {
   mocked.createTimeBlock.mockResolvedValue({} as any);
   await renderScreen();
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), 'Dentista');
   await fireEvent.press(screen.getByText('Puntual (Única vez)'));
   expect(screen.queryByText('Día de la semana')).toBeNull();
-  await fireEvent.press(screen.getByText('Vie 2 oct'));
+  expect(screen.getByText('Mar 29 sep')).toBeTruthy(); // hoy, por defecto
+  await fireEvent.press(screen.getByLabelText('Fecha'));
+  expect(screen.getByTestId('datetimepicker-date').props.minimumDate).toEqual(new Date(2026, 8, 29));
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'change', { type: 'set' }, new Date(2026, 9, 2));
+  expect(screen.getByText('Vie 2 oct')).toBeTruthy();
   await fireEvent.press(screen.getByText('Guardar bloque'));
 
   await waitFor(() => expect(mocked.createTimeBlock).toHaveBeenCalled());

@@ -9,3 +9,21 @@ jest.mock('expo-secure-store', () => {
   };
 });
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(async () => true) }));
+
+// Selector nativo de fecha/hora: un View con testID `datetimepicker-<modo>` que conserva sus props,
+// para que los tests disparen `onChange` con fireEvent(el, 'change', { type: 'set' }, fecha).
+jest.mock('@react-native-community/datetimepicker', () => {
+  const { createElement } = require('react');
+  const { View } = require('react-native');
+  const MockDateTimePicker = (props: { mode?: string }) =>
+    createElement(View, { ...props, testID: `datetimepicker-${props.mode ?? 'date'}` });
+  return { __esModule: true, default: MockDateTimePicker };
+});
+// Ubicación: cada test fija lo que devuelve (jest.mocked(ExpoLocation).….mockResolvedValue(...)).
+jest.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: jest.fn(),
+  hasServicesEnabledAsync: jest.fn(),
+  getCurrentPositionAsync: jest.fn(),
+  reverseGeocodeAsync: jest.fn(),
+  Accuracy: { Balanced: 3 },
+}));
