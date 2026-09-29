@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
     "@react-navigation/drawer": "^7.14.2",
     "@react-navigation/material-top-tabs": "^7.7.2",
     "@react-navigation/native": "^7.4.1",
     "@react-navigation/native-stack": "^7.19.2",
     "axios": "^1.20.0",
     "expo": "~57.0.26",
+    "expo-asset": "~57.0.18",
+    "expo-font": "~57.0.4",
     "expo-location": "~57.0.20",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
@@ -22,16 +25,27 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
+    "@hueckoapp/shared": "*",
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "29.5.14",
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3",
-    "@hueckoapp/shared": "*"
+    "jest": "~29.7.0",
+    "jest-expo": "~57.0.5",
+    "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
   },
-  "private": true
+  "private": true,
+  "jest": {
+    "preset": "jest-expo",
+    "setupFiles": [
+      "./jest.setup.ts"
+    ]
+  }
 }

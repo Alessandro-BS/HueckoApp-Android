@@ -9,7 +9,10 @@
   "scripts": {
     "backend": "npm run dev -w backend",
     "mobile": "npm run start -w mobile",
-    "test": "npm test -w backend",
+    "test": "npm test -w backend && npm test -w mobile",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w mobile"
+  },
+  "devDependencies": {
+    "react": "19.2.3"
   }
 }
