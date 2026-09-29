@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
+import type { AuthResponse } from '@hueckoapp/shared';
 import type { AppDeps } from '../app';
 import { ApiError } from '../middleware/errors';
 import { usersRepository } from '../users/users.repository';
@@ -9,14 +10,14 @@ import { DUMMY_HASH, hashPassword, verifyPassword } from './passwords';
 import { getUserId, requireAuth } from './require-auth';
 import { signToken } from './tokens';
 
-export function authRouter({ db, jwtSecret, jwtExpiresIn }: AppDeps) {
+export function authRouter({ db, jwtSecret, jwtExpiresIn, authRateLimit = 20 }: AppDeps) {
   const router = Router();
   const users = usersRepository(db);
 
   // Frena ataques de fuerza bruta: 20 intentos cada 15 minutos por IP.
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 20,
+    limit: authRateLimit,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     handler: (_req, _res, next) =>
@@ -29,7 +30,8 @@ export function authRouter({ db, jwtSecret, jwtExpiresIn }: AppDeps) {
       throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
     }
     const user = users.create({ name, email, passwordHash: await hashPassword(password) });
-    res.status(201).json({ token: signToken(user.id, jwtSecret, jwtExpiresIn), user });
+    const body: AuthResponse = { token: signToken(user.id, jwtSecret, jwtExpiresIn), user };
+    res.status(201).json(body);
   });
 
   router.post('/login', limiter, async (req, res) => {
@@ -40,7 +42,8 @@ export function authRouter({ db, jwtSecret, jwtExpiresIn }: AppDeps) {
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Correo o contraseña incorrectos.');
     }
     const { passwordHash: _omit, ...user } = found;
-    res.json({ token: signToken(user.id, jwtSecret, jwtExpiresIn), user });
+    const body: AuthResponse = { token: signToken(user.id, jwtSecret, jwtExpiresIn), user };
+    res.json(body);
   });
 
   router.get('/me', requireAuth(jwtSecret), (_req, res) => {

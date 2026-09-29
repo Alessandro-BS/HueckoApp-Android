@@ -2,6 +2,9 @@
   "name": "hueckoapp-backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
   "description": "API REST de HueckoApp (Express + TypeScript)",
   "main": "dist/index.js",
   "scripts": {

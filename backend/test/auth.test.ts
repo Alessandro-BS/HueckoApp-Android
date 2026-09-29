@@ -90,3 +90,17 @@ describe('GET /api/auth/me', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('límite de intentos en /api/auth', () => {
+  it('el tercer login con límite 2 responde 429 TOO_MANY_REQUESTS', async () => {
+    const limited = makeTestApp({ authRateLimit: 2 }).app;
+    const attempt = () =>
+      request(limited).post('/api/auth/login').send({ email: 'ana@correo.com', password: 'contrasena-segura' });
+    await attempt();
+    await attempt();
+    const res = await attempt();
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('TOO_MANY_REQUESTS');
+    expect(res.body.error.message).toBe('Demasiados intentos. Espera unos minutos.');
+  });
+});

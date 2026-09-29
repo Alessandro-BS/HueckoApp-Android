@@ -1,6 +1,9 @@
 {
   "name": "hueckoapp",
   "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
   "workspaces": [
     "shared",
     "backend",

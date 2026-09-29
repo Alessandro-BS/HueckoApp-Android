@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { User } from '@hueckoapp/shared';
 
 import type { Db } from '../db/database';
+import { ApiError } from '../middleware/errors';
 
 type UserRow = { id: string; name: string; email: string; password_hash: string };
 
@@ -12,9 +13,17 @@ export function usersRepository(db: Db) {
   return {
     create(input: { name: string; email: string; passwordHash: string }): User {
       const id = randomUUID();
-      db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(
-        id, input.name, input.email, input.passwordHash,
-      );
+      try {
+        db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(
+          id, input.name, input.email, input.passwordHash,
+        );
+      } catch (e) {
+        // Dos registros simultáneos con el mismo correo pasan findByEmail; el UNIQUE los frena.
+        if (e instanceof Error && e.message.includes('UNIQUE constraint failed: users.email')) {
+          throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
+        }
+        throw e;
+      }
       return { id, name: input.name, email: input.email };
     },
     findByEmail(email: string): (User & { passwordHash: string }) | undefined {

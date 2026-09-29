@@ -39,8 +39,11 @@ api.interceptors.response.use(
       throw new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.');
     }
     const { status, data } = error.response;
-    // Un 401 con sesión abierta significa token vencido: cerrar sesión.
-    if (status === 401 && authToken) onUnauthorized?.();
+    // Un 401 con sesión abierta significa token vencido: cerrar sesión. Solo si la
+    // petición salió con el token actual; un 401 tardío de una sesión anterior se ignora.
+    if (status === 401 && authToken && error.config?.headers?.Authorization === `Bearer ${authToken}`) {
+      onUnauthorized?.();
+    }
     throw new ApiError(
       status,
       data?.error?.code ?? 'UNKNOWN',
@@ -50,5 +53,12 @@ api.interceptors.response.use(
   },
 );
 
-export const errorMessage = (e: unknown) =>
-  e instanceof ApiError ? e.message : 'Ocurrió un error inesperado.';
+export const errorMessage = (e: unknown) => {
+  if (!(e instanceof ApiError)) return 'Ocurrió un error inesperado.';
+  if (e.code === 'VALIDATION_ERROR' && Array.isArray(e.details) && e.details.length > 0) {
+    const first: unknown = e.details[0];
+    const message = (first as { message?: unknown } | null)?.message;
+    if (typeof message === 'string') return message;
+  }
+  return e.message;
+};

@@ -10,6 +10,8 @@ export type AppDeps = {
   db: Db;
   jwtSecret: string;
   jwtExpiresIn: string;
+  // Intentos por IP cada 15 min en /auth (20 si se omite); las pruebas lo suben.
+  authRateLimit?: number;
 };
 
 // La app se crea aparte de index.ts para poder probarla sin abrir un puerto

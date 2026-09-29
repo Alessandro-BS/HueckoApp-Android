@@ -1,8 +1,8 @@
-import type { User } from '@hueckoapp/shared';
+import type { AuthResponse, User } from '@hueckoapp/shared';
 
 import { api } from './client';
 
-export type AuthResponse = { token: string; user: User };
+export type { AuthResponse };
 
 export const loginRequest = async (email: string, password: string) =>
   (await api.post<AuthResponse>('/auth/login', { email, password })).data;

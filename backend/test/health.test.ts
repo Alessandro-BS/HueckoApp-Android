@@ -18,3 +18,27 @@ describe('API base', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('errores del cuerpo de la petición', () => {
+  const { app } = makeTestApp();
+
+  it('JSON malformado devuelve 400 INVALID_JSON', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'application/json')
+      .send('{mal');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { code: 'INVALID_JSON', message: 'El cuerpo de la petición no es JSON válido.', details: null },
+    });
+  });
+
+  it('un cuerpo demasiado grande devuelve 413 PAYLOAD_TOO_LARGE', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ email: 'a'.repeat(1_100_000) }));
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+});

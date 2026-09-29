@@ -29,10 +29,12 @@ Todos los errores tienen la misma forma:
 | HTTP | Cuándo |
 |---|---|
 | 400 | Datos inválidos (`details` trae los campos que fallaron) |
+| 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
 | 401 | Falta el token o expiró → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, votación cerrada, ya es miembro |
+| 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB) |
 | 422 | La IA no pudo interpretar la imagen |
 | 429 | Demasiados intentos en `/auth` (20 cada 15 min por IP) |
 | 500 | Error inesperado del servidor |

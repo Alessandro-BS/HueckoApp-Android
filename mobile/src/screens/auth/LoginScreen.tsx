@@ -22,6 +22,7 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
   const passwordRef = useRef<TextInput>(null);
 
   const submit = async () => {
+    if (loading) return;
     const eErr = validateEmail(email);
     const pErr = validatePassword(password);
     setEmailError(eErr);

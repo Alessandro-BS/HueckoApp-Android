@@ -3,6 +3,8 @@
 
 export type User = { id: string; name: string; email: string };
 
+export type AuthResponse = { token: string; user: User };
+
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';
 
 export type TimeBlock = {

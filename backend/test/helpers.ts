@@ -7,9 +7,14 @@ import { openDatabase, type Db } from '../src/db/database';
 
 export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
 
-export function makeTestApp(): { app: Express; db: Db } {
+export function makeTestApp(options?: { authRateLimit?: number }): { app: Express; db: Db } {
   const db = openDatabase(':memory:');
-  const app = createApp({ db, jwtSecret: TEST_SECRET, jwtExpiresIn: '1h' });
+  const app = createApp({
+    db,
+    jwtSecret: TEST_SECRET,
+    jwtExpiresIn: '1h',
+    authRateLimit: options?.authRateLimit ?? 10_000,
+  });
   return { app, db };
 }
 

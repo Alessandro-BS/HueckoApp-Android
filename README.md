@@ -18,7 +18,7 @@ El **contrato de la API** ([`docs/api.md`](docs/api.md)) es el acuerdo entre la 
 
 ## Requisitos
 
-- [Node.js](https://nodejs.org/) LTS (22 o superior) y npm
+- [Node.js](https://nodejs.org/) 22.13 o superior y npm
 - Git
 - **Expo Go** en tu celular, o un emulador de Android Studio
 
