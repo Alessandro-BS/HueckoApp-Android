@@ -1,37 +1,35 @@
+import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { colors } from './src/theme/colors';
+import { AuthProvider } from './src/context/AuthContext';
+import { RootNavigator } from './src/navigation/RootNavigator';
+import { colors } from './src/theme';
 
-// Pantalla provisional de la Fase 0. En la Fase 1 se reemplaza por la navegación
-// (stack de autenticación + drawer principal + tabs del grupo).
+const navigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.primary,
+    background: colors.surface,
+    card: colors.surface,
+    text: colors.onSurface,
+    border: colors.outlineVariant,
+  },
+};
+
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>HueckoApp</Text>
-      <Text style={styles.subtitle}>Coordinación de horarios entre amigos</Text>
-      <StatusBar style="dark" />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <NavigationContainer theme={navigationTheme}>
+            <RootNavigator />
+          </NavigationContainer>
+        </AuthProvider>
+        <StatusBar style="dark" />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  subtitle: {
-    marginTop: 8,
-    fontSize: 16,
-    color: colors.onSurfaceVariant,
-    textAlign: 'center',
-  },
-});

@@ -12,7 +12,7 @@ Este documento es el acuerdo entre `mobile/` y `backend/`. Si un endpoint cambia
 
 | Dato | Formato | Ejemplo |
 |---|---|---|
-| IDs | string (cuid) | `"clx9f2..."` |
+| IDs | string (UUID) | `"3f2b8c1e-5a4d-4e6f-9b7a-1c2d3e4f5a6b"` |
 | Fecha y hora | ISO 8601 en UTC | `"2026-10-05T18:00:00.000Z"` |
 | Fecha sola | `YYYY-MM-DD` | `"2026-10-05"` |
 | Hora del día | `HH:mm` (24 h) | `"14:30"` |
@@ -29,11 +29,14 @@ Todos los errores tienen la misma forma:
 | HTTP | Cuándo |
 |---|---|
 | 400 | Datos inválidos (`details` trae los campos que fallaron) |
+| 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
 | 401 | Falta el token o expiró → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, votación cerrada, ya es miembro |
+| 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB) |
 | 422 | La IA no pudo interpretar la imagen |
+| 429 | Demasiados intentos en `/auth` (20 cada 15 min por IP) |
 | 500 | Error inesperado del servidor |
 
 ---
@@ -73,6 +76,8 @@ Sin autenticación. Responde `200 { "status": "ok" }`.
 ```json
 { "name": "Ana", "email": "ana@correo.com", "password": "min 8 caracteres" }
 ```
+`password` entre 8 y 72 caracteres. El correo se guarda con `trim` y en minúsculas.
+
 `201 { "token": "<jwt>", "user": User }` · `409 EMAIL_TAKEN`
 
 ### `POST /auth/login`
@@ -80,6 +85,8 @@ Sin autenticación. Responde `200 { "status": "ok" }`.
 { "email": "ana@correo.com", "password": "..." }
 ```
 `200 { "token": "<jwt>", "user": User }` · `401 INVALID_CREDENTIALS`
+
+El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe.
 
 ### `GET /auth/me`
 `200 User`. La app lo usa al abrir para comprobar si el token guardado sigue siendo válido.

@@ -18,7 +18,7 @@ El **contrato de la API** ([`docs/api.md`](docs/api.md)) es el acuerdo entre la 
 
 ## Requisitos
 
-- [Node.js](https://nodejs.org/) LTS (22 o superior) y npm
+- [Node.js](https://nodejs.org/) 22.13 o superior y npm
 - Git
 - **Expo Go** en tu celular, o un emulador de Android Studio
 
@@ -40,6 +40,8 @@ npm run backend                        # http://localhost:3000/api/health
 cp mobile/.env.example mobile/.env     # si usas celular físico, pon la IP de tu PC en EXPO_PUBLIC_API_URL
 npm run mobile                         # escanea el QR con Expo Go, o presiona "a" para el emulador
 ```
+
+> **Primer usuario:** no hay usuarios precargados; el primero se crea desde la pantalla de registro de la app («Regístrate»).
 
 > **Importante:** en el emulador de Android, `localhost` es el propio emulador. Para llegar al backend de tu PC se usa `10.0.2.2`. En un celular físico, usa la IP de tu PC en la red Wi-Fi (y que ambos estén en la misma red).
 
@@ -64,7 +66,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 ## Hoja de ruta
 
 - [x] **Fase 0** — Monorepo, base de `mobile/` y `backend/`, contrato de la API
-- [ ] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
+- [x] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
 - [ ] **Fase 2** — Grupos, horarios y cruce de disponibilidad
 - [ ] **Fase 3** — Propuestas, votación y ubicación
 - [ ] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
