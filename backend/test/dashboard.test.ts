@@ -2,8 +2,8 @@ import type { GroupMember, GroupSummary, Incidence, ProposalWithGroup, TimeWindo
 import { describe, expect, it } from 'vitest';
 
 import { buildDashboard, matchingHours, upcomingPlans } from '../src/dashboard/dashboard';
+import { NOW } from './helpers';
 
-const NOW = new Date(2026, 8, 29, 10, 0); // martes
 const test: User = { id: 'u-test', name: 'Usuario de Prueba', email: 'test@test.com' };
 const ana: User = { id: 'u-ana', name: 'Ana', email: 'ana@test.com' };
 const members: GroupMember[] = [

@@ -64,6 +64,16 @@ describe('GET /api/me/dashboard', () => {
     });
   });
 
+  it('no cuenta los grupos ni las propuestas de otros', async () => {
+    await seedProposals();
+    const nueva = await registerUser(app);
+    const d: Dashboard = (await get('dashboard', nueva.token)).body;
+    expect(d.metrics).toEqual({ activeGroups: 0, openVotes: 0, matchingHours: 0, totalBlocks: 0 });
+    expect(d.nextPlan).toBeNull();
+    expect(d.pendingVotes).toEqual([]);
+    expect(d.expressAlert).toBeNull();
+  });
+
   it('de punta a punta con la semilla montada por la API', async () => {
     const { prop1, prop2 } = await seedProposals();
     const d: Dashboard = (await get('dashboard', yo.token)).body;
