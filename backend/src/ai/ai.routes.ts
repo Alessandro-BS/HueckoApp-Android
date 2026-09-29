@@ -1,4 +1,4 @@
-import type { AiStatus, PlanSuggestions, ProposalDraft, ScheduleOcrResult } from '@hueckoapp/shared';
+import type { AiStatus, PlanSuggestions, ProposalDraft, ScheduleOcrResult, VotingSummary } from '@hueckoapp/shared';
 import { Router } from 'express';
 
 import type { ResolvedDeps } from '../app';
@@ -16,6 +16,7 @@ import {
 } from './plan-ideas';
 import { OCR_JSON_SCHEMA, OCR_PROMPT, ocrResponseSchema, toOcrBlocks } from './schedule-ocr';
 import { uploadScheduleImage } from './upload';
+import { SUMMARY_JSON_SCHEMA, summaryPrompt, summaryResponseSchema } from './voting-summary';
 
 // Montado en /api/ai detrás de requireAuth.
 export function aiRouter({ ai, aiLimiter }: ResolvedDeps) {
@@ -91,6 +92,32 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
         reason: idea.reason,
       })),
     };
+    res.json(body);
+  });
+
+  return router;
+}
+
+// Montado en /api/proposals detrás de requireAuth, después de proposalsRouter.
+export function proposalAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
+  const router = Router();
+  const groups = groupsRepository(db);
+  const proposals = proposalsRepository(db);
+
+  // Solo lee: nunca confirma, cancela ni reprograma (lo decide quien creó el plan, D9).
+  router.post('/:id/ai/summary', aiLimiter, async (req, res) => {
+    const userId = getUserId(res);
+    const proposal = proposals.findById(String(req.params.id), userId);
+    if (!proposal) throw new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
+    const { group } = loadGroupForMember(groups, proposal.groupId, userId);
+    if (proposal.state === 'CANCELADO') {
+      throw new ApiError(409, 'INVALID_STATE', 'Este plan está cancelado: no hay votación que resumir.');
+    }
+    const body: VotingSummary = await askAi(
+      ai,
+      { task: 'voting-summary', prompt: summaryPrompt(proposal, group, now()), schema: SUMMARY_JSON_SCHEMA },
+      summaryResponseSchema,
+    );
     res.json(body);
   });
 

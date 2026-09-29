@@ -69,6 +69,7 @@ Resumen de las entidades:
 | `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
 | `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
 | `ProposalDraft` / `PlanSuggestion` / `PlanCategory` | Borrador e ideas de plan de la IA (sin guardar) |
+| `VotingSummary` | Resumen de una votación con una recomendación de la IA |
 
 ---
 
@@ -308,6 +309,16 @@ Sin cuerpo. 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta
 `200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` sigue la misma regla que en el borrador. La app abre «Nueva propuesta» rellenada con la idea elegida.
 
 `200` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /proposals/:id/ai/summary`
+Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recomendación para quien lo creó. Cualquier miembro (`403 NOT_A_MEMBER` · `404 PROPOSAL_NOT_FOUND`); no para planes `CANCELADO` (`409 INVALID_STATE`). **Nunca cambia el plan**: confirmar, reprogramar o cancelar se hace con los endpoints de siempre.
+```json
+{ "summary": "Votó 1 de 2 integrantes: el jueves va ganando y no hay imprevistos.",
+  "recommendation": "CONFIRMAR", "reason": "Hay una franja clara y nadie reportó problemas." }
+```
+`recommendation` ∈ `CONFIRMAR | REPROGRAMAR | CANCELAR` (`SummaryRecommendation`; otra → `502`). `summary` ≤ 600 y `reason` ≤ 300 caracteres. A la IA solo van nombres de los miembros y datos de votos e imprevistos, nunca correos ni fotos.
+
+`200` · `403` · `404` · `409` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
 ---
 

@@ -181,3 +181,8 @@ export type PlanSuggestion = {
 
 // Respuesta de POST /groups/:id/ai/suggestions: entre 1 y 3 ideas.
 export type PlanSuggestions = { suggestions: PlanSuggestion[] };
+
+// Respuesta de POST /proposals/:id/ai/summary. Solo es una sugerencia: nunca cambia el plan.
+export type SummaryRecommendation = 'CONFIRMAR' | 'REPROGRAMAR' | 'CANCELAR';
+
+export type VotingSummary = { summary: string; recommendation: SummaryRecommendation; reason: string };
