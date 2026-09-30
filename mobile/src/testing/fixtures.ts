@@ -23,6 +23,8 @@ export const makeProposal = (over: Partial<Proposal> = {}): Proposal => ({
     makeWindow({ id: 'w_23', dayOfWeek: 5, availabilityPercentage: 50 }),
   ],
   myVoteWindowId: null,
+  // Por defecto gestiona quien creó el plan (en los tests, el usuario actual es TEST_USER); se puede forzar con `canManage`.
+  canManage: (over.createdBy ?? ANA).id === TEST_USER.id,
   chosenWindowId: null,
   scheduledAt: null,
   scheduledDate: null,

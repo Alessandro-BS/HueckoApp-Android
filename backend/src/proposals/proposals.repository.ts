@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Criticality, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
+import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
 
 import type { Db } from '../db/database';
 import { withTransaction } from '../db/transaction';
+import { canManageProposal, type ManagerCandidate } from './permissions';
 
 type ProposalRow = {
   id: string;
@@ -46,6 +47,7 @@ type IncidenceRow = {
   created_at: string;
 };
 type MyVoteRow = { proposal_id: string; window_id: string };
+type MemberRow = { group_id: string; id: string; role: GroupMember['role'] };
 
 export type NewWindow = { dayOfWeek: number; startTime: string; endTime: string; availabilityPercentage: number };
 export type NewIncidence = {
@@ -156,6 +158,19 @@ export function proposalsRepository(db: Db) {
         (r) => [r.proposal_id, r.window_id] as const,
       ),
     );
+    // Miembros actuales de los grupos de estas propuestas, en orden de llegada (D3): deciden canManage.
+    const members = groupBy(
+      db
+        .prepare(
+          `SELECT m.group_id, m.user_id AS id, m.role
+           FROM group_members m
+           WHERE m.group_id IN (SELECT p.group_id FROM proposals p WHERE p.id ${IN_PROPOSAL_IDS})
+           ORDER BY m.joined_at, m.rowid`,
+        )
+        .all(ids) as MemberRow[],
+      (r) => r.group_id,
+      (r): ManagerCandidate => ({ id: r.id, role: r.role }),
+    );
     return rows.map((row) => ({
       id: row.id,
       groupId: row.group_id,
@@ -166,6 +181,7 @@ export function proposalsRepository(db: Db) {
       state: row.state,
       windows: windows.get(row.id) ?? [],
       myVoteWindowId: myVotes.get(row.id) ?? null,
+      canManage: canManageProposal({ viewerId, creatorId: row.created_by, members: members.get(row.group_id) ?? [] }),
       chosenWindowId: row.chosen_window_id,
       scheduledAt: row.scheduled_at,
       scheduledDate: row.scheduled_date,

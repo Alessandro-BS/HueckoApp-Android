@@ -16,7 +16,7 @@ type Props = {
   onDismiss: () => void;
 };
 
-// C2: quien creó el plan elige la franja o deja «La más votada» (el servidor desempata).
+// C2: quien organiza el plan elige la franja o deja «La más votada» (el servidor desempata).
 // Sin votos hay que elegir una franja: el servidor respondería 409 NO_VOTES. Sin franjas no hay nada que
 // confirmar: se explica cómo agregar una.
 export function ConfirmPlanDialog({ windows, onConfirm, onDone, onDismiss }: Props) {

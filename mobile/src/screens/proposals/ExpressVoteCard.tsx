@@ -19,7 +19,6 @@ type Props = {
   reason: string;
   planTitle: string;
   canResolve: boolean;
-  creatorName: string;
   onResolve: (input: ResolveIncidencesInput) => Promise<unknown>;
   onResolved?: () => void;
 };
@@ -66,8 +65,8 @@ function ReprogramDialog({ loading, error, onConfirm, onDismiss }: {
 }
 
 // G5: «Votación exprés» si el plan se re-coordina (falta un imprescindible); «Aviso de imprevisto» si sigue confirmado
-// con incidencias abiertas. Solo quien creó el plan decide (B20); reprogramar pide un plazo nuevo (G4).
-export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, creatorName, onResolve, onResolved }: Props) {
+// con incidencias abiertas. Solo quien gestiona el plan decide (B20, canManage); reprogramar pide un plazo nuevo (G4).
+export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onResolve, onResolved }: Props) {
   const [pending, setPending] = useState<Choice['state'] | null>(null);
   const [reprogramming, setReprogramming] = useState(false);
   const action = useAction(onResolve);
@@ -117,7 +116,7 @@ export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, crea
           })}
         </View>
       ) : (
-        <Text style={[typography.bodySmall, styles.warning, styles.onlyCreator]}>{`Solo ${creatorName} puede decidir qué hacer con el plan.`}</Text>
+        <Text style={[typography.bodySmall, styles.warning, styles.onlyCreator]}>{'Solo quien organiza el plan puede decidir qué hacer con él.'}</Text>
       )}
       {action.error && !reprogramming ? (
         <View style={styles.error}>

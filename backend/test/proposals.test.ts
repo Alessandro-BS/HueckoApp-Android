@@ -73,6 +73,7 @@ describe('POST /api/groups/:id/proposals', () => {
         { id: expect.any(String), dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
       ],
       myVoteWindowId: null,
+      canManage: true,
       chosenWindowId: null,
       scheduledAt: null,
       scheduledDate: null,
@@ -170,7 +171,7 @@ describe('GET /api/groups/:id/proposals', () => {
 describe('GET /api/proposals/:id', () => {
   it('200 a un miembro, 403 a quien no lo es, 404 si no existe', async () => {
     const p = await prop2();
-    expect((await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body).toEqual(p);
+    expect((await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body).toEqual({ ...p, canManage: false });
     const otra = await registerUser(app);
     const ajena = await request(app).get(`/api/proposals/${p.id}`).set(bearer(otra.token));
     expect([ajena.status, ajena.body.error.code]).toEqual([403, 'NOT_A_MEMBER']);

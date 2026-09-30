@@ -66,7 +66,7 @@ export function summaryData(p: Proposal, group: Group, now: Date) {
 export function summaryPrompt(p: Proposal, group: Group, now: Date): string {
   return [
     `Resume en español, en 2 o 3 frases, cómo va el plan de un grupo de ${group.members.length} integrantes. Hoy es ${todayLabel(now)}.`,
-    'Cuenta cuántos votaron, qué franja va ganando y qué imprevistos hay. Después recomienda UNA acción para quien creó el plan:',
+    'Cuenta cuántos votaron, qué franja va ganando y qué imprevistos hay. Después recomienda UNA acción para quien organiza el plan:',
     '- CONFIRMAR: hay una franja clara y ningún imprevisto grave pendiente (o el plan ya está confirmado y sigue en pie).',
     '- REPROGRAMAR: votos repartidos o muy pocos votos, o un imprescindible no puede ir.',
     '- CANCELAR: casi nadie puede ir o el plan ya no tiene sentido.',

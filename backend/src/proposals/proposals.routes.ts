@@ -125,11 +125,11 @@ export function proposalsRouter(deps: ResolvedDeps) {
     res.status(201).json(ctx.proposals.findById(proposal.id, userId));
   });
 
-  // Solo quien creó la propuesta decide sobre ella (C2, C3, G4).
-  const loadForCreator = (proposalId: string, userId: string) => {
+  // Solo quien gestiona la propuesta decide sobre ella (canManageProposal: su creador; si se fue, el OWNER; si no, el más antiguo).
+  const loadForManager = (proposalId: string, userId: string) => {
     const loaded = ctx.loadForMember(proposalId, userId);
-    if (loaded.proposal.createdBy.id !== userId) {
-      throw new ApiError(403, 'NOT_CREATOR', 'Solo quien propuso el plan puede hacer esto.');
+    if (!loaded.proposal.canManage) {
+      throw new ApiError(403, 'NOT_MANAGER', 'Solo quien organiza el plan puede hacer esto.');
     }
     return loaded;
   };
@@ -138,7 +138,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
 
   router.post('/:id/confirm', (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = loadForCreator(req.params.id, userId);
+    const { proposal } = loadForManager(req.params.id, userId);
     const { windowId } = confirmSchema.parse(req.body ?? {});
     if (proposal.state !== 'PROPUESTO') throw invalidState();
     const chosen = windowId !== undefined ? proposal.windows.find((w) => w.id === windowId) : pickWinner(proposal.windows);
@@ -151,7 +151,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
 
   router.post('/:id/cancel', (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = loadForCreator(req.params.id, userId);
+    const { proposal } = loadForManager(req.params.id, userId);
     if (proposal.state === 'CANCELADO') throw invalidState();
     ctx.proposals.setState(proposal.id, 'CANCELADO');
     res.json(ctx.proposals.findById(proposal.id, userId));
@@ -176,7 +176,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
 
   router.post('/:id/incidences/resolve', (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = loadForCreator(req.params.id, userId);
+    const { proposal } = loadForManager(req.params.id, userId);
     const input = resolveIncidencesSchema(ctx.now()).parse(req.body);
     if (!isActivePlan(proposal)) throw invalidState();
     ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline);

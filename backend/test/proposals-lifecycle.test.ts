@@ -119,12 +119,12 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect([ajena.status, ajena.body.error.code]).toEqual([404, 'WINDOW_NOT_FOUND']);
   });
 
-  it('solo quien la creó: 403 NOT_CREATOR', async () => {
+  it('solo quien la gestiona: 403 NOT_MANAGER', async () => {
     const p = await threeWindows();
     await vote(p, 2, ana.token);
     const res = await postTo(`${p.id}/confirm`, ana.token);
     expect([res.status, res.body.error.code, res.body.error.message]).toEqual([
-      403, 'NOT_CREATOR', 'Solo quien propuso el plan puede hacer esto.',
+      403, 'NOT_MANAGER', 'Solo quien organiza el plan puede hacer esto.',
     ]);
   });
 
@@ -162,9 +162,9 @@ describe('POST /api/proposals/:id/cancel (C3)', () => {
     expect((await postTo(`${p.id}/cancel`, yo.token)).body.error.code).toBe('INVALID_STATE');
   });
 
-  it('403 NOT_CREATOR si no la creé', async () => {
+  it('403 NOT_MANAGER si no la gestiono', async () => {
     const p = await threeWindows();
-    expect((await postTo(`${p.id}/cancel`, ana.token)).body.error.code).toBe('NOT_CREATOR');
+    expect((await postTo(`${p.id}/cancel`, ana.token)).body.error.code).toBe('NOT_MANAGER');
   });
 });
 
@@ -336,9 +336,9 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
     expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
-  it('403 si no la creé; 400 con un estado inválido; 409 si no está confirmada', async () => {
+  it('403 si no la gestiono; 400 con un estado inválido; 409 si no está confirmada', async () => {
     const p = await withIncidence();
-    expect((await resolve(p, ana.token, { newState: 'CANCELADO' })).body.error.code).toBe('NOT_CREATOR');
+    expect((await resolve(p, ana.token, { newState: 'CANCELADO' })).body.error.code).toBe('NOT_MANAGER');
     const invalido = await resolve(p, yo.token, { newState: 'EN_RECOORDINACION' });
     expect(invalido.body.error.details).toContainEqual(
       expect.objectContaining({ path: ['newState'], message: 'Estado inválido: CONFIRMADO, CANCELADO o PROPUESTO' }),

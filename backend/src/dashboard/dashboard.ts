@@ -77,7 +77,7 @@ export function groupSummaries(groups: readonly GroupSummary[], proposals: reado
  * G5: de los planes que aún no ocurrieron, el primero EN_RECOORDINACION («Votación exprés») o, si no hay,
  * el primero CONFIRMADO con incidencias sin resolver (aviso). Se muestra su incidencia ALTA o, si no, la más antigua.
  */
-export function expressAlertFor(proposals: readonly ProposalWithGroup[], userId: string, now: Date): ExpressAlert | null {
+export function expressAlertFor(proposals: readonly ProposalWithGroup[], now: Date): ExpressAlert | null {
   const candidates = proposals.filter(
     (p) =>
       (p.state === 'EN_RECOORDINACION' || p.state === 'CONFIRMADO') &&
@@ -95,20 +95,19 @@ export function expressAlertFor(proposals: readonly ProposalWithGroup[], userId:
     who: shown.user.name,
     reason: shown.reason,
     kind: p.state === 'EN_RECOORDINACION' ? 'RECOORDINACION' : 'AVISO',
-    canResolve: p.createdBy.id === userId,
+    canResolve: p.canManage,
     createdBy: p.createdBy,
   };
 }
 
 export function buildDashboard(input: {
-  userId: string;
   now: Date;
   groups: GroupSummary[];
   proposals: ProposalWithGroup[];
   totalBlocks: number;
   membersOf: (groupId: string) => GroupMember[];
 }): Dashboard {
-  const { userId, now, groups, proposals } = input;
+  const { now, groups, proposals } = input;
   const open = proposals.filter((p) => p.state === 'PROPUESTO');
   const next = upcomingPlans(proposals, now)[0];
   return {
@@ -116,6 +115,6 @@ export function buildDashboard(input: {
     nextPlan: next ? { ...next, attendees: attendeesOf(input.membersOf(next.groupId), next.incidences) } : null,
     groups: groupSummaries(groups, proposals),
     pendingVotes: [...open].sort((a, b) => a.votingDeadline.localeCompare(b.votingDeadline)),
-    expressAlert: expressAlertFor(proposals, userId, now),
+    expressAlert: expressAlertFor(proposals, now),
   };
 }

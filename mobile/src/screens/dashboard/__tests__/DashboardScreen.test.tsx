@@ -50,7 +50,7 @@ it('pinta los valores de la semilla (domain spec §2.2, UI spec §2.3)', async (
   expect(await screen.findByText('Buenos días, Usuario')).toBeTruthy();
   expect(screen.getByText('Martes, 29 de septiembre')).toBeTruthy();
   expect(screen.getByText('Esto es lo que pasa hoy en tus grupos y horarios.')).toBeTruthy();
-  // Alerta (G5, aviso): quien creó el plan puede decidir.
+  // Alerta (G5, aviso): quien gestiona el plan puede decidir.
   expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
   expect(screen.getByText('Ana reportó un imprevisto en «Reunión de avance del proyecto»')).toBeTruthy();
   expect(screen.getByText('Mantener')).toBeTruthy();

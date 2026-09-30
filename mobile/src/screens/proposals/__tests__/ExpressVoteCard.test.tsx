@@ -14,7 +14,6 @@ const base = {
   reason: 'Cruce con un examen de laboratorio a última hora.',
   planTitle: 'Reunión de avance del proyecto',
   canResolve: true,
-  creatorName: 'Usuario de Prueba',
 };
 
 beforeEach(() => jest.clearAllMocks());
@@ -82,10 +81,10 @@ it('re-coordinación: «Votación exprés» y «no podrá asistir»', async () =
   expect(screen.getByText('Ana no podrá asistir a «Reunión de avance del proyecto»')).toBeTruthy();
 });
 
-it('si no soy quien creó el plan no hay botones (B20)', async () => {
+it('sin permiso de gestión no hay botones (B20)', async () => {
   await render(<ExpressVoteCard {...base} canResolve={false} onResolve={jest.fn()} />);
   expect(screen.queryByText('Mantener')).toBeNull();
-  expect(screen.getByText('Solo Usuario de Prueba puede decidir qué hacer con el plan.')).toBeTruthy();
+  expect(screen.getByText('Solo quien organiza el plan puede decidir qué hacer con él.')).toBeTruthy();
 });
 
 it('si falla, muestra el error y deja volver a elegir', async () => {

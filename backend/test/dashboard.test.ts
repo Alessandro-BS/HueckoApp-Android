@@ -25,7 +25,7 @@ const prop1 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   id: 'prop_1', groupId: 'g1', groupName: 'Proyecto Integrador', title: 'Reunión de avance del proyecto',
   location: { name: 'Biblioteca central', latitude: null, longitude: null }, createdBy: test,
   votingDeadline: new Date(2026, 8, 28, 10, 0).toISOString(), state: 'CONFIRMADO',
-  windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], myVoteWindowId: 'w_1', chosenWindowId: 'w_1',
+  windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], myVoteWindowId: 'w_1', canManage: true, chosenWindowId: 'w_1',
   scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString(), scheduledDate: '2026-09-30', incidences: [incidence()],
   createdAt: new Date(2026, 8, 27, 10, 0).toISOString(), ...over,
 });
@@ -34,12 +34,12 @@ const prop2 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   location: { name: 'Google Meet', latitude: null, longitude: null }, createdBy: ana,
   votingDeadline: new Date(2026, 8, 29, 20, 0).toISOString(), state: 'PROPUESTO',
   windows: [win('w_21', 2, '16:00', '18:00', 100, 1), win('w_22', 4, '10:00', '12:00', 100, 0), win('w_23', 5, '16:00', '18:00', 50, 0)],
-  myVoteWindowId: null, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [],
+  myVoteWindowId: null, canManage: false, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [],
   createdAt: new Date(2026, 8, 29, 9, 0).toISOString(), ...over,
 });
 
-const build = (proposals: ProposalWithGroup[], userId = test.id) =>
-  buildDashboard({ userId, now: NOW, groups, proposals, totalBlocks: 2, membersOf: () => members });
+const build = (proposals: ProposalWithGroup[]) =>
+  buildDashboard({ now: NOW, groups, proposals, totalBlocks: 2, membersOf: () => members });
 
 describe('buildDashboard con la semilla (domain spec §2.2)', () => {
   it('valores esperados', () => {
@@ -92,17 +92,18 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
 });
 
 describe('alerta exprés (G5)', () => {
-  it('EN_RECOORDINACION tiene prioridad y usa la incidencia ALTA; canResolve solo para quien la creó', () => {
+  it('EN_RECOORDINACION tiene prioridad y usa la incidencia ALTA; canResolve es el canManage del plan', () => {
     const aviso = prop1();
     const recoordinacion = prop1({
-      id: 'prop_3', title: 'Presentación', state: 'EN_RECOORDINACION',
+      id: 'prop_3', title: 'Presentación', state: 'EN_RECOORDINACION', canManage: false,
       incidences: [
         incidence({ id: 'i1', type: 'TARDANZA', delayMinutes: 10, criticality: 'BAJA', reason: 'Tráfico' }),
         incidence({ id: 'i2', type: 'FALTA', criticality: 'ALTA', reason: 'Enferma' }),
       ],
     });
-    const d = build([aviso, recoordinacion], ana.id);
-    expect(d.expressAlert).toMatchObject({ proposalId: 'prop_3', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma', canResolve: false });
+    expect(build([aviso, recoordinacion]).expressAlert).toMatchObject({ proposalId: 'prop_3', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma', canResolve: false });
+    // Control positivo: el mismo plan, gestionable por quien pregunta (p. ej. el OWNER si quien lo creó se fue).
+    expect(build([aviso, { ...recoordinacion, canManage: true }]).expressAlert?.canResolve).toBe(true);
   });
 
   it('un plan que ya ocurrió no es el próximo ni dispara la alerta', () => {

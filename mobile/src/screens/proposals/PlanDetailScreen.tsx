@@ -4,7 +4,6 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 
 import { errorMessage } from '../../api/client';
 import { Badge, HueckoCard, LoadState, PrimaryButton, SecondaryButton, VoteWindowRow } from '../../components';
-import { useAuth } from '../../context/AuthContext';
 import { useProposal } from '../../hooks/useProposal';
 import { useRefreshErrorToast } from '../../hooks/useRefreshErrorToast';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
@@ -42,7 +41,6 @@ function IncidenceRow({ incidence }: { incidence: Incidence }) {
 
 export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDetail'>) {
   const { proposalId } = route.params;
-  const { user } = useAuth();
   const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, resolve } = useProposal(proposalId);
   useRefreshOnFocus(reload);
   useRefreshErrorToast(error, proposal !== undefined, failedLoads);
@@ -59,7 +57,8 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   }
 
   const now = today();
-  const isCreator = proposal.createdBy.id === user?.id;
+  // Quién gestiona lo decide el servidor (canManage: el creador o, si se fue, el OWNER); la app no compara ids.
+  const canManage = proposal.canManage;
   const active = proposal.state === 'CONFIRMADO' || proposal.state === 'EN_RECOORDINACION';
   // La votación exprés y «Reportar imprevisto» solo tienen sentido si el plan aún no ocurrió (D3).
   const activeUpcoming = active && isUpcoming(proposal, now);
@@ -91,8 +90,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
             who={alertIncidence.user.name}
             reason={alertIncidence.reason}
             planTitle={proposal.title}
-            canResolve={isCreator}
-            creatorName={proposal.createdBy.name}
+            canResolve={canManage}
             onResolve={resolve}
           />
         ) : null}
@@ -128,7 +126,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
           </View>
         ) : null}
 
-        {isCreator && proposal.state !== 'CANCELADO' ? (
+        {canManage && proposal.state !== 'CANCELADO' ? (
           <View style={styles.list}>
             {proposal.state === 'PROPUESTO' ? (
               <PrimaryButton title="Confirmar plan" icon="event-available" onPress={() => setSheet('confirm')} />
