@@ -4,6 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  addWeeklyBlock,
   AFTER_DEADLINE,
   bearer,
   createProposal,
@@ -88,6 +89,21 @@ describe('POST /api/groups/:id/proposals', () => {
       [4, '08:00', '20:00', 100],
       [6, '08:00', '20:00', 100],
     ]);
+  });
+
+  it('sin franjas y sin ningún hueco en común: 409 NO_COMMON_WINDOWS y no crea el plan', async () => {
+    for (let day = 1; day <= 7; day++) await addWeeklyBlock(app, yo.token, day, '08:00', '20:00');
+    const res = await post({});
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({
+      code: 'NO_COMMON_WINDOWS',
+      message: 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.',
+    });
+    const list = await request(app).get(`/api/groups/${group.id}/proposals`).set(bearer(yo.token));
+    expect(list.body.map((p: Proposal) => p.title)).not.toContain('Repaso');
+    // Con franjas elegidas a mano sí se puede crear.
+    const manual = await post({ windows: [{ dayOfWeek: 1, startTime: '20:00', endTime: '22:00' }] });
+    expect(manual.status).toBe(201);
   });
 
   it('guarda el lugar con coordenadas y normaliza el plazo a UTC', async () => {

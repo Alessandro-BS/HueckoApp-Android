@@ -63,6 +63,10 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
         : bestWindows(groupAvailability(matcherGroup, groupBlocks)).map(({ dayOfWeek, startTime, endTime, availabilityPercentage }) => ({
             dayOfWeek, startTime, endTime, availabilityPercentage,
           }));
+    // Sin franjas y sin ningún hueco en común no se crea un plan vacío (sin nada que votar).
+    if (windows.length === 0) {
+      throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.');
+    }
     const id = ctx.proposals.create({
       groupId: group.id,
       createdBy: userId,

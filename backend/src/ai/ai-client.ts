@@ -6,6 +6,10 @@ export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'v
 // JSON Schema de la respuesta (el subconjunto que acepta Gemini en response_format.schema).
 export type JsonSchema = Record<string, unknown>;
 
+// Niveles de razonamiento que acepta la Interactions API de Gemini (generation_config.thinking_level).
+export const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high'] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
 export type AiImage = { data: Buffer; mimeType: string };
 
 export type AiRequest = { task: AiTask; prompt: string; schema: JsonSchema; image?: AiImage };

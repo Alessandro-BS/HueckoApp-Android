@@ -15,7 +15,13 @@ import { z } from 'zod';
 import { askAi } from '../src/ai/ask-ai';
 import { AI_SYSTEM_INSTRUCTION, createGeminiClient } from '../src/ai/gemini-client';
 
-const OPTIONS = { apiKey: 'clave-de-prueba', model: 'gemini-3.8-flash', fallbackModel: 'gemini-3.5-flash', timeoutMs: 30_000 };
+const OPTIONS = {
+  apiKey: 'clave-de-prueba',
+  model: 'gemini-3.5-flash',
+  fallbackModel: 'gemini-3.5-flash-lite',
+  timeoutMs: 30_000,
+  thinkingLevel: 'low' as const,
+};
 const SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' } } };
 const REQUEST = { task: 'voting-summary' as const, prompt: 'x', schema: SCHEMA };
 const NO_RETRIES = { strategy: 'none' };
@@ -27,7 +33,7 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.useRealTimers());
 
 describe('createGeminiClient', () => {
-  it('usa la clave y pide JSON con el esquema, sin guardar la interacción, sin reintentos del SDK y con tiempo máximo', async () => {
+  it('usa la clave y pide JSON con el esquema y el nivel de razonamiento, sin guardar la interacción, sin reintentos del SDK y con tiempo máximo', async () => {
     create.mockResolvedValue({ output_text: '{"ok":true}' });
     const client = createGeminiClient(OPTIONS);
     expect(client.provider).toBe('gemini');
@@ -36,10 +42,11 @@ describe('createGeminiClient', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(
       {
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3.5-flash',
         input: 'Resume',
         system_instruction: AI_SYSTEM_INSTRUCTION,
         response_format: { type: 'text', mime_type: 'application/json', schema: SCHEMA },
+        generation_config: { thinking_level: 'low' },
         store: false,
       },
       { timeout_ms: 20_000, retries: NO_RETRIES },
@@ -73,13 +80,48 @@ describe('modelo de respaldo', () => {
     ['429', { status: 429 }],
     ['UNAVAILABLE', { status: 'UNAVAILABLE' }],
     ['RESOURCE_EXHAUSTED', { code: 'RESOURCE_EXHAUSTED' }],
+    ['404 (modelo inexistente o retirado)', { status: 404 }],
+    ['NOT_FOUND', { code: 'NOT_FOUND' }],
   ])('si el principal responde %s reintenta una vez con el de respaldo', async (_name, fields) => {
     create.mockRejectedValueOnce(providerError(fields)).mockResolvedValueOnce({ output_text: '{"ok":true}' });
     await expect(createGeminiClient(OPTIONS).generateJson(REQUEST)).resolves.toBe('{"ok":true}');
     expect(create).toHaveBeenCalledTimes(2);
-    expect(create.mock.calls[0][0].model).toBe('gemini-3.8-flash');
-    expect(create.mock.calls[1][0].model).toBe('gemini-3.5-flash');
+    expect(create.mock.calls[0][0].model).toBe('gemini-3.5-flash');
+    expect(create.mock.calls[1][0].model).toBe('gemini-3.5-flash-lite');
+    expect(create.mock.calls[1][0].generation_config).toEqual({ thinking_level: 'low' });
     expect(create.mock.calls[1][1].retries).toEqual(NO_RETRIES);
+  });
+
+  it('envía el nivel de razonamiento configurado', async () => {
+    create.mockResolvedValue({ output_text: '{}' });
+    await createGeminiClient({ ...OPTIONS, thinkingLevel: 'minimal' }).generateJson(REQUEST);
+    expect(create.mock.calls[0][0].generation_config).toEqual({ thinking_level: 'minimal' });
+  });
+
+  it('avisa una sola vez en el log si el principal no existe (404)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      create.mockImplementation(async ({ model }: { model: string }) => {
+        if (model === 'gemini-3.5-flash') throw providerError({ status: 404 });
+        return { output_text: '{}' };
+      });
+      const client = createGeminiClient(OPTIONS);
+      await client.generateJson(REQUEST);
+      await client.generateJson(REQUEST);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('gemini-3.5-flash');
+    } finally {
+      process.env.NODE_ENV = env;
+      warn.mockRestore();
+    }
+  });
+
+  it('un 404 del respaldo no provoca un tercer intento', async () => {
+    create.mockRejectedValue(providerError({ status: 404 }));
+    await expect(createGeminiClient(OPTIONS).generateJson(REQUEST)).rejects.toThrow('error del proveedor');
+    expect(create).toHaveBeenCalledTimes(2);
   });
 
   it('un 400 no se reintenta', async () => {
@@ -130,7 +172,7 @@ describe('modelo de respaldo', () => {
     });
     create.mockResolvedValueOnce({ output_text: '{"ok":true}' });
     await expect(createGeminiClient(OPTIONS).generateJson(REQUEST)).resolves.toBe('{"ok":true}');
-    expect(create.mock.calls[1][0].model).toBe('gemini-3.5-flash');
+    expect(create.mock.calls[1][0].model).toBe('gemini-3.5-flash-lite');
     expect(create.mock.calls[1][1].timeout_ms).toBe(10_000);
   });
 

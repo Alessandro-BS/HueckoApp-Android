@@ -29,13 +29,25 @@ export async function askAi<S extends z.ZodType>(ai: AiClient, request: AiReques
     if (process.env.NODE_ENV !== 'test') console.error(`[ia] ${request.task}: el proveedor falló`, error);
     throw aiUnavailable();
   }
+  // Un 502 deja rastro para poder diagnosticarlo, pero solo la tarea y las rutas de los errores:
+  // la respuesta puede llevar datos de usuarios y nunca se escribe en el log.
+  const logInvalid = (...details: unknown[]) => {
+    if (process.env.NODE_ENV !== 'test') console.warn(...details);
+  };
   let json: unknown;
   try {
     json = JSON.parse(stripFences(text));
   } catch {
+    logInvalid(`[ia] ${request.task}: la respuesta no es JSON`);
     throw aiBadResponse();
   }
   const parsed = schema.safeParse(json);
-  if (!parsed.success) throw aiBadResponse();
+  if (!parsed.success) {
+    logInvalid(
+      `[ia] ${request.task}: respuesta no válida`,
+      parsed.error.issues.map((issue) => issue.path.join('.')),
+    );
+    throw aiBadResponse();
+  }
   return parsed.data;
 }

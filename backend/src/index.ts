@@ -17,6 +17,7 @@ const ai = env.GEMINI_API_KEY
       model: env.GEMINI_MODEL,
       fallbackModel: env.GEMINI_FALLBACK_MODEL,
       timeoutMs: env.GEMINI_TIMEOUT_MS,
+      thinkingLevel: env.GEMINI_THINKING_LEVEL,
     })
   : createMockAiClient();
 if (ai.provider === 'mock') console.warn('GEMINI_API_KEY está vacía: Huecko IA responde con datos de demostración.');

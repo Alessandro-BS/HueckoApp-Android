@@ -99,6 +99,19 @@ describe('POST /api/ai/schedule-ocr', () => {
     expect(res.body).toEqual({ blocks: [] });
   });
 
+  it.each([
+    ['una PNG declarada como image/jpeg', PNG, 'foto.jpg', 'image/jpeg', 'image/png'],
+    ['una JPEG declarada como image/png', JPEG, 'foto.png', 'image/png', 'image/jpeg'],
+    ['una WEBP declarada como image/jpeg', WEBP, 'foto', 'image/jpeg', 'image/webp'],
+  ])('acepta %s y envía a la IA el tipo real (el de los primeros bytes)', async (_name, bytes, filename, declared, real) => {
+    const fake = fakeAiJson({ blocks: [] });
+    const { app, token } = await setup(fake.client);
+    const res = await scan(app, token, bytes, filename, declared);
+    expect(res.status).toBe(200);
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0].image?.mimeType).toBe(real);
+  });
+
   it('JSON ilegible o sin «blocks» → 502 AI_BAD_RESPONSE', async () => {
     for (const reply of ['no es json', '{"items":[]}']) {
       const { app, token } = await setup(fakeAi(reply).client);
@@ -133,9 +146,6 @@ describe('POST /api/ai/schedule-ocr', () => {
     const texto = await scan(app, token, Buffer.from('esto no es una imagen'), 'horario.png', 'image/png');
     expect(texto.status).toBe(400);
     expect(texto.body.error).toMatchObject({ code: 'INVALID_IMAGE', message: 'La imagen debe ser JPG, PNG o WEBP.' });
-    const cruzado = await scan(app, token, JPEG, 'horario.png', 'image/png');
-    expect(cruzado.status).toBe(400);
-    expect(cruzado.body.error.code).toBe('INVALID_IMAGE');
     const riffSinWebp = await scan(app, token, Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVEfmt ')]), 'h.webp', 'image/webp');
     expect(riffSinWebp.status).toBe(400);
 
@@ -165,6 +175,16 @@ describe('POST /api/ai/schedule-ocr', () => {
     const otroCampo = await scan(app, token, PNG, 'horario.png', 'image/png', 'foto');
     expect(otroCampo.status).toBe(400);
     expect(otroCampo.body.error.code).toBe('INVALID_UPLOAD');
+
+    // Un campo de texto además de la imagen: multer no acepta campos (fields: 0, parts: 1).
+    for (const extra of [
+      request(app).post('/api/ai/schedule-ocr').set(bearer(token)).field('nota', 'hola').attach('image', PNG, { filename: 'h.png', contentType: 'image/png' }),
+      request(app).post('/api/ai/schedule-ocr').set(bearer(token)).attach('image', PNG, { filename: 'h.png', contentType: 'image/png' }).field('nota', 'hola'),
+    ]) {
+      const res = await extra;
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_UPLOAD');
+    }
 
     const grande = await scan(app, token, Buffer.alloc(5 * 1024 * 1024 + 1));
     expect(grande.status).toBe(413);

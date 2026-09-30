@@ -21,7 +21,8 @@ export function detectImageType(buffer: Buffer): string | null {
 // La foto se queda en memoria (nunca se escribe en disco) y se reenvía a la IA tal cual.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: OCR_MAX_BYTES, files: 1 },
+  // Solo una parte: la imagen. Un campo de texto de más → LIMIT_FIELD_COUNT / LIMIT_PART_COUNT → 400 INVALID_UPLOAD.
+  limits: { fileSize: OCR_MAX_BYTES, files: 1, fields: 0, parts: 1 },
   fileFilter: (_req, file, cb) => {
     if (OCR_IMAGE_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new ApiError(400, 'INVALID_IMAGE', INVALID_IMAGE_MESSAGE));
@@ -39,9 +40,12 @@ export const uploadScheduleImage: RequestHandler = (req, res, next) => {
     // Cuerpo multipart roto o cortado (los errores del analizador llegan como Error sin más).
     if (error) return next(new ApiError(400, 'INVALID_UPLOAD', 'La subida no es válida. Envía una sola imagen en el campo «image».'));
     const file = req.file;
-    // El tipo declarado lo escribe el cliente: se comprueba también con los primeros bytes del archivo.
-    if (file && detectImageType(file.buffer) !== file.mimetype) {
-      return next(new ApiError(400, 'INVALID_IMAGE', INVALID_IMAGE_MESSAGE));
+    // El tipo declarado lo escribe el cliente (y puede equivocarse): manda el de los primeros bytes del archivo.
+    // Si es un JPG, PNG o WEBP real se acepta y a la IA se le envía ese tipo; si no es ninguno → 400.
+    if (file) {
+      const detected = detectImageType(file.buffer);
+      if (detected === null) return next(new ApiError(400, 'INVALID_IMAGE', INVALID_IMAGE_MESSAGE));
+      file.mimetype = detected;
     }
     next();
   });
