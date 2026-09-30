@@ -6,7 +6,7 @@ import { dirname } from 'node:path';
 import { hashPassword } from '../auth/passwords';
 import { env } from '../config/env';
 import { openDatabase } from './database';
-import { DEMO_PASSWORD, seedDemoData } from './demo-data';
+import { DEMO_ADMIN_EMAIL, DEMO_PASSWORD, seedDemoData } from './demo-data';
 
 async function main() {
   if (env.NODE_ENV === 'production') throw new Error('La semilla es solo para desarrollo.');
@@ -18,7 +18,8 @@ async function main() {
     console.log(
       `Semilla aplicada en ${env.DATABASE_PATH}: ${created.users} usuarios, ${created.groups} grupos y ${created.blocks} bloques nuevos; ${created.proposals} planes de ejemplo renovados con fechas de hoy.`,
     );
-    console.log(`Cuentas demo: test@test.com, ana@test.com y carlos@test.com — contraseña «${DEMO_PASSWORD}».`);
+    if (created.adminReset) console.log(`${DEMO_ADMIN_EMAIL} había dejado de ser administrador activo: vuelve a ser ADMIN y ACTIVE.`);
+    console.log(`Cuentas demo: test@test.com, ana@test.com, carlos@test.com y admin@test.com (administración) — contraseña «${DEMO_PASSWORD}».`);
   } finally {
     db.close();
   }

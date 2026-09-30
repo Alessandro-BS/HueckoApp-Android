@@ -8,6 +8,7 @@ import { groupsRepository } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { proposalsRepository } from '../proposals/proposals.repository';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
+import { aiCallRecorder, aiCallsRepository } from './ai-calls.repository';
 import { askAi } from './ask-ai';
 import { commonWindows, pickWindow } from './plan-context';
 import {
@@ -19,10 +20,11 @@ import { uploadScheduleImage } from './upload';
 import { SUMMARY_JSON_SCHEMA, summaryPrompt, summaryResponseSchema } from './voting-summary';
 
 // Montado en /api/ai detrás de requireAuth.
-export function aiRouter({ ai, aiLimiter }: ResolvedDeps) {
+export function aiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   const router = Router();
+  const calls = aiCallsRepository(db);
 
-  // No llama a la IA: no pasa por el limitador.
+  // No llama a la IA: no pasa por el limitador ni se anota.
   router.get('/status', (_req, res) => {
     const body: AiStatus = { provider: ai.provider };
     res.json(body);
@@ -36,6 +38,7 @@ export function aiRouter({ ai, aiLimiter }: ResolvedDeps) {
       ai,
       { task: 'schedule-ocr', prompt: OCR_PROMPT, schema: OCR_JSON_SCHEMA, image: { data: file.buffer, mimeType: file.mimetype } },
       ocrResponseSchema,
+      aiCallRecorder(calls, getUserId(res), now()),
     );
     const body: ScheduleOcrResult = { blocks: toOcrBlocks(items) };
     res.json(body);
@@ -50,9 +53,11 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   const groups = groupsRepository(db);
   const blocks = timeBlocksRepository(db);
   const proposals = proposalsRepository(db);
+  const calls = aiCallsRepository(db);
 
   router.post('/:id/ai/proposal-draft', aiLimiter, async (req, res) => {
-    const { group } = loadGroupForMember(groups, String(req.params.id), getUserId(res));
+    const userId = getUserId(res);
+    const { group } = loadGroupForMember(groups, String(req.params.id), userId);
     const { text } = proposalDraftInputSchema.parse(req.body);
     const windows = commonWindows(group, blocks);
     const at = now();
@@ -60,6 +65,7 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
       ai,
       { task: 'proposal-draft', prompt: draftPrompt({ text, group, windows, now: at }), schema: DRAFT_JSON_SCHEMA },
       draftResponseSchema,
+      aiCallRecorder(calls, userId, at),
     );
     const window = pickWindow(windows, answer.windowIndex);
     const draft: ProposalDraft = {
@@ -78,10 +84,12 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
     const windows = commonWindows(group, blocks);
     // Las 5 propuestas más recientes, para que la IA no repita planes.
     const recentTitles = proposals.listByGroup(group.id, userId).slice(0, 5).map((p) => p.title);
+    const at = now();
     const ideas = await askAi(
       ai,
-      { task: 'plan-suggestions', prompt: suggestionsPrompt({ group, windows, recentTitles, now: now() }), schema: SUGGESTIONS_JSON_SCHEMA },
+      { task: 'plan-suggestions', prompt: suggestionsPrompt({ group, windows, recentTitles, now: at }), schema: SUGGESTIONS_JSON_SCHEMA },
       suggestionsResponseSchema,
+      aiCallRecorder(calls, userId, at),
     );
     const body: PlanSuggestions = {
       suggestions: ideas.map((idea) => ({
@@ -103,6 +111,7 @@ export function proposalAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   const router = Router();
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);
+  const calls = aiCallsRepository(db);
 
   // Solo lee: nunca confirma, cancela ni reprograma (lo decide quien organiza el plan, D9).
   router.post('/:id/ai/summary', aiLimiter, async (req, res) => {
@@ -113,10 +122,12 @@ export function proposalAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
     if (proposal.state === 'CANCELADO') {
       throw new ApiError(409, 'INVALID_STATE', 'Este plan está cancelado: no hay votación que resumir.');
     }
+    const at = now();
     const body: VotingSummary = await askAi(
       ai,
-      { task: 'voting-summary', prompt: summaryPrompt(proposal, group, now()), schema: SUMMARY_JSON_SCHEMA },
+      { task: 'voting-summary', prompt: summaryPrompt(proposal, group, at), schema: SUMMARY_JSON_SCHEMA },
       summaryResponseSchema,
+      aiCallRecorder(calls, userId, at),
     );
     res.json(body);
   });

@@ -3,7 +3,15 @@
 
 export type User = { id: string; name: string; email: string };
 
-export type AuthResponse = { token: string; user: User };
+// Rol en la app y estado de la cuenta (docs/api.md, «Rol y estado de la cuenta»).
+export type UserRole = 'USER' | 'ADMIN';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED';
+
+// Quien inició sesión: solo lo devuelve /auth. Los demás usuarios (miembros, creadores…) siguen siendo `User`:
+// el rol de otras personas no se publica.
+export type CurrentUser = User & { role: UserRole };
+
+export type AuthResponse = { token: string; user: CurrentUser };
 
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';
 
@@ -154,6 +162,9 @@ export type AiProvider = 'gemini' | 'mock';
 
 export type AiStatus = { provider: AiProvider };
 
+// Función de la app que llamó a la IA (estadísticas de administración, `ai_calls`).
+export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary';
+
 // Respuesta de POST /ai/schedule-ocr: bloques SIN guardar, para revisarlos y guardarlos con /me/time-blocks/bulk.
 export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
 
@@ -187,3 +198,150 @@ export type PlanSuggestions = { suggestions: PlanSuggestion[] };
 export type SummaryRecommendation = 'CONFIRMAR' | 'REPROGRAMAR' | 'CANCELAR';
 
 export type VotingSummary = { summary: string; recommendation: SummaryRecommendation; reason: string };
+
+// ---- Administración (docs/api.md, «Administración») ----
+
+// Lista paginada: 20 por página, `page` desde 1.
+export type Page<T> = { items: T[]; page: number; pageSize: number; total: number };
+
+export type AdminUserSummary = User & { role: UserRole; status: UserStatus; createdAt: string; groupCount: number };
+
+export type AdminUserGroup = { id: string; name: string; role: GroupMember['role'] };
+
+export type AdminUserActivity = {
+  proposalsCreated: number;
+  votes: number;
+  incidences: number;
+  timeBlocks: number;
+  aiCalls: number;
+};
+
+export type AdminUserDetail = AdminUserSummary & { groups: AdminUserGroup[]; activity: AdminUserActivity };
+
+// Cuerpos de PATCH /admin/users/:id/status y /admin/users/:id/role.
+export type UserStatusInput = { status: UserStatus };
+export type UserRoleInput = { role: UserRole };
+
+export type AuditAction =
+  | 'USER_SUSPENDED'
+  | 'USER_REACTIVATED'
+  | 'USER_PROMOTED'
+  | 'USER_DEMOTED'
+  | 'GROUP_DELETED'
+  | 'PROPOSAL_CANCELLED';
+
+export type AuditTargetType = 'USER' | 'GROUP' | 'PROPOSAL';
+
+// Lo justo para entender la acción aunque el objetivo ya no exista; nunca correos, contraseñas ni tokens.
+export type AuditDetails = Record<string, string | number | boolean | null>;
+
+export type AuditEntry = {
+  id: string;
+  action: AuditAction;
+  admin: User | null;              // null = consola del servidor (npm run make-admin)
+  targetType: AuditTargetType;
+  targetId: string;
+  details: AuditDetails;
+  createdAt: string;
+};
+
+export type AdminGroupSummary = {
+  id: string;
+  name: string;
+  description: string;
+  memberCount: number;
+  proposalCount: number;
+  owner: User | null;              // OWNER actual; null si el grupo no tiene miembros
+  createdAt: string;
+};
+
+export type AdminProposalSummary = {
+  id: string;
+  title: string;
+  state: ProposalState;
+  createdBy: User;
+  createdAt: string;
+  votingDeadline: string;
+  scheduledAt: string | null;
+  scheduledDate: string | null;
+  voteCount: number;               // solo votos de quienes siguen en el grupo
+  incidenceCount: number;
+};
+
+export type AdminGroupDetail = AdminGroupSummary & {
+  inviteCode: string;
+  availabilityThreshold: number;
+  members: GroupMember[];
+  proposals: AdminProposalSummary[]; // las más recientes primero
+};
+
+// Cuerpo de POST /admin/proposals/:id/cancel: el motivo es obligatorio (3-200 caracteres tras el trim).
+export type AdminCancelProposalInput = { reason: string };
+
+// ---- Estadísticas e informes (calculados solo en el servidor; la app los muestra y exporta) ----
+
+export type ProposalCounts = Record<ProposalState, number>;
+
+export type AiTaskStats = {
+  task: AiTask;
+  calls: number;
+  ok: number;
+  successRate: number | null;      // % entero de llamadas con respuesta válida; null si no hubo llamadas
+  avgDurationMs: number | null;
+};
+
+export type AiUsage = { calls: number; ok: number; successRate: number | null; byTask: AiTaskStats[] };
+
+export type AdminStats = {
+  users: { total: number; active: number; suspended: number; admins: number };
+  groups: number;
+  proposals: ProposalCounts;
+  confirmedPlans: number;          // CONFIRMADO o EN_RECOORDINACION
+  incidences: number;
+  ai: AiUsage;
+};
+
+export type StatsBucket = 'day' | 'week';
+
+export type TimeseriesPoint = {
+  start: string;                   // "YYYY-MM-DD": inicio del día o del lunes, en la zona del servidor
+  registrations: number;
+  groupsCreated: number;
+  proposalsCreated: number;
+  aiCalls: number;
+};
+
+// from/to: los días pedidos ("YYYY-MM-DD", ambos incluidos), tal cual llegaron.
+export type Timeseries = { from: string; to: string; bucket: StatsBucket; points: TimeseriesPoint[] };
+
+export type HourCount = { hour: number; count: number };  // hour 0–23 en la zona del servidor
+
+// from/to: los días pedidos ("YYYY-MM-DD", ambos incluidos), o null si no se pidió periodo.
+export type PopularHours = { from: string | null; to: string | null; hours: HourCount[] };
+
+// fromDate/toDate = primer y último día incluidos (los pedidos); from/to = el intervalo [from, to) en ISO
+// que el servidor calculó con las medianoches de su zona (00:00 de fromDate y del día siguiente a toDate).
+export type ReportPeriod = { from: string; to: string; fromDate: string; toDate: string };
+
+export type ReportSummary = {
+  newUsers: number;
+  newGroups: number;
+  newProposals: number;
+  confirmedPlans: number;          // planes en pie cuya fecha (scheduledAt) cae en el periodo
+  incidences: number;
+  aiCalls: number;
+};
+
+export type TopGroup = { id: string; name: string; proposals: number };
+
+export type AdminReport = {
+  period: ReportPeriod;
+  generatedAt: string;
+  bucket: StatsBucket;             // day si el periodo dura ≤ 31 días; si no, week
+  summary: ReportSummary;
+  proposalsByState: ProposalCounts; // de las propuestas creadas en el periodo
+  ai: AiUsage;
+  timeseries: TimeseriesPoint[];
+  popularHours: HourCount[];
+  topGroups: TopGroup[];           // hasta 5, por propuestas creadas en el periodo
+};

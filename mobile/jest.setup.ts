@@ -36,3 +36,47 @@ jest.mock('expo-image-picker', () => ({
   // Enum real del módulo (ImagePicker.types.d.ts): lo usa scheduleImage.ts para pedir JPEG en vez de HEIC.
   UIImagePickerPreferredAssetRepresentationMode: { Automatic: 'automatic', Compatible: 'compatible', Current: 'current' },
 }));
+
+// Gráficos (react-native-gifted-charts): un View por gráfico con testID `chart-<tipo>` que conserva `data`,
+// para que los tests lean los valores que se dibujarían.
+jest.mock('react-native-gifted-charts', () => {
+  const { createElement } = require('react');
+  const { View } = require('react-native');
+  const chart = (kind: string) => (props: { data?: unknown[] }) => createElement(View, { testID: `chart-${kind}`, data: props.data });
+  return { BarChart: chart('bar'), LineChart: chart('line') };
+});
+
+// Informes: PDF, compartir y archivos. Cada test puede cambiar lo que devuelven (jest.mocked(...).mockResolvedValueOnce).
+jest.mock('expo-print', () => ({
+  printToFileAsync: jest.fn(async () => ({ uri: 'file:///cache/informe.pdf', numberOfPages: 1 })),
+}));
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));
+// File en memoria: `__writes` guarda lo escrito por URI (los tests lo leen con require('expo-file-system').__writes).
+// `new File('file:///…')` apunta a esa URI; `new File(Paths.cache, nombre)`, a file:///cache/<nombre>. moveSync cambia la URI.
+jest.mock('expo-file-system', () => {
+  const mockWrites = new Map<string, string>();
+  class MockFile {
+    uri: string;
+    constructor(...parts: unknown[]) {
+      const last = String(parts[parts.length - 1]);
+      this.uri = parts.length === 1 && last.startsWith('file://') ? last : `file:///cache/${last}`;
+    }
+    get exists() {
+      return mockWrites.has(this.uri);
+    }
+    create = jest.fn();
+    write = jest.fn((content: string) => {
+      mockWrites.set(this.uri, content);
+    });
+    delete = jest.fn(() => {
+      mockWrites.delete(this.uri);
+    });
+    moveSync = jest.fn((destination: MockFile) => {
+      this.uri = destination.uri;
+    });
+  }
+  return { File: MockFile, Paths: { cache: { uri: 'file:///cache/' } }, __writes: mockWrites };
+});

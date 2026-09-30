@@ -1,7 +1,10 @@
-import type { AiProvider } from '@hueckoapp/shared';
+import type { AiProvider, AiTask } from '@hueckoapp/shared';
 
 // Qué se le pide a la IA. El cliente de demostración responde según la tarea; Gemini solo lee el prompt.
-export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary';
+export type { AiTask };
+
+// Las mismas tareas en tiempo de ejecución, en el orden de las estadísticas. La tabla ai_calls tiene el mismo CHECK.
+export const AI_TASKS = ['schedule-ocr', 'proposal-draft', 'plan-suggestions', 'voting-summary'] as const satisfies readonly AiTask[];
 
 // JSON Schema de la respuesta (el subconjunto que acepta Gemini en response_format.schema).
 export type JsonSchema = Record<string, unknown>;

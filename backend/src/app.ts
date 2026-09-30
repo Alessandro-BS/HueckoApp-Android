@@ -2,12 +2,13 @@ import cors from 'cors';
 import express, { type RequestHandler } from 'express';
 import helmet from 'helmet';
 
+import { adminRouter } from './admin/admin.routes';
 import type { AiClient } from './ai/ai-client';
 import { AI_RATE_LIMIT_DEFAULT, aiRateLimiter } from './ai/ai-limiter';
 import { aiRouter, groupAiRouter, proposalAiRouter } from './ai/ai.routes';
 import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
-import { requireAuth } from './auth/require-auth';
+import { requireAdmin, requireAuth } from './auth/require-auth';
 import type { TrustProxy } from './config/trust-proxy';
 import type { Db } from './db/database';
 import { groupsRouter } from './groups/groups.routes';
@@ -60,16 +61,20 @@ export function createApp(appDeps: AppDeps) {
     res.json({ status: 'ok' });
   });
   api.use('/auth', authRouter(deps));
-  api.use('/me/time-blocks', requireAuth(deps.jwtSecret), timeBlocksRouter(deps));
-  api.use('/me', requireAuth(deps.jwtSecret), meRouter(deps));
-  api.use('/groups', requireAuth(deps.jwtSecret), groupsRouter(deps));
+  // Un único middleware para todas las rutas con token: lee rol y estado de la base en cada petición (D2).
+  const auth = requireAuth(deps.db, deps.jwtSecret);
+  api.use('/me/time-blocks', auth, timeBlocksRouter(deps));
+  api.use('/me', auth, meRouter(deps));
+  api.use('/groups', auth, groupsRouter(deps));
   // groupsRouter no tiene /:id/proposals: esas peticiones pasan de largo y las atiende este router.
-  api.use('/groups', requireAuth(deps.jwtSecret), groupProposalsRouter(deps));
+  api.use('/groups', auth, groupProposalsRouter(deps));
   // /groups/:id/ai/... tampoco lo atienden los dos routers anteriores: llega hasta aquí.
-  api.use('/groups', requireAuth(deps.jwtSecret), groupAiRouter(deps));
-  api.use('/proposals', requireAuth(deps.jwtSecret), proposalsRouter(deps));
-  api.use('/proposals', requireAuth(deps.jwtSecret), proposalAiRouter(deps));
-  api.use('/ai', requireAuth(deps.jwtSecret), aiRouter(deps));
+  api.use('/groups', auth, groupAiRouter(deps));
+  api.use('/proposals', auth, proposalsRouter(deps));
+  api.use('/proposals', auth, proposalAiRouter(deps));
+  api.use('/ai', auth, aiRouter(deps));
+  // Administración de la app (Fase 4.5): además del token, rol ADMIN leído de la base (D2).
+  api.use('/admin', auth, requireAdmin, adminRouter(deps));
 
   app.use('/api', api);
   app.use(notFound);

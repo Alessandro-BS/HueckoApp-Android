@@ -31,10 +31,10 @@ Todos los errores tienen la misma forma:
 | 400 | Datos inválidos (`details` trae los campos que fallaron) |
 | 400 | Subida del OCR: `IMAGE_REQUIRED` (falta la imagen), `INVALID_IMAGE` (no es JPG/PNG/WEBP), `INVALID_UPLOAD` (campos de más o multipart roto) |
 | 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
-| 401 | Falta el token o expiró → la app vuelve al login |
-| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
+| 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
+| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
 | 500 | Error inesperado del servidor |
@@ -59,6 +59,7 @@ Resumen de las entidades:
 | Tipo | Qué es |
 |---|---|
 | `User` | Usuario (`id`, `name`, `email`) |
+| `CurrentUser` | Quien inició sesión: `User` + `role` (`USER`/`ADMIN`). Solo lo devuelven `/auth/register`, `/auth/login` y `/auth/me` |
 | `TimeBlock` | Bloque de horario: recurrente (`dayOfWeek`) o puntual (`date`) |
 | `GroupSummary` / `Group` | Grupo; el detalle incluye `inviteCode` y `members` |
 | `GroupMember` | Usuario + `role` (`OWNER`/`MEMBER`) + `isEssential` |
@@ -71,9 +72,15 @@ Resumen de las entidades:
 | `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
 | `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
 | `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
+| `AiTask` | Función de la app que llamó a la IA (estadísticas) |
 | `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
 | `ProposalDraft` / `PlanSuggestion` / `PlanCategory` | Borrador e ideas de plan de la IA (sin guardar) |
 | `VotingSummary` | Resumen de una votación con una recomendación de la IA |
+| `Page<T>` | Lista paginada de administración (`items`, `page`, `pageSize`, `total`) |
+| `AdminUserSummary` / `AdminUserDetail` | Cuenta vista por la administración (rol, estado, grupos, actividad) |
+| `AdminGroupSummary` / `AdminGroupDetail` / `AdminProposalSummary` | Grupo y propuestas vistos por la administración |
+| `AuditEntry` | Una acción del registro de administración |
+| `AdminStats` / `Timeseries` / `PopularHours` / `AdminReport` | Estadísticas e informe de un periodo (calculados en el servidor) |
 
 ---
 
@@ -90,18 +97,24 @@ Sin autenticación. Responde `200 { "status": "ok" }`.
 ```
 `password` entre 8 y 72 caracteres. El correo se guarda con `trim` y en minúsculas.
 
-`201 { "token": "<jwt>", "user": User }` · `409 EMAIL_TAKEN`
+`201 { "token": "<jwt>", "user": CurrentUser }` · `409 EMAIL_TAKEN`. La cuenta nace siempre con `role: "USER"` (un `role` en el cuerpo se ignora).
 
 ### `POST /auth/login`
 ```json
 { "email": "ana@correo.com", "password": "..." }
 ```
-`200 { "token": "<jwt>", "user": User }` · `401 INVALID_CREDENTIALS`
+`200 { "token": "<jwt>", "user": CurrentUser }` · `401 INVALID_CREDENTIALS` · `403 ACCOUNT_SUSPENDED`
 
-El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe.
+El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe. `403 ACCOUNT_SUSPENDED` («Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.») solo sale si la contraseña es correcta; con una incorrecta la respuesta es el mismo `401`.
 
 ### `GET /auth/me`
-`200 User`. La app lo usa al abrir para comprobar si el token guardado sigue siendo válido.
+`200 CurrentUser` (`{ id, name, email, role }`). La app lo usa al abrir para comprobar si el token guardado sigue siendo válido y para saber si mostrar «Administración». También lo vuelve a pedir **al volver a primer plano** y cuando una petición responde `403 NOT_ADMIN` (le quitaron el rol): así un cambio de rol se ve sin reabrir la app.
+
+### Rol y estado de la cuenta
+Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`). El JWT solo identifica a la persona (`sub`): **en cada petición con token el servidor lee el rol y el estado de la base**, así que un cambio surte efecto al instante, sin esperar a que caduque el token (un `role` metido en el JWT no cuenta).
+- Cuenta suspendida → `403 ACCOUNT_SUSPENDED` en cualquier ruta con token y en el login; la app cierra sesión.
+- Token de una cuenta que ya no existe → `401 UNAUTHORIZED`.
+- Solo las cuentas `ADMIN` entran en `/admin/...` (`403 NOT_ADMIN`). Nadie se hace administrador por la API (ver «Administración»).
 
 > **Cerrar sesión** se hace en la app: se borra el token de `SecureStore`. No hay endpoint.
 
@@ -279,7 +292,8 @@ Toda llamada a la IA pasa por el backend (Google Gemini, modelo `GEMINI_MODEL`):
 - La respuesta de la IA se valida siempre: si no cumple el formato → `502 AI_BAD_RESPONSE`; si el proveedor falla o tarda más de 30 s → `503 AI_UNAVAILABLE`. Nunca se devuelven datos inventados para tapar un fallo.
 - Si el modelo principal está saturado (503), sin cuota (429), no existe (404: nombre mal escrito o modelo retirado) o agota su tiempo (el principal solo puede usar 2/3 de `GEMINI_TIMEOUT_MS`), el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL`; `GEMINI_TIMEOUT_MS` (30 s) es el tope total de los dos intentos. Cualquier otro fallo no se reintenta.
 - Modelos por defecto: `GEMINI_MODEL=gemini-3.5-flash-lite` y `GEMINI_FALLBACK_MODEL=gemini-3.5-flash`. Cada llamada envía `generation_config.thinking_level` con `GEMINI_THINKING_LEVEL` (`minimal` · `low` · `medium` · `high`; por defecto `low`) para responder más rápido.
-- La IA **solo sugiere**: ninguna de estas rutas guarda nada. El usuario revisa el resultado y lo confirma con los endpoints de siempre.
+- La IA **solo sugiere**: ninguna de estas rutas guarda datos del usuario (solo la anotación de uso de la viñeta siguiente). El usuario revisa el resultado y lo confirma con los endpoints de siempre.
+- **Registro de uso:** cada petición que llega al proveedor se anota en `ai_calls` con quién la hizo, la función (`AiTask`: `schedule-ocr`, `proposal-draft`, `plan-suggestions`, `voting-summary`), si salió bien (respuesta válida) o mal (`502`/`503`), cuánto tardó y cuándo. **Nunca** se guarda el prompt, la foto ni la respuesta. Lo que no llega a la IA (`429`, `400` de la subida, `403`, `404`, `409`) no se anota. Lo usan las estadísticas de «Administración».
 - **Modo demostración:** si el servidor no tiene `GEMINI_API_KEY`, las respuestas son datos de ejemplo fijos (validados igual).
 
 ### `GET /ai/status`
@@ -336,6 +350,83 @@ Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recom
 `recommendation` ∈ `CONFIRMAR | REPROGRAMAR | CANCELAR` (`SummaryRecommendation`; otra → `502`). `summary` ≤ 600 y `reason` ≤ 300 caracteres. A la IA solo van nombres de los miembros y datos de votos e imprevistos, nunca correos ni fotos.
 
 `200` · `403` · `404` · `409` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+## Administración
+
+Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: sin token (o con uno inválido) → `401 UNAUTHORIZED`; cuenta suspendida → `403 ACCOUNT_SUSPENDED`; si no es `ADMIN` → `403 NOT_ADMIN`. Reglas comunes:
+- **Primer administrador:** solo desde la consola del servidor: `npm run make-admin -w backend -- <correo>` (`--revoke` para quitarlo). No hay endpoint para hacerse administrador.
+- **Listas paginadas:** `?page=` (desde 1; por defecto 1, también si llega vacío: `?page=`) y, donde se indica, `?search=` (≤ 100 caracteres; busca el texto tal cual, sin distinguir mayúsculas en letras sin tilde; `%` y `_` son literales). 20 por página. Responden `Page<T>`: `{ "items": [...], "page": 1, "pageSize": 20, "total": 57 }`. Parámetros inválidos → `400 VALIDATION_ERROR`.
+- **Registro de acciones:** toda escritura de esta sección se anota en el registro (`GET /admin/audit`) en la misma transacción: si no se puede anotar, la acción no se hace.
+- Fechas de las respuestas en ISO 8601 UTC. Los periodos de estadísticas e informes se piden como días `YYYY-MM-DD` (ver abajo).
+
+### Estadísticas e informes: fechas y zona horaria
+- Los periodos van en `?from=&to=` como **días de calendario** `YYYY-MM-DD`, **ambos incluidos** (`?from=2026-09-01&to=2026-09-30`). `from = to` es un periodo de un día. `to` no puede ser anterior a `from` y el periodo dura como mucho **366 días**. Una fecha con otro formato (también un instante ISO), que no existe (`2026-02-30`) o con un año fuera de **2000–9999** («El año debe estar entre 2000 y 9999.») → `400 VALIDATION_ERROR` con el campo en `details`.
+- El servidor convierte esos días en las medianoches de **su** zona (`TZ`, `America/Lima`): el periodo es `[00:00 de from, 00:00 del día siguiente a to)`. La zona del teléfono no influye.
+- Los tramos por **día** o **semana (lunes a domingo)** y las **horas** también se calculan en la zona del servidor. `start` es la fecha `YYYY-MM-DD` del día o del lunes en esa zona. SQLite solo filtra por rango; el agrupado se hace en el servidor con la zona de `TZ` porque el `localtime` de SQLite usa la zona del sistema operativo y no la de `TZ`.
+- «Planes confirmados» (`confirmedPlans`) = propuestas `CONFIRMADO` o `EN_RECOORDINACION`; en un periodo cuentan por su fecha (`scheduledAt`), porque no se guarda cuándo se confirmaron. Por eso la app lo llama **«Planes con fecha en el periodo»** en «Informes», el PDF y el CSV: no es lo mismo que los «Confirmado» de `proposalsByState`, que cuenta las propuestas **creadas** en el periodo según su estado actual.
+- Por semanas, cada tramo es la semana entera que empieza ese lunes, pero solo cuenta lo que cae dentro del periodo: la primera y la última semana pueden ser parciales (el PDF y el CSV lo avisan y titulan la columna «Semana del»).
+
+### `GET /admin/stats`
+`200 AdminStats`, totales de ahora mismo:
+```json
+{ "users": { "total": 57, "active": 55, "suspended": 2, "admins": 1 }, "groups": 12,
+  "proposals": { "PROPUESTO": 4, "CONFIRMADO": 9, "EN_RECOORDINACION": 1, "CANCELADO": 3 },
+  "confirmedPlans": 10, "incidences": 6,
+  "ai": { "calls": 40, "ok": 37, "successRate": 93,
+          "byTask": [ { "task": "schedule-ocr", "calls": 20, "ok": 18, "successRate": 90, "avgDurationMs": 2400 }, … ] } }
+```
+`admins` cuenta todas las cuentas `ADMIN` (también suspendidas). `successRate` = % entero de llamadas con respuesta válida, `null` sin llamadas. `byTask` trae siempre las 4 funciones, en el orden de `AiTask`.
+
+### `GET /admin/stats/timeseries?from=&to=&bucket=week`
+`bucket` ∈ `day | week` (por defecto `week`). `200 Timeseries`: `{ from, to, bucket, points: [ { start, registrations, groupsCreated, proposalsCreated, aiCalls } ] }`, con `from`/`to` = los días pedidos y un punto por tramo que toca el periodo, **también los vacíos** (el primero puede empezar antes de `from`, en su lunes).
+
+### `GET /admin/stats/popular-hours?from=&to=`
+Histograma de la hora de inicio (zona del servidor) de los planes confirmados. `from`/`to` opcionales pero **juntos** («Envía «from» y «to» juntos, o ninguno.»); sin ellos, todos. `200 PopularHours`: `{ from, to, hours: [ { hour: 0, count: 0 }, …, { hour: 23, count: 1 } ] }` (siempre 24; `from`/`to` = los días pedidos, o `null`).
+
+### `GET /admin/reports?from=&to=`
+Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantalla «Informes», el PDF y el CSV salen de estos mismos datos.
+- `period`: `{ from, to, fromDate, toDate }`: `fromDate`/`toDate` son los días pedidos (primero y último incluidos) y `from`/`to` el intervalo en ISO que calculó el servidor (p. ej. `?from=2026-09-29&to=2026-09-30` → `from: "2026-09-29T05:00:00.000Z"`, `to: "2026-10-01T05:00:00.000Z"`); `generatedAt`.
+- `bucket`: `day` si el periodo dura 31 días o menos; si no, `week`.
+- `summary`: `{ newUsers, newGroups, newProposals, confirmedPlans, incidences, aiCalls }` del periodo.
+- `proposalsByState` (de las propuestas creadas en el periodo), `ai` (como en `/admin/stats`, del periodo), `timeseries` (como `/admin/stats/timeseries` con ese `bucket`), `popularHours` (24 horas, planes con fecha en el periodo) y `topGroups` (hasta 5 `{ id, name, proposals }`, por propuestas creadas en el periodo; a igual número, por nombre y después por `id`, para que el orden sea siempre el mismo).
+
+### `GET /admin/users?search=&page=`
+`200 Page<AdminUserSummary>`: `{ id, name, email, role, status, createdAt, groupCount }`, las cuentas más nuevas primero. `search` busca en nombre y correo.
+
+### `GET /admin/users/:id`
+`200 AdminUserDetail` = `AdminUserSummary` + `groups` (`{ id, name, role }` en el orden en que se unió) + `activity` (`{ proposalsCreated, votes, incidences, timeBlocks, aiCalls }`). `404 USER_NOT_FOUND`.
+
+### `PATCH /admin/users/:id/status`
+`{ "status": "SUSPENDED" }` o `{ "status": "ACTIVE" }` (`UserStatusInput`) → `200 AdminUserDetail`.
+- Suspender surte efecto al instante: su login y sus peticiones con token responden `403 ACCOUNT_SUSPENDED`. Sus grupos, planes y votos no se tocan.
+- Si ya tenía ese estado → `200` sin cambios ni anotación.
+- `409 CANNOT_CHANGE_SELF` «No puedes suspender tu propia cuenta ni quitarte el rol de administrador.» · `409 LAST_ADMIN` «Tiene que quedar al menos un administrador activo.» · `404 USER_NOT_FOUND` · `400 VALIDATION_ERROR` (el cuerpo se valida antes de buscar la cuenta).
+
+### `PATCH /admin/users/:id/role`
+`{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a primer plano, al reabrirse o al iniciar sesión (y, si pierde el rol mientras está en esas pantallas, en cuanto una petición responde `403 NOT_ADMIN`).
+
+### `GET /admin/groups?search=&page=`
+`200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, owner, createdAt }`, los más nuevos primero. `owner` es el `OWNER` actual (`User`) o `null` si no quedan miembros. `search` busca en el nombre y el código de invitación.
+
+### `GET /admin/groups/:id`
+`200 AdminGroupDetail` = `AdminGroupSummary` + `inviteCode`, `availabilityThreshold`, `members` (`GroupMember[]`, en orden de llegada) y `proposals` (`AdminProposalSummary[]`, las más recientes primero: `{ id, title, state, createdBy, createdAt, votingDeadline, scheduledAt, scheduledDate, voteCount, incidenceCount }`; `voteCount` solo cuenta a quienes siguen en el grupo). La administración lo ve **sin ser miembro**. `404 GROUP_NOT_FOUND`.
+
+### `DELETE /admin/groups/:id`
+Borra el grupo con sus miembros, propuestas, franjas, votos e incidencias. `204` · `404 GROUP_NOT_FOUND`. Se anota como `GROUP_DELETED` con `{ name, members, proposals }`.
+
+### `POST /admin/proposals/:id/cancel`
+Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni quien la organiza. Cuerpo obligatorio `AdminCancelProposalInput`: `{ "reason": "Contenido inapropiado" }` (**obligatorio**, de 3 a 200 caracteres tras `trim`; sin él, en blanco o fuera de ese rango → `400 VALIDATION_ERROR`; se guarda en el registro). Misma regla de estado que `POST /proposals/:id/cancel` (desde cualquier estado salvo `CANCELADO`). `200 AdminProposalSummary` · `409 INVALID_STATE` «La propuesta ya está cancelada.» · `404 PROPOSAL_NOT_FOUND` · `400 VALIDATION_ERROR`. Se anota como `PROPOSAL_CANCELLED` con `{ title, groupId, from, reason }`. Quien organiza el plan sigue usando `POST /proposals/:id/cancel`; esta ruta es solo para `ADMIN`.
+
+### `GET /admin/audit?page=`
+`200 Page<AuditEntry>`, lo más reciente primero:
+```json
+{ "id": "…", "action": "USER_SUSPENDED", "admin": { "id": "…", "name": "Admin", "email": "admin@test.com" },
+  "targetType": "USER", "targetId": "…", "details": { "name": "Ana", "from": "ACTIVE", "to": "SUSPENDED" },
+  "createdAt": "2026-09-29T15:00:00.000Z" }
+```
+- `action` ∈ `USER_SUSPENDED | USER_REACTIVATED | USER_PROMOTED | USER_DEMOTED | GROUP_DELETED | PROPOSAL_CANCELLED`; `targetType` ∈ `USER | GROUP | PROPOSAL`.
+- `admin: null` = cambio hecho desde la consola (`npm run make-admin`).
+- `details` guarda lo necesario para entender la acción aunque el objetivo ya no exista (nombre, título, estado anterior y nuevo, contadores, motivo); nunca correos, contraseñas ni tokens.
 
 ---
 

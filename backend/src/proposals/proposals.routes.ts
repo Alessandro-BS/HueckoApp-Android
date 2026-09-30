@@ -10,7 +10,7 @@ import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { proposalsRepository } from './proposals.repository';
 import { confirmSchema, createProposalSchema, incidenceInputSchema, resolveIncidencesSchema, timeWindowInputSchema, voteSchema } from './proposals.schemas';
-import { bestWindows, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
+import { bestWindows, canCancel, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
 function proposalsContext({ db, now }: ResolvedDeps) {
@@ -152,7 +152,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
   router.post('/:id/cancel', (req, res) => {
     const userId = getUserId(res);
     const { proposal } = loadForManager(req.params.id, userId);
-    if (proposal.state === 'CANCELADO') throw invalidState();
+    if (!canCancel(proposal.state)) throw invalidState();
     ctx.proposals.setState(proposal.id, 'CANCELADO');
     res.json(ctx.proposals.findById(proposal.id, userId));
   });

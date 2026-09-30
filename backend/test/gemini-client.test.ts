@@ -132,7 +132,7 @@ describe('modelo de respaldo', () => {
 
   it('si el respaldo también falla, el error sale y askAi responde 503 AI_UNAVAILABLE (solo 2 llamadas)', async () => {
     create.mockRejectedValue(providerError({ status: 503 }));
-    await expect(askAi(createGeminiClient(OPTIONS), REQUEST, z.object({}))).rejects.toMatchObject({
+    await expect(askAi(createGeminiClient(OPTIONS), REQUEST, z.object({}), () => {})).rejects.toMatchObject({
       status: 503,
       code: 'AI_UNAVAILABLE',
     });
@@ -179,7 +179,7 @@ describe('modelo de respaldo', () => {
   it('si el respaldo también agota su tiempo, el error sale y askAi responde 503', async () => {
     const timeout = () => Object.assign(new Error('Request timed out.'), { name: 'APIConnectionTimeoutError' });
     create.mockRejectedValue(timeout());
-    await expect(askAi(createGeminiClient(OPTIONS), REQUEST, z.object({}))).rejects.toMatchObject({ status: 503, code: 'AI_UNAVAILABLE' });
+    await expect(askAi(createGeminiClient(OPTIONS), REQUEST, z.object({}), () => {})).rejects.toMatchObject({ status: 503, code: 'AI_UNAVAILABLE' });
     expect(create).toHaveBeenCalledTimes(2);
   });
 

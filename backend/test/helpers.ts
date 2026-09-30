@@ -1,4 +1,4 @@
-import type { Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
+import type { CurrentUser, Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 
@@ -90,7 +90,9 @@ export async function registerUser(
   };
   const res = await request(app).post('/api/auth/register').send(body);
   if (res.status !== 201) throw new Error(`registro falló: ${res.status} ${JSON.stringify(res.body)}`);
-  return res.body;
+  // Como `User` (sin `role`), que es como aparece en miembros y propuestas: así los tests comparan con toEqual.
+  const { role: _role, ...user } = res.body.user as CurrentUser;
+  return { token: res.body.token, user };
 }
 
 export async function createGroup(

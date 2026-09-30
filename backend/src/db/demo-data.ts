@@ -13,12 +13,17 @@ import { withTransaction } from './transaction';
 export const DEMO_PASSWORD = 'password123';
 export const DEMO_PROPOSAL_TITLES = ['Reunión de avance del proyecto', 'Repaso antes de la entrega'] as const;
 
-export type SeedCounts = { users: number; groups: number; blocks: number; proposals: number };
+// adminReset: admin@test.com había dejado de ser ADMIN activo y la semilla lo restableció (seed.ts lo avisa).
+export type SeedCounts = { users: number; groups: number; blocks: number; proposals: number; adminReset: boolean };
+
+export const DEMO_ADMIN_EMAIL = 'admin@test.com';
 
 const USERS = [
-  { key: 'test', name: 'Usuario de Prueba', email: 'test@test.com' },
-  { key: 'ana', name: 'Ana', email: 'ana@test.com' },
-  { key: 'carlos', name: 'Carlos', email: 'carlos@test.com' },
+  { key: 'test', name: 'Usuario de Prueba', email: 'test@test.com', role: 'USER' },
+  { key: 'ana', name: 'Ana', email: 'ana@test.com', role: 'USER' },
+  { key: 'carlos', name: 'Carlos', email: 'carlos@test.com', role: 'USER' },
+  // Administración de la app (D3): no pertenece a ningún grupo.
+  { key: 'admin', name: 'Administración HueckoApp', email: DEMO_ADMIN_EMAIL, role: 'ADMIN' },
 ] as const;
 type UserKey = (typeof USERS)[number]['key'];
 
@@ -110,7 +115,7 @@ function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): number 
 
 export function seedDemoData(db: Db, passwordHash: string, now: Date): SeedCounts {
   return withTransaction(db, () => {
-    const created: SeedCounts = { users: 0, groups: 0, blocks: 0, proposals: 0 };
+    const created: SeedCounts = { users: 0, groups: 0, blocks: 0, proposals: 0, adminReset: false };
     const ids = {} as Record<UserKey, string>;
 
     for (const u of USERS) {
@@ -120,16 +125,25 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): SeedCount
         continue;
       }
       ids[u.key] = randomUUID();
-      db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(ids[u.key], u.name, u.email, passwordHash);
+      // created_at del reloj inyectado (ISO), como el registro por la API: las estadísticas comparan rangos ISO.
+      db.prepare('INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+        ids[u.key], u.name, u.email, passwordHash, u.role, now.toISOString(),
+      );
       created.users++;
     }
+    // La cuenta demo de administración sigue siéndolo aunque se haya cambiado desde la app o la consola.
+    // No se anota en el registro de acciones (solo desarrollo; la semilla no corre en producción): se avisa por consola.
+    const reset = db
+      .prepare("UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE email = ? AND (role <> 'ADMIN' OR status <> 'ACTIVE')")
+      .run(DEMO_ADMIN_EMAIL);
+    created.adminReset = Number(reset.changes) > 0;
 
     for (const g of GROUPS) {
       let group = db.prepare('SELECT id FROM groups WHERE invite_code = ?').get(g.inviteCode) as { id: string } | undefined;
       if (!group) {
         group = { id: randomUUID() };
-        db.prepare("INSERT INTO groups (id, name, description, invite_code, availability_threshold) VALUES (?, ?, '', ?, 80)").run(
-          group.id, g.name, g.inviteCode,
+        db.prepare("INSERT INTO groups (id, name, description, invite_code, availability_threshold, created_at) VALUES (?, ?, '', ?, 80, ?)").run(
+          group.id, g.name, g.inviteCode, now.toISOString(),
         );
         created.groups++;
       }

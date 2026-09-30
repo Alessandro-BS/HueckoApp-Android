@@ -1,6 +1,11 @@
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
 import { describe, expect, it } from 'vitest';
 
-import { migrate, openDatabase } from '../src/db/database';
+import { BUSY_TIMEOUT_MS, migrate, openDatabase, openExistingDatabase } from '../src/db/database';
 import { migrations } from '../src/db/migrations';
 
 describe('openDatabase', () => {
@@ -134,5 +139,87 @@ describe('migración de propuestas', () => {
       const { n } = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
       expect(n).toBe(0);
     }
+  });
+});
+
+describe('migración de administración (Fase 4.5)', () => {
+  it('users nace con role USER y status ACTIVE, y rechaza otros valores', () => {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')").run();
+    expect({ ...(db.prepare('SELECT role, status FROM users').get() as object) }).toEqual({ role: 'USER', status: 'ACTIVE' });
+    expect(() => db.prepare("UPDATE users SET role = 'ROOT'").run()).toThrow(/CHECK/);
+    expect(() => db.prepare("UPDATE users SET status = 'BORRADO'").run()).toThrow(/CHECK/);
+  });
+
+  it('ai_calls solo acepta tareas conocidas y ok 0/1; admin_audit_log exige acciones conocidas y JSON válido', () => {
+    const db = openDatabase(':memory:');
+    const call = db.prepare('INSERT INTO ai_calls (user_id, task, ok, duration_ms, created_at) VALUES (NULL, ?, ?, 10, ?)');
+    expect(() => call.run('voting-summary', 1, '2026-09-29T15:00:00.000Z')).not.toThrow();
+    expect(() => call.run('inventada', 1, '2026-09-29T15:00:00.000Z')).toThrow(/CHECK/);
+    expect(() => call.run('voting-summary', 2, '2026-09-29T15:00:00.000Z')).toThrow(/CHECK/);
+    const audit = db.prepare("INSERT INTO admin_audit_log (id, admin_id, action, target_type, target_id, details) VALUES (?, NULL, ?, 'GROUP', 'g1', ?)");
+    expect(() => audit.run('a1', 'GROUP_DELETED', '{"name":"Grupo"}')).not.toThrow();
+    expect(() => audit.run('a2', 'GROUP_DELETED', 'no es json')).toThrow(/CHECK/);
+    expect(() => audit.run('a3', 'USER_DELETED', '{}')).toThrow(/CHECK/);
+  });
+
+  it('ai_calls no tiene columnas para el prompt ni la respuesta', () => {
+    const db = openDatabase(':memory:');
+    const columns = (db.prepare('PRAGMA table_info(ai_calls)').all() as { name: string }[]).map((c) => c.name);
+    expect(columns).toEqual(['id', 'user_id', 'task', 'ok', 'duration_ms', 'created_at']);
+  });
+});
+
+describe('openExistingDatabase (npm run make-admin)', () => {
+  const tempDir = () => mkdtempSync(join(tmpdir(), 'hueckoapp-db-'));
+
+  it('una ruta sin base no crea un archivo vacío: error que nombra DATABASE_PATH', () => {
+    const dir = tempDir();
+    try {
+      const path = join(dir, 'no-existe.db');
+      expect(() => openExistingDatabase(path)).toThrow(`No hay ninguna base de datos en «${path}» (DATABASE_PATH).`);
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('una base que ya existe se abre al día y espera si el servidor la tiene ocupada (busy_timeout)', () => {
+    const dir = tempDir();
+    try {
+      const path = join(dir, 'hueckoapp.db');
+      openDatabase(path).close(); // control positivo: la base existe
+      const db = openExistingDatabase(path);
+      try {
+        const { timeout } = db.prepare('PRAGMA busy_timeout').get() as { timeout: number };
+        expect(timeout).toBe(BUSY_TIMEOUT_MS);
+        const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
+        expect(user_version).toBe(migrations.length);
+      } finally {
+        db.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('migración 4 sobre una base con datos (Fase 4.5)', () => {
+  it('las cuentas que ya había quedan USER y ACTIVE, y aparecen las tablas nuevas', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec('PRAGMA foreign_keys = ON;');
+    for (const [version, sql] of migrations.slice(0, 4).entries()) {
+      db.exec(sql);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
+    }
+    db.prepare("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')").run();
+    expect(() => db.prepare('SELECT role FROM users').all()).toThrow(); // control: antes de migrar no hay rol
+
+    migrate(db);
+    expect({ ...(db.prepare("SELECT role, status FROM users WHERE id = 'u1'").get() as object) }).toEqual({ role: 'USER', status: 'ACTIVE' });
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
+    expect(tables).toEqual(expect.arrayContaining(['admin_audit_log', 'ai_calls']));
+    const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
+    expect(user_version).toBe(migrations.length);
   });
 });

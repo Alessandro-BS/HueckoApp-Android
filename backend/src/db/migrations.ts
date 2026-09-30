@@ -97,4 +97,38 @@ export const migrations: string[] = [
      CHECK ((type = 'TARDANZA' AND COALESCE(delay_minutes, 0) > 0) OR (type <> 'TARDANZA' AND delay_minutes IS NULL))
    );
    CREATE INDEX incidences_proposal_idx ON incidences (proposal_id);`,
+
+  // 4 — Fase 4.5: administración. Rol y estado de cada cuenta (se leen de aquí en cada petición, nunca del JWT),
+  // registro de acciones de administración y de llamadas a la IA (sin prompt ni respuesta), e índices por fecha para
+  // las estadísticas (filtran por rango de created_at / scheduled_at). admin_id NULL = consola (npm run make-admin).
+  // admin_audit_log.admin_id no tiene ON DELETE a propósito: la app no borra cuentas, y con SET NULL la entrada de un
+  // admin borrado se leería como «Consola del servidor». Si algún día se borran cuentas, guardar antes su nombre en
+  // `details` (una migración nueva; esta ya está aplicada y no se edita).
+  `ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'USER' CHECK (role IN ('USER', 'ADMIN'));
+   ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED'));
+   CREATE INDEX users_created_idx ON users (created_at);
+   CREATE INDEX groups_created_idx ON groups (created_at);
+   CREATE INDEX proposals_created_idx ON proposals (created_at);
+   CREATE INDEX proposals_scheduled_idx ON proposals (scheduled_at);
+   CREATE INDEX incidences_created_idx ON incidences (created_at);
+   CREATE TABLE admin_audit_log (
+     id          TEXT PRIMARY KEY,
+     admin_id    TEXT REFERENCES users(id),
+     action      TEXT NOT NULL CHECK (action IN ('USER_SUSPENDED', 'USER_REACTIVATED', 'USER_PROMOTED', 'USER_DEMOTED',
+                                                 'GROUP_DELETED', 'PROPOSAL_CANCELLED')),
+     target_type TEXT NOT NULL CHECK (target_type IN ('USER', 'GROUP', 'PROPOSAL')),
+     target_id   TEXT NOT NULL,
+     details     TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(details)),
+     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+   );
+   CREATE INDEX admin_audit_log_created_idx ON admin_audit_log (created_at);
+   CREATE TABLE ai_calls (
+     id          INTEGER PRIMARY KEY,
+     user_id     TEXT REFERENCES users(id) ON DELETE SET NULL,
+     task        TEXT NOT NULL CHECK (task IN ('schedule-ocr', 'proposal-draft', 'plan-suggestions', 'voting-summary')),
+     ok          INTEGER NOT NULL CHECK (ok IN (0, 1)),
+     duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+     created_at  TEXT NOT NULL
+   );
+   CREATE INDEX ai_calls_created_idx ON ai_calls (created_at);`,
 ];

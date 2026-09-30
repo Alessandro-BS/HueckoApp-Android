@@ -1,21 +1,29 @@
 import { randomUUID } from 'node:crypto';
 
-import type { User } from '@hueckoapp/shared';
+import type { CurrentUser, UserRole, UserStatus } from '@hueckoapp/shared';
 
 import type { Db } from '../db/database';
 import { ApiError } from '../middleware/errors';
 
-type UserRow = { id: string; name: string; email: string; password_hash: string };
+type UserRow = { id: string; name: string; email: string; password_hash: string; role: UserRole; status: UserStatus };
 
-const toUser = (row: UserRow): User => ({ id: row.id, name: row.name, email: row.email });
+// La cuenta completa: lo que ve su dueño (CurrentUser) más su estado. El estado no sale en /auth (D1).
+export type Account = CurrentUser & { status: UserStatus };
+
+const toAccount = (row: UserRow): Account => ({ id: row.id, name: row.name, email: row.email, role: row.role, status: row.status });
+
+// Lo que devuelve /auth: sin el estado (una cuenta suspendida no llega a tener sesión).
+export const toCurrentUser = ({ status: _status, ...user }: Account): CurrentUser => user;
 
 export function usersRepository(db: Db) {
   return {
-    create(input: { name: string; email: string; passwordHash: string }): User {
+    // Siempre nace USER y ACTIVE (valores por defecto de la tabla): nadie se hace administrador al registrarse.
+    // `createdAt` sale del reloj de la app, como el resto de fechas que cuentan las estadísticas.
+    create(input: { name: string; email: string; passwordHash: string; createdAt: string }): CurrentUser {
       const id = randomUUID();
       try {
-        db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(
-          id, input.name, input.email, input.passwordHash,
+        db.prepare('INSERT INTO users (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)').run(
+          id, input.name, input.email, input.passwordHash, input.createdAt,
         );
       } catch (e) {
         // Dos registros simultáneos con el mismo correo pasan findByEmail; el UNIQUE los frena.
@@ -24,15 +32,15 @@ export function usersRepository(db: Db) {
         }
         throw e;
       }
-      return { id, name: input.name, email: input.email };
+      return { id, name: input.name, email: input.email, role: 'USER' };
     },
-    findByEmail(email: string): (User & { passwordHash: string }) | undefined {
+    findByEmail(email: string): (Account & { passwordHash: string }) | undefined {
       const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
-      return row && { ...toUser(row), passwordHash: row.password_hash };
+      return row && { ...toAccount(row), passwordHash: row.password_hash };
     },
-    findById(id: string): User | undefined {
+    findById(id: string): Account | undefined {
       const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
-      return row && toUser(row);
+      return row && toAccount(row);
     },
   };
 }

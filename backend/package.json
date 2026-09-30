@@ -13,7 +13,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "make-admin": "tsx src/admin/make-admin.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

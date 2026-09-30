@@ -16,13 +16,23 @@ export class ApiError extends Error {
 export const api = axios.create({ baseURL: API_URL, timeout: 15000 });
 
 let authToken: string | null = null;
-let onUnauthorized: (() => void) | null = null;
+// Por qué se cierra la sesión: token vencido o inválido (401) o cuenta suspendida (403 ACCOUNT_SUSPENDED, D14).
+export type SessionEndReason = 'UNAUTHORIZED' | 'ACCOUNT_SUSPENDED';
+
+let onSessionEnd: ((reason: SessionEndReason, message: string) => void) | null = null;
 
 export const setAuthToken = (token: string | null) => {
   authToken = token;
 };
-export const setUnauthorizedHandler = (fn: (() => void) | null) => {
-  onUnauthorized = fn;
+export const setUnauthorizedHandler = (fn: ((reason: SessionEndReason, message: string) => void) | null) => {
+  onSessionEnd = fn;
+};
+
+// 403 NOT_ADMIN con el token vigente: a esta cuenta le quitaron el rol de administrador. No se cierra la sesión;
+// AuthContext vuelve a pedir /auth/me y el menú y las pantallas de administración desaparecen (M3).
+let onNotAdmin: (() => void) | null = null;
+export const setNotAdminHandler = (fn: (() => void) | null) => {
+  onNotAdmin = fn;
 };
 
 api.interceptors.request.use((config) => {
@@ -43,17 +53,14 @@ api.interceptors.response.use(
       throw new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.');
     }
     const { status, data } = error.response;
-    // Un 401 con sesión abierta significa token vencido: cerrar sesión. Solo si la
-    // petición salió con el token actual; un 401 tardío de una sesión anterior se ignora.
-    if (status === 401 && authToken && error.config?.headers?.Authorization === `Bearer ${authToken}`) {
-      onUnauthorized?.();
-    }
-    throw new ApiError(
-      status,
-      data?.error?.code ?? 'UNKNOWN',
-      data?.error?.message ?? 'Ocurrió un error inesperado.',
-      data?.error?.details ?? null,
-    );
+    const code = data?.error?.code ?? 'UNKNOWN';
+    const message = data?.error?.message ?? 'Ocurrió un error inesperado.';
+    // Solo si la petición salió con el token actual: un 401/403 tardío de una sesión anterior se ignora.
+    const sentWithCurrentToken = Boolean(authToken) && error.config?.headers?.Authorization === `Bearer ${authToken}`;
+    if (sentWithCurrentToken && status === 401) onSessionEnd?.('UNAUTHORIZED', message);
+    if (sentWithCurrentToken && status === 403 && code === 'ACCOUNT_SUSPENDED') onSessionEnd?.('ACCOUNT_SUSPENDED', message);
+    if (sentWithCurrentToken && status === 403 && code === 'NOT_ADMIN') onNotAdmin?.();
+    throw new ApiError(status, code, message, data?.error?.details ?? null);
   },
 );
 

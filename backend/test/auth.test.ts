@@ -17,7 +17,7 @@ describe('POST /api/auth/register', () => {
       .send({ name: '  Ana Pérez ', email: '  Ana@Correo.com ', password: 'contrasena-segura' });
     expect(res.status).toBe(201);
     expect(typeof res.body.token).toBe('string');
-    expect(res.body.user).toEqual({ id: expect.any(String), name: 'Ana Pérez', email: 'ana@correo.com' });
+    expect(res.body.user).toEqual({ id: expect.any(String), name: 'Ana Pérez', email: 'ana@correo.com', role: 'USER' });
     expect(JSON.stringify(res.body)).not.toContain('password');
   });
 
@@ -68,7 +68,7 @@ describe('GET /api/auth/me', () => {
     const { token, user } = await registerUser(app);
     const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(user);
+    expect(res.body).toEqual({ ...user, role: 'USER' });
   });
 
   it('sin token → 401 UNAUTHORIZED', async () => {

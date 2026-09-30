@@ -33,8 +33,8 @@ function dashboardOf(db: Db, now: Date) {
 describe('semilla de datos de ejemplo (D8)', () => {
   it('crea las cuentas, los códigos y las dos propuestas con fechas relativas a hoy', () => {
     const db = openDatabase(':memory:');
-    expect(seedDemoData(db, HASH, NOW)).toEqual({ users: 3, groups: 2, blocks: 5, proposals: 2 });
-    expect(column(db, 'SELECT email AS v FROM users ORDER BY email')).toEqual(['ana@test.com', 'carlos@test.com', 'test@test.com']);
+    expect(seedDemoData(db, HASH, NOW)).toEqual({ users: 4, groups: 2, blocks: 5, proposals: 2, adminReset: false });
+    expect(column(db, 'SELECT email AS v FROM users ORDER BY email')).toEqual(['admin@test.com', 'ana@test.com', 'carlos@test.com', 'test@test.com']);
     expect(column(db, 'SELECT invite_code AS v FROM groups ORDER BY invite_code')).toEqual(['HUECKO123', 'PROY2026']);
 
     const d = dashboardOf(db, NOW);
@@ -51,6 +51,26 @@ describe('semilla de datos de ejemplo (D8)', () => {
     ]);
   });
 
+  it('admin@test.com es ADMIN sin grupos, y la semilla lo deja ADMIN y ACTIVE aunque lo hayan cambiado', () => {
+    const db = openDatabase(':memory:');
+    seedDemoData(db, HASH, NOW);
+    const admin = () => ({ ...(db.prepare("SELECT role, status FROM users WHERE email = 'admin@test.com'").get() as object) });
+    expect(admin()).toEqual({ role: 'ADMIN', status: 'ACTIVE' });
+    expect(column(db, "SELECT u.email AS v FROM users u JOIN group_members m ON m.user_id = u.id WHERE u.email = 'admin@test.com'")).toEqual([]);
+    expect(column(db, "SELECT email AS v FROM users WHERE role = 'ADMIN'")).toEqual(['admin@test.com']);
+    db.prepare("UPDATE users SET role = 'USER', status = 'SUSPENDED' WHERE email = 'admin@test.com'").run();
+    expect(seedDemoData(db, HASH, NOW).adminReset).toBe(true); // la semilla lo avisa por consola
+    expect(admin()).toEqual({ role: 'ADMIN', status: 'ACTIVE' });
+    expect(seedDemoData(db, HASH, NOW).adminReset).toBe(false); // ya estaba bien: nada que avisar
+  });
+
+  it('users.created_at y groups.created_at salen del reloj inyectado, en ISO (las estadísticas comparan rangos ISO)', () => {
+    const db = openDatabase(':memory:');
+    seedDemoData(db, HASH, NOW);
+    expect(column(db, 'SELECT DISTINCT created_at AS v FROM users')).toEqual([NOW.toISOString()]);
+    expect(column(db, 'SELECT DISTINCT created_at AS v FROM groups')).toEqual([NOW.toISOString()]);
+  });
+
   it('repetirla días después no duplica nada y renueva las fechas', () => {
     const db = openDatabase(':memory:');
     seedDemoData(db, HASH, NOW);
@@ -58,7 +78,7 @@ describe('semilla de datos de ejemplo (D8)', () => {
     const demoIds = () => column(db, "SELECT id AS v FROM proposals WHERE title IN ('Reunión de avance del proyecto', 'Repaso antes de la entrega') ORDER BY title");
     const idsBefore = demoIds();
     const later = new Date(NOW.getTime() + 10 * DAY); // viernes 9/10 10:00
-    expect(seedDemoData(db, HASH, later)).toEqual({ users: 0, groups: 0, blocks: 0, proposals: 2 });
+    expect(seedDemoData(db, HASH, later)).toEqual({ users: 0, groups: 0, blocks: 0, proposals: 2, adminReset: false });
     expect(snapshot(db)).toEqual(before);
     // Las dos propuestas de ejemplo se recrean con ids nuevos.
     const idsAfter = demoIds();

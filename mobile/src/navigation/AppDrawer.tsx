@@ -10,11 +10,13 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { AdminScreen } from '../screens/admin/AdminScreen';
 import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
 import { GroupListScreen } from '../screens/groups/GroupListScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { MyScheduleScreen } from '../screens/schedule/MyScheduleScreen';
 import { categoryColor, colors, typography } from '../theme';
+import { canSeeAdmin } from '../utils/admin';
 import type { DrawerParamList } from './types';
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -44,6 +46,7 @@ function DrawerContent(props: DrawerContentComponentProps) {
 }
 
 export function AppDrawer() {
+  const { user } = useAuth();
   return (
     <Drawer.Navigator
       initialRouteName="Dashboard"
@@ -63,6 +66,13 @@ export function AppDrawer() {
       <Drawer.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Inicio', drawerIcon: icon('dashboard') }} />
       <Drawer.Screen name="Schedule" component={MyScheduleScreen} options={{ title: 'Horario', drawerIcon: icon('calendar-month') }} />
       <Drawer.Screen name="Groups" component={GroupListScreen} options={{ title: 'Grupos', drawerIcon: icon('group') }} />
+      {canSeeAdmin(user) ? (
+        <Drawer.Screen
+          name="Admin"
+          component={AdminScreen}
+          options={{ title: 'Administración', drawerIcon: icon('admin-panel-settings') }}
+        />
+      ) : null}
       <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil', drawerIcon: icon('person-outline') }} />
     </Drawer.Navigator>
   );

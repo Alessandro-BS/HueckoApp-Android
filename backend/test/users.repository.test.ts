@@ -7,7 +7,7 @@ import { usersRepository } from '../src/users/users.repository';
 describe('usersRepository.create', () => {
   it('un correo repetido lanza ApiError 409 EMAIL_TAKEN (carrera entre registros)', () => {
     const users = usersRepository(openDatabase(':memory:'));
-    const input = { name: 'Ana', email: 'ana@correo.com', passwordHash: 'hash' };
+    const input = { name: 'Ana', email: 'ana@correo.com', passwordHash: 'hash', createdAt: '2026-09-29T15:00:00.000Z' };
     users.create(input);
     let error: unknown;
     try {
