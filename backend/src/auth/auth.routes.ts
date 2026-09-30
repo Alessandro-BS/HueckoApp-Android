@@ -40,17 +40,17 @@ export function authRouter({
 
   router.post('/register', registerLimiter, async (req, res) => {
     const { name, email, password } = registerSchema.parse(req.body);
-    if (users.findByEmail(email)) {
+    if (await users.findByEmail(email)) {
       throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
     }
-    const user = users.create({ name, email, passwordHash: await hashPassword(password), createdAt: now().toISOString() });
+    const user = await users.create({ name, email, passwordHash: await hashPassword(password), createdAt: now().toISOString() });
     const body: AuthResponse = { token: signToken(user.id, jwtSecret, jwtExpiresIn), user };
     res.status(201).json(body);
   });
 
   router.post('/login', loginLimiter, async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
-    const found = users.findByEmail(email);
+    const found = await users.findByEmail(email);
     const ok = await verifyPassword(password, found?.passwordHash ?? DUMMY_HASH);
     if (!found || !ok) {
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Correo o contraseña incorrectos.');
@@ -62,8 +62,8 @@ export function authRouter({
     res.json(body);
   });
 
-  router.get('/me', requireAuth(db, jwtSecret), (_req, res) => {
-    const account = users.findById(getUserId(res));
+  router.get('/me', requireAuth(db, jwtSecret), async (_req, res) => {
+    const account = await users.findById(getUserId(res));
     if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró. Inicia sesión de nuevo.');
     res.json(toCurrentUser(account));
   });

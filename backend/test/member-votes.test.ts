@@ -4,7 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { summaryData } from '../src/ai/voting-summary';
-import type { Db } from '../src/db/database';
+import type { Db } from '../src/db/db';
 import { bearer, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, setupSeedGroup, voteFor, windowOf } from './helpers';
 
 let app: Express;
@@ -15,7 +15,7 @@ let carlos: { token: string; user: User };
 let group: Group;
 
 beforeEach(async () => {
-  ({ app, db } = makeTestApp({ now: () => NOW }));
+  ({ app, db } = await makeTestApp({ now: () => NOW }));
   ({ yo, ana, group } = await setupSeedGroup(app));
   carlos = await registerUser(app, { name: 'Carlos' });
   await joinGroup(app, carlos.token, group.inviteCode);
@@ -25,8 +25,7 @@ const leave = async (token: string) =>
   expect((await request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(token))).status).toBe(204);
 const getProposal = async (id: string, token = yo.token): Promise<Proposal> =>
   (await request(app).get(`/api/proposals/${id}`).set(bearer(token))).body;
-const votesInDb = (proposalId: string) =>
-  (db.prepare('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = ?').get(proposalId) as { n: number }).n;
+const votesInDb = async (proposalId: string) => (await db.one<{ n: number }>('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [proposalId]))!.n;
 
 // Martes 16–18 y jueves 10–12: yo vota el martes; Ana y Carlos, el jueves.
 async function votedPlan() {
@@ -49,7 +48,7 @@ describe('votos de quien sale del grupo (D5)', () => {
     expect((await getProposal(p.id)).windows.map((w) => w.voteCount)).toEqual([1, 2]);
     await leave(carlos.token);
     expect((await getProposal(p.id)).windows.map((w) => w.voteCount)).toEqual([1, 1]);
-    expect(votesInDb(p.id)).toBe(3);
+    expect(await votesInDb(p.id)).toBe(3);
     await joinGroup(app, carlos.token, group.inviteCode);
     const back = await getProposal(p.id, carlos.token);
     expect(back.windows.map((w) => w.voteCount)).toEqual([1, 2]);

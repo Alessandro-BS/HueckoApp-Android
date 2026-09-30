@@ -10,7 +10,7 @@ import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
 import { requireAdmin, requireAuth } from './auth/require-auth';
 import type { TrustProxy } from './config/trust-proxy';
-import type { Db } from './db/database';
+import type { BridgeDb } from './db/sqlite-bridge';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
@@ -18,7 +18,8 @@ import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.rou
 import { timeBlocksRouter } from './schedule/time-blocks.routes';
 
 export type AppDeps = {
-  db: Db;
+  // TEMPORAL: BridgeDb (SQLite con la API async) hasta el Task 6, que lo cambia por Db (Postgres/PGlite).
+  db: BridgeDb;
   jwtSecret: string;
   jwtExpiresIn: string;
   // Proxies delante del servidor (app.set('trust proxy')): false si se omite. Ver TRUST_PROXY en .env.example.

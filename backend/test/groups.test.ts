@@ -3,13 +3,13 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { Db } from '../src/db/database';
+import type { Db } from '../src/db/db';
 import { bearer, createGroup, joinGroup, makeTestApp, registerUser } from './helpers';
 
 let app: Express;
 let db: Db;
-beforeEach(() => {
-  ({ app, db } = makeTestApp());
+beforeEach(async () => {
+  ({ app, db } = await makeTestApp());
 });
 
 const get = (path: string, token: string) => request(app).get(`/api${path}`).set(bearer(token));
@@ -212,7 +212,7 @@ describe('DELETE /api/groups/:id/members/me', () => {
     await joinGroup(app, b.token, group.inviteCode);
     await joinGroup(app, c.token, group.inviteCode);
     // C figura como más antiguo que B aunque se unió después: manda joined_at.
-    db.prepare('UPDATE group_members SET joined_at = ? WHERE user_id = ?').run('2000-01-01T00:00:00.000Z', c.user.id);
+    await db.query('UPDATE group_members SET joined_at = $1 WHERE user_id = $2', ['2000-01-01T00:00:00.000Z', c.user.id]);
 
     expect((await request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(yo.token))).status).toBe(204);
 
@@ -227,8 +227,7 @@ describe('DELETE /api/groups/:id/members/me', () => {
     const yo = await registerUser(app);
     const group = await createGroup(app, yo.token);
     expect((await request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(yo.token))).status).toBe(204);
-    const { n } = db.prepare('SELECT COUNT(*) AS n FROM groups').get() as { n: number };
-    expect(n).toBe(0);
+    expect(await db.one('SELECT COUNT(*) AS n FROM groups')).toEqual({ n: 0 });
     expect((await get(`/groups/${group.id}`, yo.token)).status).toBe(404);
   });
 

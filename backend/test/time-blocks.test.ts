@@ -19,7 +19,7 @@ let token: string;
 let me: User;
 
 beforeEach(async () => {
-  ({ app } = makeTestApp());
+  ({ app } = await makeTestApp());
   ({ token, user: me } = await registerUser(app));
 });
 

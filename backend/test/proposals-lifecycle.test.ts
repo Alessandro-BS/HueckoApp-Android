@@ -15,7 +15,7 @@ let group: Group;
 
 beforeEach(async () => {
   clock = makeClock(NOW);
-  ({ app } = makeTestApp({ now: clock.now }));
+  ({ app } = await makeTestApp({ now: clock.now }));
   ({ yo, ana, group } = await setupSeedGroup(app));
 });
 

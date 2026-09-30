@@ -18,7 +18,7 @@ const block = (dayOfWeek: number, startTime: string, endTime: string, label: str
 });
 
 async function setup(ai?: AiClient, aiRateLimit?: number) {
-  const { app } = makeTestApp({ ai, aiRateLimit });
+  const { app } = await makeTestApp({ ai, aiRateLimit });
   const { token } = await registerUser(app);
   return { app, token };
 }

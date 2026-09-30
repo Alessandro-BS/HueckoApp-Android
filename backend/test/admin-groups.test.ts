@@ -3,18 +3,18 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Db } from '../src/db/database';
+import type { Db } from '../src/db/db';
 import { insertGroup, registerAdmin } from './admin-fixtures';
 import { bearer, createGroup, createProposal, DEADLINE, makeTestApp, NOW, setupSeedGroup, voteFor } from './helpers';
 
 async function setupGroups() {
-  const { app, db } = makeTestApp({ now: () => NOW });
+  const { app, db } = await makeTestApp({ now: () => NOW });
   const admin = await registerAdmin(app, db, { email: 'admin@correo.com' });
   const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es OWNER, Ana MEMBER
   return { app, db, admin, yo, ana, group };
 }
 
-const count = (db: Db, sql: string, ...params: string[]) => (db.prepare(sql).get(...params) as { n: number }).n;
+const count = async (db: Db, sql: string, ...params: string[]) => (await db.one<{ n: number }>(sql, params))!.n;
 const names = (body: { items: { name: string }[] }) => body.items.map((g) => g.name);
 
 type Session = { token: string; user: { id: string } };
@@ -35,7 +35,7 @@ describe('GET /api/admin/groups', () => {
   it('cada grupo con miembros, propuestas y OWNER; busca por nombre o por código', async () => {
     const { app, db, admin, yo, group } = await setupGroups();
     await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
-    const other = insertGroup(db, { name: 'Amigos de la Uni', inviteCode: 'HUECKO123' });
+    const other = await insertGroup(db, { name: 'Amigos de la Uni', inviteCode: 'HUECKO123' });
     const all = await request(app).get('/api/admin/groups').set(bearer(admin.token));
     expect(all.body).toMatchObject({ page: 1, pageSize: 20, total: 2 });
     const byId = new Map(all.body.items.map((g: { id: string }) => [g.id, g]));
@@ -50,9 +50,9 @@ describe('GET /api/admin/groups', () => {
 
   it('% y _ se buscan literalmente, no como comodines', async () => {
     const { app, db, admin } = await setupGroups();
-    insertGroup(db, { name: 'Rebajas 100%', inviteCode: 'REBAJAS1' });
-    insertGroup(db, { name: 'Club_Lectura', inviteCode: 'CLUBLEC1' });
-    insertGroup(db, { name: 'Club Lectura', inviteCode: 'CLUBLEC2' });
+    await insertGroup(db, { name: 'Rebajas 100%', inviteCode: 'REBAJAS1' });
+    await insertGroup(db, { name: 'Club_Lectura', inviteCode: 'CLUBLEC1' });
+    await insertGroup(db, { name: 'Club Lectura', inviteCode: 'CLUBLEC2' });
     const search = async (q: string) => names((await request(app).get('/api/admin/groups').query({ search: q }).set(bearer(admin.token))).body);
     expect(await search('100%')).toEqual(['Rebajas 100%']);
     expect(await search('%')).toEqual(['Rebajas 100%']);
@@ -61,10 +61,10 @@ describe('GET /api/admin/groups', () => {
   });
 
   it('los más nuevos primero y 20 por página', async () => {
-    const { app, db } = makeTestApp({ now: () => NOW });
+    const { app, db } = await makeTestApp({ now: () => NOW });
     const admin = await registerAdmin(app, db);
     for (let i = 0; i < 21; i++) {
-      insertGroup(db, { name: `Grupo ${String(i).padStart(2, '0')}`, createdAt: new Date(NOW.getTime() + i * 60_000).toISOString() });
+      await insertGroup(db, { name: `Grupo ${String(i).padStart(2, '0')}`, createdAt: new Date(NOW.getTime() + i * 60_000).toISOString() });
     }
     const first = await request(app).get('/api/admin/groups').set(bearer(admin.token));
     expect(first.body.total).toBe(21);
@@ -113,16 +113,16 @@ describe('DELETE /api/admin/groups/:id', () => {
     const plan = await confirmedPlan(app, yo, ana, group.id);
     await request(app).post(`/api/proposals/${plan.id}/incidences`).set(bearer(ana.token)).send({ type: 'FALTA', reason: 'Enferma' }).expect(201);
     const other = await createGroup(app, ana.token, { name: 'Otro' });
-    const left = () => [
-      count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?', group.id),
-      count(db, 'SELECT COUNT(*) AS n FROM proposals WHERE group_id = ?', group.id),
-      count(db, 'SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = ?', plan.id),
-      count(db, 'SELECT COUNT(*) AS n FROM votes WHERE proposal_id = ?', plan.id),
-      count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = ?', plan.id),
+    const left = async () => [
+      await count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = $1', group.id),
+      await count(db, 'SELECT COUNT(*) AS n FROM proposals WHERE group_id = $1', group.id),
+      await count(db, 'SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = $1', plan.id),
+      await count(db, 'SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', plan.id),
+      await count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = $1', plan.id),
     ];
-    expect(left()).toEqual([2, 1, 1, 2, 1]); // control positivo: antes de borrar, todo existe
+    expect(await left()).toEqual([2, 1, 1, 2, 1]); // control positivo: antes de borrar, todo existe
     expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(204);
-    expect(left()).toEqual([0, 0, 0, 0, 0]);
+    expect(await left()).toEqual([0, 0, 0, 0, 0]);
     expect((await request(app).get(`/api/groups/${group.id}`).set(bearer(yo.token))).status).toBe(404);
     expect((await request(app).get(`/api/groups/${other.id}`).set(bearer(ana.token))).status).toBe(200);
     const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
@@ -144,10 +144,10 @@ describe('DELETE /api/admin/groups/:id', () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {}); // el 500 se escribe en el log
     try {
       const { app, db, admin, group } = await setupGroups();
-      db.exec('DROP TABLE admin_audit_log');
+      await db.exec('DROP TABLE admin_audit_log');
       expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(500);
-      expect(count(db, 'SELECT COUNT(*) AS n FROM groups WHERE id = ?', group.id)).toBe(1);
-      expect(count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?', group.id)).toBe(2);
+      expect(await count(db, 'SELECT COUNT(*) AS n FROM groups WHERE id = $1', group.id)).toBe(1);
+      expect(await count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = $1', group.id)).toBe(2);
     } finally {
       quiet.mockRestore();
     }
@@ -205,7 +205,7 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
     try {
       const { app, db, admin, yo, group } = await setupGroups();
       const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
-      db.exec('DROP TABLE admin_audit_log');
+      await db.exec('DROP TABLE admin_audit_log');
       const res = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
       expect(res.status).toBe(500);
       expect((await request(app).get(`/api/proposals/${plan.id}`).set(bearer(yo.token))).body.state).toBe('PROPUESTO');

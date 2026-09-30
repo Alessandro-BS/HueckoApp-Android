@@ -6,9 +6,10 @@ import { createMockAiClient } from './ai/mock-client';
 import { createApp } from './app';
 import { env } from './config/env';
 import { openDatabase } from './db/database';
+import { createSqliteDb } from './db/sqlite-bridge';
 
 mkdirSync(dirname(env.DATABASE_PATH), { recursive: true });
-const db = openDatabase(env.DATABASE_PATH);
+const db = createSqliteDb(openDatabase(env.DATABASE_PATH));
 
 // Sin clave, la IA responde con datos de demostración para que la app se pueda probar igual (D2).
 const ai = env.GEMINI_API_KEY

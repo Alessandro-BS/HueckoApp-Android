@@ -3,14 +3,16 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { migrations } from './migrations';
 
-export type Db = DatabaseSync;
+// TEMPORAL (Tasks 2–5; este archivo se borra en el Task 6): el tipo mínimo que usa el código aún síncrono.
+// Lo cumplen DatabaseSync y el puente asíncrono (BridgeDb, sqlite-bridge.ts).
+export type Db = Pick<DatabaseSync, 'prepare' | 'isTransaction'> & { exec(sql: string): unknown };
 
 // Abre (o crea) la base y la deja al día. ':memory:' para tests.
-export function openDatabase(path: string): Db {
+export function openDatabase(path: string): DatabaseSync {
   return ready(new DatabaseSync(path));
 }
 
-function ready(db: Db): Db {
+function ready(db: DatabaseSync): DatabaseSync {
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA journal_mode = WAL;');
   migrate(db);
@@ -25,7 +27,7 @@ export const BUSY_TIMEOUT_MS = 5000;
  * no crea un archivo vacío (donde el correo nunca aparecería) sino que falla nombrando DATABASE_PATH.
  * Espera BUSY_TIMEOUT_MS si el servidor está escribiendo a la vez.
  */
-export function openExistingDatabase(path: string): Db {
+export function openExistingDatabase(path: string): DatabaseSync {
   if (!existsSync(path)) {
     throw new Error(
       `No hay ninguna base de datos en «${path}» (DATABASE_PATH). Revisa backend/.env o arranca el servidor una vez para crearla.`,

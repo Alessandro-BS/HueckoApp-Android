@@ -103,12 +103,12 @@ describe('cliente de demostración', () => {
 
 describe('GET /api/ai/status', () => {
   it('sin token → 401', async () => {
-    const { app } = makeTestApp();
+    const { app } = await makeTestApp();
     expect((await request(app).get('/api/ai/status')).status).toBe(401);
   });
 
   it('sin clave (cliente de demostración) → mock', async () => {
-    const { app } = makeTestApp();
+    const { app } = await makeTestApp();
     const { token } = await registerUser(app);
     const res = await request(app).get('/api/ai/status').set(bearer(token));
     expect(res.status).toBe(200);
@@ -116,7 +116,7 @@ describe('GET /api/ai/status', () => {
   });
 
   it('con Gemini → gemini', async () => {
-    const { app } = makeTestApp({ ai: fakeAi('{}').client });
+    const { app } = await makeTestApp({ ai: fakeAi('{}').client });
     const { token } = await registerUser(app);
     expect((await request(app).get('/api/ai/status').set(bearer(token))).body).toEqual({ provider: 'gemini' });
   });

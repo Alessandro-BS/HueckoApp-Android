@@ -6,8 +6,8 @@ import type { Express } from 'express';
 import { makeTestApp, registerUser, TEST_SECRET } from './helpers';
 
 let app: Express;
-beforeEach(() => {
-  ({ app } = makeTestApp());
+beforeEach(async () => {
+  ({ app } = await makeTestApp());
 });
 
 describe('POST /api/auth/register', () => {
@@ -101,7 +101,7 @@ describe('límites de intentos en /api/auth (D10)', () => {
     request(target).post('/api/auth/register').send({ name: `Persona ${n}`, email: `persona${n}@correo.com`, password: 'contrasena-segura' });
 
   it('el tercer login con límite 2 responde 429 TOO_MANY_REQUESTS', async () => {
-    const limited = makeTestApp({ loginRateLimit: 2 }).app;
+    const limited = await (await makeTestApp({ loginRateLimit: 2 })).app;
     await login(limited);
     await login(limited);
     const res = await login(limited);
@@ -111,7 +111,7 @@ describe('límites de intentos en /api/auth (D10)', () => {
   });
 
   it('login y registro tienen contadores separados', async () => {
-    const limited = makeTestApp({ loginRateLimit: 1, registerRateLimit: 1 }).app;
+    const limited = await (await makeTestApp({ loginRateLimit: 1, registerRateLimit: 1 })).app;
     expect((await login(limited)).status).toBe(401);
     expect((await login(limited)).status).toBe(429);
     // Agotar el login no bloquea el registro…
@@ -121,7 +121,7 @@ describe('límites de intentos en /api/auth (D10)', () => {
   });
 
   it('con trust proxy = 1, cada IP de X-Forwarded-For tiene su propio contador', async () => {
-    const limited = makeTestApp({ loginRateLimit: 1, trustProxy: 1 }).app;
+    const limited = await (await makeTestApp({ loginRateLimit: 1, trustProxy: 1 })).app;
     expect((await login(limited, '203.0.113.1')).status).toBe(401);
     expect((await login(limited, '203.0.113.1')).status).toBe(429);
     expect((await login(limited, '203.0.113.2')).status).toBe(401);
@@ -132,7 +132,7 @@ describe('límites de intentos en /api/auth (D10)', () => {
     const quietError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const quietWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      const limited = makeTestApp({ loginRateLimit: 1 }).app;
+      const limited = await (await makeTestApp({ loginRateLimit: 1 })).app;
       expect((await login(limited, '203.0.113.1')).status).toBe(401);
       expect((await login(limited, '203.0.113.2')).status).toBe(429);
     } finally {

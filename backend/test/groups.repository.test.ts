@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { openDatabase } from '../src/db/database';
 import { generateInviteCode, normalizeInviteCode } from '../src/groups/invite-code';
 import { groupsRepository } from '../src/groups/groups.repository';
 import { usersRepository } from '../src/users/users.repository';
+import { makeTestDb } from './helpers';
 
 const input = { name: 'Grupo', description: '', availabilityThreshold: 80, createdAt: '2026-09-29T15:00:00.000Z' };
 
-const setup = (generateCode: () => string) => {
-  const db = openDatabase(':memory:');
-  const owner = usersRepository(db).create({ name: 'Ana', email: 'ana@correo.com', passwordHash: 'x', createdAt: '2026-09-29T15:00:00.000Z' });
+const setup = async (generateCode: () => string) => {
+  const db = await makeTestDb();
+  const owner = await usersRepository(db).create({ name: 'Ana', email: 'ana@correo.com', passwordHash: 'x', createdAt: '2026-09-29T15:00:00.000Z' });
   return { repo: groupsRepository(db, generateCode), owner };
 };
 
@@ -29,16 +29,16 @@ describe('generateInviteCode', () => {
 });
 
 describe('groupsRepository.create — código único', () => {
-  it('reintenta si el código generado ya existe', () => {
+  it('reintenta si el código generado ya existe', async () => {
     const codes = ['AAAAAAAA', 'AAAAAAAA', 'BBBBBBBB'];
-    const { repo, owner } = setup(() => codes.shift()!);
-    expect(repo.create(owner.id, input).inviteCode).toBe('AAAAAAAA');
-    expect(repo.create(owner.id, input).inviteCode).toBe('BBBBBBBB');
+    const { repo, owner } = await setup(() => codes.shift()!);
+    expect((await repo.create(owner.id, input)).inviteCode).toBe('AAAAAAAA');
+    expect((await repo.create(owner.id, input)).inviteCode).toBe('BBBBBBBB');
   });
 
-  it('se rinde tras 5 colisiones seguidas', () => {
-    const { repo, owner } = setup(() => 'AAAAAAAA');
-    repo.create(owner.id, input);
+  it('se rinde tras 5 colisiones seguidas', async () => {
+    const { repo, owner } = await setup(() => 'AAAAAAAA');
+    await repo.create(owner.id, input);
     expect(() => repo.create(owner.id, input)).toThrow('No se pudo generar un código de invitación único');
   });
 });

@@ -1,7 +1,7 @@
 import type { UserRole, UserStatus } from '@hueckoapp/shared';
 import type { RequestHandler, Response } from 'express';
 
-import type { Db } from '../db/database';
+import type { Db } from '../db/db';
 import { ApiError } from '../middleware/errors';
 import { verifyToken } from './tokens';
 
@@ -18,15 +18,14 @@ type AccessRow = { role: UserRole; status: UserStatus };
  * JWT (salvo `sub`) cuenta.
  */
 export function requireAuth(db: Db, secret: string): RequestHandler {
-  const findAccess = db.prepare('SELECT role, status FROM users WHERE id = ?');
-  return (req, res, next) => {
+  return async (req, res, next) => {
     // Ya comprobado en esta misma petición (p. ej. /groups/:id/ai/* atraviesa varios routers con este middleware).
     if (typeof res.locals.userId === 'string') return next();
     const header = req.get('authorization') ?? '';
     const [scheme, token] = header.split(' ');
     const userId = scheme === 'Bearer' && token ? verifyToken(token, secret) : null;
     if (!userId) return next(unauthorized());
-    const access = findAccess.get(userId) as AccessRow | undefined;
+    const access = await db.one<AccessRow>('SELECT role, status FROM users WHERE id = $1', [userId]);
     if (!access) return next(unauthorized()); // la cuenta ya no existe
     if (access.status === 'SUSPENDED') return next(accountSuspended());
     res.locals.userId = userId;

@@ -2,7 +2,7 @@ import type { Proposal } from '@hueckoapp/shared';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Db } from '../src/db/database';
+import type { BridgeDb } from '../src/db/sqlite-bridge';
 import { proposalsRepository } from '../src/proposals/proposals.repository';
 import { bearer, DEADLINE, makeTestApp, NOW, setupSeedGroup } from './helpers';
 
@@ -11,13 +11,13 @@ const MINUTE = 60_000;
 // Grupo de la semilla con `count` propuestas creadas directamente en el repositorio (rápido): cada una con 2 franjas
 // (martes y jueves), el voto de los dos miembros y, una de cada tres, confirmada con una tardanza de Ana.
 async function groupWithProposals(count: number) {
-  const { app, db } = makeTestApp({ now: () => NOW });
+  const { app, db } = await makeTestApp({ now: () => NOW });
   const seed = await setupSeedGroup(app);
   const repo = proposalsRepository(db);
   const yoId = seed.yo.user.id;
   const anaId = seed.ana.user.id;
   for (let i = 0; i < count; i++) {
-    const id = repo.create({
+    const id = await repo.create({
       groupId: seed.group.id,
       createdBy: i % 2 === 0 ? yoId : anaId,
       title: `Plan ${i}`,
@@ -29,12 +29,12 @@ async function groupWithProposals(count: number) {
       ],
       createdAt: new Date(NOW.getTime() - (count - i) * MINUTE).toISOString(),
     });
-    const [martes, jueves] = repo.findById(id, yoId)!.windows;
-    repo.vote(id, yoId, martes.id, NOW.toISOString());
-    repo.vote(id, anaId, (i % 2 === 0 ? martes : jueves).id, NOW.toISOString());
+    const [martes, jueves] = (await repo.findById(id, yoId))!.windows;
+    await repo.vote(id, yoId, martes.id, NOW.toISOString());
+    await repo.vote(id, anaId, (i % 2 === 0 ? martes : jueves).id, NOW.toISOString());
     if (i % 3 === 0) {
-      repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29');
-      repo.reportIncidence(
+      await repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29');
+      await repo.reportIncidence(
         id,
         { userId: anaId, type: 'TARDANZA', reason: `Tráfico ${i}`, delayMinutes: 10, criticality: 'BAJA', createdAt: NOW.toISOString() },
         false,
@@ -44,11 +44,11 @@ async function groupWithProposals(count: number) {
   return { app, db, repo, ...seed };
 }
 
-// Cuántas sentencias SQL prepara `fn` (toda consulta del repositorio pasa por db.prepare).
-function countQueries(db: Db, fn: () => unknown): number {
+// Cuántas sentencias SQL ejecuta `fn`. TEMPORAL: el repositorio aún usa db.prepare; en el Task 4 pasa a contar db.query.
+async function countQueries(db: BridgeDb, fn: () => unknown): Promise<number> {
   const spy = vi.spyOn(db, 'prepare');
   try {
-    fn();
+    await fn();
     return spy.mock.calls.length;
   } finally {
     spy.mockRestore();
@@ -59,12 +59,12 @@ describe('carga en lote de propuestas (sin N+1)', () => {
   it('listByGroup y listForUser usan las mismas consultas con 1 que con 25 propuestas', async () => {
     const one = await groupWithProposals(1);
     const many = await groupWithProposals(25);
-    const listOne = countQueries(one.db, () => one.repo.listByGroup(one.group.id, one.yo.user.id));
-    const listMany = countQueries(many.db, () => many.repo.listByGroup(many.group.id, many.yo.user.id));
+    const listOne = await countQueries(one.db, () => one.repo.listByGroup(one.group.id, one.yo.user.id));
+    const listMany = await countQueries(many.db, () => many.repo.listByGroup(many.group.id, many.yo.user.id));
     expect(listMany).toBe(listOne);
     expect(listMany).toBeLessThanOrEqual(6);
-    const mineOne = countQueries(one.db, () => one.repo.listForUser(one.yo.user.id));
-    const mineMany = countQueries(many.db, () => many.repo.listForUser(many.yo.user.id));
+    const mineOne = await countQueries(one.db, () => one.repo.listForUser(one.yo.user.id));
+    const mineMany = await countQueries(many.db, () => many.repo.listForUser(many.yo.user.id));
     expect(mineMany).toBe(mineOne);
     expect(mineMany).toBeLessThanOrEqual(6);
   });
@@ -72,7 +72,7 @@ describe('carga en lote de propuestas (sin N+1)', () => {
   it('sin propuestas hace una sola consulta', async () => {
     const empty = await groupWithProposals(0);
     let result: Proposal[] = [];
-    expect(countQueries(empty.db, () => (result = empty.repo.listByGroup(empty.group.id, empty.yo.user.id)))).toBe(1);
+    expect(await countQueries(empty.db, async () => (result = await empty.repo.listByGroup(empty.group.id, empty.yo.user.id)))).toBe(1);
     expect(result).toEqual([]);
   });
 
