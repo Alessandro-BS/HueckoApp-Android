@@ -1,6 +1,6 @@
 import { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios';
 
-import { api, ApiError, errorMessage, setAuthToken, setUnauthorizedHandler } from '../client';
+import { api, ApiError, errorMessage, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../client';
 
 const original = api.defaults.adapter;
 
@@ -137,5 +137,38 @@ describe('fin de sesión por suspensión (D14)', () => {
     api.defaults.adapter = failWith(403, { error: { code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' } });
     await expect(api.post('/auth/login', {})).rejects.toMatchObject({ code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' });
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe('403 NOT_ADMIN: el rol cambió en el servidor (M3)', () => {
+  const notAdmin = { error: { code: 'NOT_ADMIN', message: 'Solo la administración de HueckoApp puede hacer esto.' } };
+  const roleHandler = jest.fn();
+  beforeEach(() => {
+    roleHandler.mockClear();
+    setNotAdminHandler(roleHandler);
+  });
+  afterAll(() => setNotAdminHandler(null));
+
+  it('con el token vigente avisa (una vez) para refrescar la sesión, sin cerrarla', async () => {
+    setAuthToken('vigente');
+    api.defaults.adapter = failWith(403, notAdmin);
+    await expect(api.get('/admin/stats')).rejects.toMatchObject({ status: 403, code: 'NOT_ADMIN' });
+    expect(roleHandler).toHaveBeenCalledTimes(1);
+    expect(handler).not.toHaveBeenCalled(); // no es un cierre de sesión
+  });
+
+  it('otro 403, un token viejo o sin sesión: no avisa', async () => {
+    setAuthToken('vigente');
+    api.defaults.adapter = failWith(403, { error: { code: 'NOT_A_MEMBER', message: 'No perteneces a este grupo.' } });
+    await expect(api.get('/groups/g1')).rejects.toMatchObject({ code: 'NOT_A_MEMBER' });
+    api.defaults.adapter = (config) => {
+      setAuthToken('nuevo'); // la sesión cambia mientras la petición está en vuelo
+      return failWith(403, notAdmin)(config);
+    };
+    await expect(api.get('/admin/stats')).rejects.toMatchObject({ code: 'NOT_ADMIN' });
+    setAuthToken(null);
+    api.defaults.adapter = failWith(403, notAdmin);
+    await expect(api.get('/admin/stats')).rejects.toMatchObject({ code: 'NOT_ADMIN' });
+    expect(roleHandler).not.toHaveBeenCalled();
   });
 });

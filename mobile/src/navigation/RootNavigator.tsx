@@ -13,6 +13,7 @@ import { AddScheduleScreen } from '../screens/schedule/AddScheduleScreen';
 import { OcrReviewScreen } from '../screens/schedule/OcrReviewScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { colors } from '../theme';
+import { canSeeAdmin } from '../utils/admin';
 import { AppDrawer } from './AppDrawer';
 import type { AppStackParamList, AuthStackParamList } from './types';
 
@@ -21,7 +22,7 @@ const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 // Cambiar de stack según la sesión borra el historial: tras cerrar sesión no se puede volver atrás.
 export function RootNavigator() {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   if (status === 'loading') return <SplashScreen />;
 
   if (status === 'signedOut') {
@@ -49,8 +50,14 @@ export function RootNavigator() {
       <AppStack.Screen name="CreateProposal" component={CreateProposalScreen} options={{ title: 'Nueva propuesta' }} />
       <AppStack.Screen name="Voting" component={VotingScreen} options={{ title: 'Votar' }} />
       <AppStack.Screen name="PlanDetail" component={PlanDetailScreen} options={{ title: 'Detalle del plan' }} />
-      <AppStack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={({ route }) => ({ title: route.params.name })} />
-      <AppStack.Screen name="AdminGroupDetail" component={AdminGroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+      {/* Solo ADMIN (defensa en profundidad; el servidor lo comprueba siempre): si pierde el rol, estas rutas
+          desaparecen y el stack vuelve a la pantalla anterior. */}
+      {canSeeAdmin(user) ? (
+        <>
+          <AppStack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+          <AppStack.Screen name="AdminGroupDetail" component={AdminGroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+        </>
+      ) : null}
     </AppStack.Navigator>
   );
 }

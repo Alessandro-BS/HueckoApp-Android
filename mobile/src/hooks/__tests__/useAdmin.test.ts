@@ -37,6 +37,29 @@ describe('usePagedList (useAdminUsers / useAdminAudit)', () => {
     expect(result.current.hasPrev).toBe(true);
   });
 
+  it('si la página actual se queda vacía (se borró lo último de la última página), salta a la última que queda', async () => {
+    // 41 cuentas = 3 páginas; en la 3 queda 1. Al borrarla, el servidor dice total 40 y la página 3 viene vacía.
+    admin.listAdminUsers.mockImplementation(async (_search, p) =>
+      p === 3 ? page([], { page: 3, total: 40 }) : page([makeUserSummary()], { page: p, total: 40 }),
+    );
+    const { result } = await renderHook(() => useAdminUsers());
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => result.current.nextPage());
+    await act(async () => result.current.nextPage());
+    await waitFor(() => expect(admin.listAdminUsers).toHaveBeenLastCalledWith('', 2));
+    expect(admin.listAdminUsers.mock.calls.map((c) => c[1])).toEqual([1, 2, 3, 2]);
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    expect(result.current).toMatchObject({ page: 2, pageCount: 2, hasNext: false });
+  });
+
+  it('una lista vacía de verdad (total 0) se queda en la página 1 sin volver a pedir', async () => {
+    admin.listAdminUsers.mockResolvedValue(page([], { total: 0 }));
+    const { result } = await renderHook(() => useAdminUsers());
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.page).toBe(1);
+    expect(admin.listAdminUsers).toHaveBeenCalledTimes(1);
+  });
+
   it('el registro pide solo la página', async () => {
     admin.listAudit.mockResolvedValue(page([makeAuditEntry()]));
     const { result } = await renderHook(() => useAdminAudit());

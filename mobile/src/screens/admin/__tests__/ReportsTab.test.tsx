@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 
 import * as adminApi from '../../../api/admin';
 import { ApiError } from '../../../api/client';
@@ -28,6 +28,8 @@ it('arranca con los últimos 30 días y muestra el informe del servidor', async 
   expect(await screen.findByText('Lun 31/08 – Mar 29/09')).toBeTruthy();
   expect(mocked.getReport).toHaveBeenCalledWith({ from: '2026-08-31', to: '2026-09-29' });
   expect(screen.getByLabelText('Usuarios nuevos: 3')).toBeTruthy();
+  // M2: lo que cuenta es la fecha del plan, no cuándo se confirmó; se dice en la etiqueta y en la pista.
+  expect(screen.getByLabelText(`Planes con fecha en el periodo: ${makeReport().summary.confirmedPlans}. Confirmados o re-coordinando`)).toBeTruthy();
   const registrations = within(screen.getByTestId('report-registrations')).getByTestId('chart-line');
   expect(registrations.props.data.map((p: { value: number }) => p.value)).toEqual([2, 1]);
   expect(screen.getByText('Registros por día')).toBeTruthy();
@@ -63,12 +65,76 @@ it('«Personalizado» espera a «Aplicar» y valida las fechas antes de pedir na
   expect(screen.queryByText('La fecha de inicio no puede ser posterior a la de fin.')).toBeNull();
 });
 
-it('Exportar PDF y CSV usan el mismo informe que se ve; un fallo se muestra', async () => {
+it('Exportar PDF y CSV usan exactamente el informe que se ve (el mismo objeto); un fallo se muestra', async () => {
+  const shown = makeReport();
+  mocked.getReport.mockResolvedValueOnce(shown);
   jest.mocked(shareReportCsv).mockRejectedValueOnce(new ApiError(0, 'SHARING_UNAVAILABLE', 'Este dispositivo no permite compartir archivos.'));
   await render(<ReportsTab />);
   await fireEvent.press(await screen.findByText('Exportar PDF'));
-  expect(shareReportPdf).toHaveBeenCalledWith(makeReport());
+  expect(jest.mocked(shareReportPdf).mock.calls[0][0]).toBe(shown);
   await fireEvent.press(screen.getByText('Exportar CSV'));
-  expect(shareReportCsv).toHaveBeenCalledWith(makeReport());
+  expect(jest.mocked(shareReportCsv).mock.calls[0][0]).toBe(shown);
   expect(await screen.findByText('Este dispositivo no permite compartir archivos.')).toBeTruthy();
+  expect(mocked.getReport).toHaveBeenCalledTimes(1); // no se volvió a pedir el informe para exportar
+});
+
+describe('el error de exportación es siempre el de la última exportación', () => {
+  const PDF_FAILED = 'No se pudo generar el PDF.';
+  const CSV_FAILED = 'Este dispositivo no permite compartir archivos.';
+
+  it('dos fallos seguidos muestran solo el segundo; un éxito después lo borra', async () => {
+    jest.mocked(shareReportPdf).mockRejectedValueOnce(new ApiError(0, 'PRINT_FAILED', PDF_FAILED));
+    jest.mocked(shareReportCsv).mockRejectedValueOnce(new ApiError(0, 'SHARING_UNAVAILABLE', CSV_FAILED));
+    await render(<ReportsTab />);
+    await fireEvent.press(await screen.findByText('Exportar PDF'));
+    expect(await screen.findByText(PDF_FAILED)).toBeTruthy();
+    await fireEvent.press(screen.getByText('Exportar CSV'));
+    expect(await screen.findByText(CSV_FAILED)).toBeTruthy();
+    expect(screen.queryByText(PDF_FAILED)).toBeNull(); // no se queda el del PDF
+
+    await fireEvent.press(screen.getByText('Exportar PDF')); // ahora sale bien
+    await waitFor(() => expect(shareReportPdf).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(CSV_FAILED)).toBeNull();
+    expect(screen.queryByText(PDF_FAILED)).toBeNull();
+  });
+
+  it('un fallo y después un éxito de la otra exportación: no queda ningún error', async () => {
+    jest.mocked(shareReportCsv).mockRejectedValueOnce(new ApiError(0, 'SHARING_UNAVAILABLE', CSV_FAILED));
+    await render(<ReportsTab />);
+    await fireEvent.press(await screen.findByText('Exportar CSV'));
+    expect(await screen.findByText(CSV_FAILED)).toBeTruthy();
+    await fireEvent.press(screen.getByText('Exportar PDF'));
+    await waitFor(() => expect(shareReportPdf).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(CSV_FAILED)).toBeNull();
+  });
+
+  it('cambiar el periodo borra el error de una exportación anterior', async () => {
+    jest.mocked(shareReportPdf).mockRejectedValueOnce(new ApiError(0, 'PRINT_FAILED', PDF_FAILED));
+    await render(<ReportsTab />);
+    await fireEvent.press(await screen.findByText('Exportar PDF'));
+    expect(await screen.findByText(PDF_FAILED)).toBeTruthy();
+    await fireEvent.press(screen.getByText('7 días'));
+    await waitFor(() => expect(mocked.getReport).toHaveBeenCalledTimes(2));
+    await screen.findByText('Exportar PDF');
+    expect(screen.queryByText(PDF_FAILED)).toBeNull();
+  });
+});
+
+it('mientras se exporta, ninguno de los dos botones se puede pulsar', async () => {
+  let finish: () => void = () => {};
+  jest.mocked(shareReportCsv).mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+  await render(<ReportsTab />);
+  await fireEvent.press(await screen.findByText('Exportar CSV'));
+  const csvButton = screen.getByRole('button', { name: /Exportar CSV/ });
+  const pdfButton = screen.getByRole('button', { name: /Exportar PDF/ });
+  expect(csvButton).toBeDisabled();
+  expect(csvButton.props.accessibilityState).toMatchObject({ busy: true });
+  expect(pdfButton).toBeDisabled();
+  await fireEvent.press(screen.getByText('Exportar PDF'));
+  expect(shareReportPdf).not.toHaveBeenCalled();
+  await act(async () => finish());
+  // Control positivo: al terminar, los dos vuelven a funcionar.
+  expect(screen.getByRole('button', { name: /Exportar PDF/ })).toBeEnabled();
+  await fireEvent.press(screen.getByText('Exportar PDF'));
+  expect(shareReportPdf).toHaveBeenCalledTimes(1);
 });

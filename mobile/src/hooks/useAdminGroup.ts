@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import { cancelProposalAsAdmin, deleteAdminGroup, getAdminGroup } from '../api/admin';
+import { ApiError } from '../api/client';
 import { useAction } from './useAction';
 import { useResource } from './useResource';
 
@@ -11,9 +12,16 @@ export function useAdminGroup(groupId: string) {
 
   const removeAction = useAction(() => deleteAdminGroup(groupId));
   const cancelAction = useAction(async (proposalId: string, reason: string) => {
-    const updated = await cancelProposalAsAdmin(proposalId, reason);
-    mutate((prev) => prev && { ...prev, proposals: prev.proposals.map((p) => (p.id === updated.id ? updated : p)) });
-    return updated;
+    try {
+      const updated = await cancelProposalAsAdmin(proposalId, reason);
+      mutate((prev) => prev && { ...prev, proposals: prev.proposals.map((p) => (p.id === updated.id ? updated : p)) });
+      return updated;
+    } catch (e) {
+      // 409 INVALID_STATE: alguien la canceló mientras tanto. El mensaje se muestra igual, y se recarga el grupo
+      // para que la lista enseñe su estado real (sin el botón «Cancelar propuesta»).
+      if (e instanceof ApiError && e.code === 'INVALID_STATE') void reload();
+      throw e;
+    }
   });
 
   return {

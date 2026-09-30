@@ -55,12 +55,14 @@ jest.mock('expo-sharing', () => ({
   shareAsync: jest.fn(async () => undefined),
 }));
 // File en memoria: `__writes` guarda lo escrito por URI (los tests lo leen con require('expo-file-system').__writes).
+// `new File('file:///…')` apunta a esa URI; `new File(Paths.cache, nombre)`, a file:///cache/<nombre>. moveSync cambia la URI.
 jest.mock('expo-file-system', () => {
   const mockWrites = new Map<string, string>();
   class MockFile {
     uri: string;
     constructor(...parts: unknown[]) {
-      this.uri = `file:///cache/${String(parts[parts.length - 1])}`;
+      const last = String(parts[parts.length - 1]);
+      this.uri = parts.length === 1 && last.startsWith('file://') ? last : `file:///cache/${last}`;
     }
     get exists() {
       return mockWrites.has(this.uri);
@@ -71,6 +73,9 @@ jest.mock('expo-file-system', () => {
     });
     delete = jest.fn(() => {
       mockWrites.delete(this.uri);
+    });
+    moveSync = jest.fn((destination: MockFile) => {
+      this.uri = destination.uri;
     });
   }
   return { File: MockFile, Paths: { cache: { uri: 'file:///cache/' } }, __writes: mockWrites };

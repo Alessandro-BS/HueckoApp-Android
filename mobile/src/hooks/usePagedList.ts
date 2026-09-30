@@ -1,5 +1,5 @@
 import type { Page } from '@hueckoapp/shared';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useResource } from './useResource';
 
@@ -12,6 +12,13 @@ export function usePagedList<T>(fetchPage: FetchPage<T>) {
   const load = useCallback(() => fetchPage(query.search, query.page), [fetchPage, query]);
   const { data, loaded, loading, refreshing, error, failedLoads, reload } = useResource(load);
   const pageCount = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+
+  // La página pedida se quedó vacía pero hay resultados (p. ej. se borró lo último de la última página al volver
+  // del detalle): se salta a la última página que queda en vez de mostrar «Todavía no hay…».
+  const strandedPage = data !== undefined && data.items.length === 0 && data.total > 0 && query.page > 1;
+  useEffect(() => {
+    if (strandedPage) setQuery((q) => ({ ...q, page: Math.min(q.page - 1, pageCount) }));
+  }, [strandedPage, pageCount]);
 
   const applySearch = useCallback((text: string) => setQuery({ search: text.trim(), page: 1 }), []);
   const goTo = useCallback((page: number) => setQuery((q) => ({ ...q, page })), []);

@@ -9,19 +9,18 @@ import { api } from './client';
 // las medianoches de su zona horaria y agrupa por días y horas en ella (docs/api.md): la zona del teléfono no influye.
 export type DateRange = { from: string; to: string };
 
-const rangeParams = ({ from, to }: DateRange) => ({ from, to });
 const userPath = (id: string) => `/admin/users/${encodeURIComponent(id)}`;
 const groupPath = (id: string) => `/admin/groups/${encodeURIComponent(id)}`;
 
 export const getAdminStats = async () => (await api.get<AdminStats>('/admin/stats')).data;
 
 export const getTimeseries = async (range: DateRange, bucket: StatsBucket) =>
-  (await api.get<Timeseries>('/admin/stats/timeseries', { params: { ...rangeParams(range), bucket } })).data;
+  (await api.get<Timeseries>('/admin/stats/timeseries', { params: { ...range, bucket } })).data;
 
-export const getPopularHours = async (range?: DateRange) =>
-  (await api.get<PopularHours>('/admin/stats/popular-hours', { params: range ? rangeParams(range) : undefined })).data;
+// Sin periodo: todos los planes en pie (lo que muestra «Estadísticas»; el informe trae sus propias horas).
+export const getPopularHours = async () => (await api.get<PopularHours>('/admin/stats/popular-hours')).data;
 
-export const getReport = async (range: DateRange) => (await api.get<AdminReport>('/admin/reports', { params: rangeParams(range) })).data;
+export const getReport = async (range: DateRange) => (await api.get<AdminReport>('/admin/reports', { params: range })).data;
 
 export const listAdminUsers = async (search: string, page: number) =>
   (await api.get<Page<AdminUserSummary>>('/admin/users', { params: { search, page } })).data;

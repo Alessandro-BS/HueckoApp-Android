@@ -24,8 +24,8 @@ it('muestra las cifras del servidor, los gráficos con sus datos y el uso de la 
   await render(<StatsTab />);
   expect(await screen.findByLabelText('Usuarios: 4')).toBeTruthy();
   expect(screen.getByLabelText('Suspendidas: 1')).toBeTruthy();
-  expect(screen.getByLabelText('Planes confirmados: 1')).toBeTruthy();
-  expect(screen.getByText('Éxito: 75 %')).toBeTruthy();
+  expect(screen.getByLabelText('Planes confirmados: 1. Confirmados o re-coordinando')).toBeTruthy(); // todos, sin periodo
+  expect(screen.getByLabelText('Llamadas a la IA: 4. Éxito: 75 %')).toBeTruthy();
   expect(values('chart-states')).toEqual([1, 1, 0, 1]);
   expect(values('chart-registrations', 'line')).toEqual([2, 1]);
   expect(values('chart-proposals')).toEqual([0, 2]);

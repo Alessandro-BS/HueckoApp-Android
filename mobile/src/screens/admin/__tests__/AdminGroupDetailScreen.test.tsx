@@ -56,15 +56,32 @@ it('cancelar exige un motivo de 3 a 200 caracteres (recortado) y luego marca la 
   expect(screen.queryByText('Cancelar propuesta')).toBeNull();
 });
 
-it('si cancelar falla, el error se queda en el diálogo y no avisa', async () => {
-  mocked.cancelProposalAsAdmin.mockRejectedValue(new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.'));
+it('si cancelar falla, el error se queda en el diálogo y no avisa; al corregir el motivo, el error se va', async () => {
+  mocked.cancelProposalAsAdmin.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.'));
   await renderScreen();
   await fireEvent.press(await screen.findByText('Cancelar propuesta'));
   await fireEvent.changeText(screen.getByLabelText('Motivo'), 'Spam');
   await fireEvent.press(screen.getByText('Sí, cancelar'));
-  expect(await screen.findByText('La propuesta ya está cancelada.')).toBeTruthy();
+  expect(await screen.findByText('No se pudo conectar con el servidor. Revisa tu conexión.')).toBeTruthy();
   expect(mocked.cancelProposalAsAdmin).toHaveBeenCalledWith('prop_2', 'Spam');
   expect(showToast).not.toHaveBeenCalled();
+  expect(mocked.getAdminGroup).toHaveBeenCalledTimes(1); // un fallo de red no recarga el grupo
+  await fireEvent.changeText(screen.getByLabelText('Motivo'), 'Spam repetido');
+  expect(screen.queryByText('No se pudo conectar con el servidor. Revisa tu conexión.')).toBeNull();
+});
+
+it('409 INVALID_STATE (otra admin ya la canceló): muestra el error y recarga el grupo con el estado real', async () => {
+  mocked.cancelProposalAsAdmin.mockRejectedValue(new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.'));
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Cancelar propuesta'));
+  mocked.getAdminGroup.mockResolvedValue(makeGroupDetail({ proposals: [makeAdminProposal({ state: 'CANCELADO' })] }));
+  await fireEvent.changeText(screen.getByLabelText('Motivo'), 'Spam');
+  await fireEvent.press(screen.getByText('Sí, cancelar'));
+  expect(await screen.findByText('La propuesta ya está cancelada.')).toBeTruthy();
+  await waitFor(() => expect(mocked.getAdminGroup).toHaveBeenCalledTimes(2));
+  await fireEvent.press(screen.getByText('Cancelar')); // cierra el diálogo
+  expect(await screen.findByText('Cancelado')).toBeTruthy();
+  expect(screen.queryByText('Cancelar propuesta')).toBeNull();
 });
 
 it('un grupo que ya no existe (404 GROUP_NOT_FOUND) muestra el mensaje y no las acciones', async () => {
@@ -72,6 +89,17 @@ it('un grupo que ya no existe (404 GROUP_NOT_FOUND) muestra el mensaje y no las 
   await renderScreen();
   expect(await screen.findByText('Grupo no encontrado.')).toBeTruthy();
   expect(screen.queryByText('Eliminar grupo')).toBeNull();
+});
+
+it('si eliminar falla, lo avisa también con un toast (el botón está al final de la pantalla) y no vuelve atrás', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  mocked.deleteAdminGroup.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.'));
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Eliminar grupo'));
+  await act(async () => alert.mock.calls[0][2]![1].onPress!());
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('No se pudo conectar con el servidor. Revisa tu conexión.'));
+  expect(screen.getByText('No se pudo conectar con el servidor. Revisa tu conexión.')).toBeTruthy();
+  expect(navigation.goBack).not.toHaveBeenCalled();
 });
 
 it('eliminar pide confirmación, borra, avisa y vuelve atrás', async () => {

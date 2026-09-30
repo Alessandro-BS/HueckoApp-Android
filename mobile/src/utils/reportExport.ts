@@ -11,6 +11,17 @@ const hourLabel = (hour: number) => `${pad2(hour)}:00`;
 // «2026-08-31» → «31/08/2026».
 const dmy = (key: string) => key.split('-').reverse().join('/');
 
+// «Planes con fecha en el periodo»: planes confirmados o re-coordinándose cuya fecha (scheduledAt) cae en el periodo.
+// Se nombra así en pantalla, PDF y CSV para no confundirlo con los «Confirmados» de las propuestas CREADAS en el periodo.
+export const PLANS_IN_PERIOD_LABEL = 'Planes con fecha en el periodo';
+
+// Por semanas, cada fila es la semana (de lunes a domingo) que empieza ese día; la primera y la última pueden
+// empezar antes o acabar después del periodo, pero solo cuentan sus días dentro de él (docs/api.md).
+export const WEEK_NOTE = 'La primera y la última semana solo cuentan los días dentro del periodo.';
+
+const seriesHeaders = (report: AdminReport) =>
+  [report.bucket === 'week' ? 'Semana del' : 'Día', 'Registros', 'Grupos creados', 'Propuestas creadas', 'Llamadas a la IA'];
+
 export const reportFileName = (report: AdminReport, ext: 'csv' | 'pdf') =>
   `informe-hueckoapp_${report.period.fromDate}_${report.period.toDate}.${ext}`;
 
@@ -42,14 +53,15 @@ export function reportCsv(report: AdminReport): string {
     ['Usuarios nuevos', summary.newUsers],
     ['Grupos nuevos', summary.newGroups],
     ['Propuestas nuevas', summary.newProposals],
-    ['Planes confirmados', summary.confirmedPlans],
+    [PLANS_IN_PERIOD_LABEL, summary.confirmedPlans],
     ['Incidencias', summary.incidences],
     ['Llamadas a la IA', summary.aiCalls],
     ['Éxito de la IA (%)', report.ai.successRate],
     [],
     [report.bucket === 'day' ? 'Evolución por día' : 'Evolución por semana'],
-    ['Inicio', 'Registros', 'Grupos creados', 'Propuestas creadas', 'Llamadas a la IA'],
+    seriesHeaders(report),
     ...report.timeseries.map((p) => [p.start, p.registrations, p.groupsCreated, p.proposalsCreated, p.aiCalls]),
+    ...(report.bucket === 'week' ? [[WEEK_NOTE]] : []),
     [],
     ['Propuestas del periodo por estado'],
     ['Estado', 'Cantidad'],
@@ -67,7 +79,7 @@ export function reportCsv(report: AdminReport): string {
     ['Grupo', 'Propuestas'],
     ...report.topGroups.map((g) => [g.name, g.proposals]),
   ];
-  return `﻿${rows.map(csvRow).join('\r\n')}\r\n`;
+  return `\uFEFF${rows.map(csvRow).join('\r\n')}\r\n`;
 }
 
 // ---- HTML → PDF con expo-print (D13) ----
@@ -97,7 +109,7 @@ export function reportHtml(report: AdminReport): string {
     ['Usuarios nuevos', summary.newUsers],
     ['Grupos nuevos', summary.newGroups],
     ['Propuestas nuevas', summary.newProposals],
-    ['Planes confirmados', summary.confirmedPlans],
+    [PLANS_IN_PERIOD_LABEL, summary.confirmedPlans],
     ['Incidencias', summary.incidences],
     ['Llamadas a la IA', `${summary.aiCalls} (éxito ${percentLabel(report.ai.successRate)})`],
   ];
@@ -124,9 +136,9 @@ export function reportHtml(report: AdminReport): string {
 <div class="tiles">${tiles.map(([label, value]) => `<div class="tile"><b>${escapeHtml(String(value))}</b>${escapeHtml(label)}</div>`).join('')}</div>
 <h2>${report.bucket === 'day' ? 'Evolución por día' : 'Evolución por semana'}</h2>
 ${htmlTable(
-  ['Inicio', 'Registros', 'Grupos creados', 'Propuestas creadas', 'Llamadas a la IA'],
+  seriesHeaders(report),
   report.timeseries.map((p) => [dmy(p.start), p.registrations, p.groupsCreated, p.proposalsCreated, p.aiCalls]),
-)}
+)}${report.bucket === 'week' ? `<p class="muted">${escapeHtml(WEEK_NOTE)}</p>` : ''}
 <h2>Propuestas del periodo por estado</h2>
 ${htmlBars(PROPOSAL_STATE_ORDER.map((s) => ({ label: STATE_BADGE[s].text, value: report.proposalsByState[s] })))}
 <h2>Uso de la IA por función</h2>

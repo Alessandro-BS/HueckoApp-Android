@@ -23,6 +23,11 @@ export function AdminGroupDetailScreen({ navigation, route }: AppStackScreen<'Ad
     if (name) navigation.setOptions({ title: name });
   }, [name, navigation]);
 
+  // El botón «Eliminar grupo» está al final: el error también sale como toast para que se vea sin desplazarse.
+  useEffect(() => {
+    if (removeError) showToast(removeError);
+  }, [removeError]);
+
   if (!group) {
     return (
       <View style={styles.centered}>
@@ -126,6 +131,7 @@ export function AdminGroupDetailScreen({ navigation, route }: AppStackScreen<'Ad
           error={cancelError}
           onConfirm={(reason) => void confirmCancel(reason)}
           onDismiss={closeDialog}
+          onReasonChange={clearCancelError}
         />
       ) : null}
     </>

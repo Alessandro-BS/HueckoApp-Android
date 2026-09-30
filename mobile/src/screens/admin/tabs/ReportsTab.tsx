@@ -1,4 +1,4 @@
-import type { TopGroup } from '@hueckoapp/shared';
+import type { AdminReport, TopGroup } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -12,6 +12,7 @@ import { useRefreshErrorToast } from '../../../hooks/useRefreshErrorToast';
 import { colors, typography } from '../../../theme';
 import { customRange, percentLabel, periodLabel, presetRange, RANGE_PRESETS, type RangePreset } from '../../../utils/admin';
 import { today } from '../../../utils/clock';
+import { PLANS_IN_PERIOD_LABEL } from '../../../utils/reportExport';
 import { shareReportCsv, shareReportPdf } from '../../../utils/shareReport';
 import { AiUsageCard } from '../AiUsageCard';
 import { hourPoints, seriesPoints, statePoints } from '../chartData';
@@ -47,11 +48,29 @@ export function ReportsTab() {
   useRefreshErrorToast(error, loaded, failedLoads);
   const pdf = useAction(shareReportPdf);
   const csv = useAction(shareReportCsv);
+  // Un solo mensaje de exportación, siempre el de la última: cada exportación borra el error de la otra al empezar
+  // (y el suyo lo borra useAction), y cambiar de periodo borra los dos (eran de otro informe).
+  const clearExportErrors = () => {
+    pdf.clearError();
+    csv.clearError();
+  };
+  const exporting = pdf.loading || csv.loading;
+  const exportPdf = (report: AdminReport) => {
+    csv.clearError();
+    void pdf.run(report);
+  };
+  const exportCsv = (report: AdminReport) => {
+    pdf.clearError();
+    void csv.run(report);
+  };
 
   const choose = (next: RangePreset) => {
     setPreset(next);
     setRangeError(null);
-    if (next !== 'custom') setApplied(presetRange(next, today())); // «Personalizado» espera a «Aplicar»
+    if (next !== 'custom') {
+      clearExportErrors();
+      setApplied(presetRange(next, today())); // «Personalizado» espera a «Aplicar»
+    }
   };
 
   const applyCustom = () => {
@@ -61,11 +80,12 @@ export function ReportsTab() {
       return;
     }
     setRangeError(null);
+    clearExportErrors();
     setApplied(result.range);
   };
 
   const byBucket = (day: string, week: string) => (report?.bucket === 'week' ? week : day);
-  const exportError = pdf.error ?? csv.error;
+  const exportError = pdf.error ?? csv.error; // como mucho uno: ver clearExportErrors
 
   return (
     <ScrollView
@@ -101,7 +121,7 @@ export function ReportsTab() {
               <StatTile label="Usuarios nuevos" value={report.summary.newUsers} />
               <StatTile label="Grupos nuevos" value={report.summary.newGroups} />
               <StatTile label="Propuestas nuevas" value={report.summary.newProposals} />
-              <StatTile label="Planes confirmados" value={report.summary.confirmedPlans} />
+              <StatTile label={PLANS_IN_PERIOD_LABEL} value={report.summary.confirmedPlans} hint="Confirmados o re-coordinando" />
               <StatTile label="Incidencias" value={report.summary.incidences} />
               <StatTile label="Llamadas a la IA" value={report.summary.aiCalls} hint={`Éxito: ${percentLabel(report.ai.successRate)}`} />
             </View>
@@ -129,8 +149,22 @@ export function ReportsTab() {
             <TopGroupsCard groups={report.topGroups} />
             {exportError ? <ErrorBanner message={exportError} /> : null}
             <View style={styles.actions}>
-              <SecondaryButton title="Exportar CSV" icon="grid-on" style={styles.flex} disabled={csv.loading} onPress={() => void csv.run(report)} />
-              <PrimaryButton title="Exportar PDF" icon="picture-as-pdf" style={styles.flex} loading={pdf.loading} onPress={() => void pdf.run(report)} />
+              <SecondaryButton
+                title="Exportar CSV"
+                icon="grid-on"
+                style={styles.flex}
+                loading={csv.loading}
+                disabled={exporting}
+                onPress={() => exportCsv(report)}
+              />
+              <PrimaryButton
+                title="Exportar PDF"
+                icon="picture-as-pdf"
+                style={styles.flex}
+                loading={pdf.loading}
+                disabled={csv.loading}
+                onPress={() => exportPdf(report)}
+              />
             </View>
           </>
         ) : null}

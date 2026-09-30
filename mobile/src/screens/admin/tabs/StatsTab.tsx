@@ -28,7 +28,7 @@ export function StatsTab() {
               <StatTile label="Suspendidas" value={stats.users.suspended} />
               <StatTile label="Administradores" value={stats.users.admins} />
               <StatTile label="Grupos" value={stats.groups} />
-              <StatTile label="Planes confirmados" value={stats.confirmedPlans} />
+              <StatTile label="Planes confirmados" value={stats.confirmedPlans} hint="Confirmados o re-coordinando" />
               <StatTile label="Incidencias" value={stats.incidences} />
               <StatTile label="Llamadas a la IA" value={stats.ai.calls} hint={`Éxito: ${percentLabel(stats.ai.successRate)}`} />
             </View>

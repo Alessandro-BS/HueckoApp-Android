@@ -26,7 +26,6 @@ it.each<[string, string, () => Promise<unknown>, unknown, unknown]>([
   ['GET', '/admin/stats', () => admin.getAdminStats(), undefined, undefined],
   ['GET', '/admin/stats/timeseries', () => admin.getTimeseries(range, 'day'), { ...range, bucket: 'day' }, undefined],
   ['GET', '/admin/stats/popular-hours', () => admin.getPopularHours(), undefined, undefined],
-  ['GET', '/admin/stats/popular-hours', () => admin.getPopularHours(range), range, undefined],
   ['GET', '/admin/reports', () => admin.getReport(range), range, undefined],
   ['GET', '/admin/users', () => admin.listAdminUsers('ana', 2), { search: 'ana', page: 2 }, undefined],
   ['GET', '/admin/users/u%202', () => admin.getAdminUser('u 2'), undefined, undefined],

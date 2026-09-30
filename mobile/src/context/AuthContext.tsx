@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { AppState } from 'react-native';
 
 import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../api/auth';
-import { ApiError, setAuthToken, setUnauthorizedHandler } from '../api/client';
+import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
 import { tokenStorage } from '../auth/tokenStorage';
 import { showToast } from '../utils/toast';
 
@@ -79,17 +79,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [logout]);
 
-  // Al volver a primer plano se refresca el rol (un cambio de la administración se ve sin reabrir la app).
+  // Se refresca el rol al volver a primer plano (un cambio de la administración se ve sin reabrir la app) y cuando
+  // el servidor responde 403 NOT_ADMIN (a esta cuenta le quitaron el rol: fuera el menú y las pantallas de admin).
   // Un 401 o una cuenta suspendida ya los trata el interceptor (aviso y cierre de sesión); otros fallos se ignoran.
   useEffect(() => {
     if (status !== 'signedIn') return;
     let closed = false;
+    const refresh = () => void meRequest().then((me) => !closed && setUser(me), () => undefined);
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void meRequest().then((me) => !closed && setUser(me), () => undefined);
+      if (state === 'active') refresh();
     });
+    setNotAdminHandler(refresh);
     return () => {
       closed = true;
       subscription.remove();
+      setNotAdminHandler(null);
     };
   }, [status]);
 

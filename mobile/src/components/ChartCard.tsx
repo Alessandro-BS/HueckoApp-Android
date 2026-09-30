@@ -4,7 +4,9 @@ import { BarChart, LineChart } from 'react-native-gifted-charts';
 import { colors, typography } from '../theme';
 import { HueckoCard } from './HueckoCard';
 
-export type ChartPoint = { label: string; value: number };
+// `label` es lo que se ve en el eje X (puede ir vacío para que no se amontonen); `a11yLabel`, lo que oye el lector
+// de pantalla en cada punto (si falta, se usa `label`).
+export type ChartPoint = { label: string; a11yLabel?: string; value: number };
 
 type Props = {
   title: string;
@@ -32,7 +34,10 @@ export function ChartCard({ title, data, kind = 'bar', color = colors.primary, e
   const spacing = Math.max(2, slot - barWidth);
   const axisText = { ...typography.labelSmall, color: colors.onSurfaceVariant };
   const points = data.map((p) => ({ value: p.value, label: p.label, frontColor: color }));
-  const summary = `${title}. ${data.map((p, i) => `${p.label || i + 1}: ${p.value}`).join(', ')}`;
+  // Vacío: se oye el mismo aviso que se ve, no una lista de ceros.
+  const summary = empty
+    ? `${title}. ${emptyText}`
+    : `${title}. ${data.map((p, i) => `${p.a11yLabel ?? (p.label || String(i + 1))}: ${p.value}`).join(', ')}`;
 
   return (
     <HueckoCard>

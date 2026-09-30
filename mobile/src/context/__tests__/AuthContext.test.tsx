@@ -108,6 +108,35 @@ it('si el servidor responde ACCOUNT_SUSPENDED en plena sesión: avisa con su men
   expect(await SecureStore.getItemAsync('hueckoapp.token')).toBeNull();
 });
 
+it('si una petición responde 403 NOT_ADMIN, vuelve a pedir /auth/me y actualiza el rol sin cerrar la sesión (M3)', async () => {
+  mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: { ...ana, role: 'ADMIN' } });
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+  expect(result.current.user?.role).toBe('ADMIN');
+
+  mocked.meRequest.mockResolvedValue(ana); // ya no es ADMIN
+  const original = api.defaults.adapter;
+  api.defaults.adapter = (config) =>
+    Promise.reject(
+      new AxiosError('fallo', undefined, config as InternalAxiosRequestConfig, null, {
+        status: 403, statusText: '', headers: {}, config: config as InternalAxiosRequestConfig,
+        data: { error: { code: 'NOT_ADMIN', message: 'Solo la administración de HueckoApp puede hacer esto.' } },
+      }),
+    );
+  try {
+    await act(async () => {
+      await expect(api.get('/admin/stats')).rejects.toBeInstanceOf(ApiError);
+    });
+  } finally {
+    api.defaults.adapter = original;
+  }
+  await waitFor(() => expect(result.current.user?.role).toBe('USER'));
+  expect(mocked.meRequest).toHaveBeenCalledTimes(1);
+  expect(result.current.status).toBe('signedIn');
+  expect(showToast).not.toHaveBeenCalled();
+});
+
 describe('al volver la app a primer plano (A3)', () => {
   let listener: ((state: AppStateStatus) => void) | undefined;
   beforeEach(() => {

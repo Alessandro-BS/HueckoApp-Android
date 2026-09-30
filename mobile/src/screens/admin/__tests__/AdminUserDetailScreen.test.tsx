@@ -53,6 +53,23 @@ it('suspender pide confirmación, suspende y avisa', async () => {
   expect(screen.getByText('Reactivar cuenta')).toBeTruthy();
 });
 
+it('nombrar administrador pide confirmación y, al confirmar, cambia el rol y avisa', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  mocked.setUserRole.mockResolvedValue(makeUserDetail({ role: 'ADMIN' }));
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Nombrar administrador'));
+  expect(alert).toHaveBeenCalledWith(
+    'Nombrar administrador',
+    'Ana podrá ver las estadísticas, suspender cuentas y borrar grupos.',
+    expect.any(Array),
+  );
+  expect(mocked.setUserRole).not.toHaveBeenCalled(); // nada sin confirmar
+  await act(async () => alert.mock.calls[0][2]![1].onPress!());
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Ana ahora es administrador.'));
+  expect(mocked.setUserRole).toHaveBeenCalledWith('u2', 'ADMIN');
+  expect(screen.getByText('Quitar rol de administrador')).toBeTruthy();
+});
+
 it('un 409 del servidor se muestra y no avisa de éxito', async () => {
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mocked.getAdminUser.mockResolvedValue(makeUserDetail({ role: 'ADMIN' }));

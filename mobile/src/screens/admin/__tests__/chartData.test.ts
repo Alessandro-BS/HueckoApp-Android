@@ -1,12 +1,12 @@
 import { makeHours, makeReport } from '../../../testing/adminFixtures';
 import { hourPoints, seriesPoints, statePoints } from '../chartData';
 
-it('hourPoints: 24 barras con etiqueta cada 3 horas', () => {
+it('hourPoints: 24 barras con etiqueta cada 3 horas; el lector de pantalla oye todas las horas', () => {
   const points = hourPoints(makeHours());
   expect(points).toHaveLength(24);
-  expect(points[0]).toEqual({ label: '0h', value: 0 });
-  expect(points[11]).toEqual({ label: '', value: 2 });
-  expect(points[12]).toEqual({ label: '12h', value: 0 });
+  expect(points[0]).toEqual({ label: '0h', a11yLabel: '0h', value: 0 });
+  expect(points[11]).toEqual({ label: '', a11yLabel: '11h', value: 2 });
+  expect(points[12]).toEqual({ label: '12h', a11yLabel: '12h', value: 0 });
 });
 
 it('seriesPoints: como mucho unas 7 etiquetas', () => {
@@ -17,9 +17,12 @@ it('seriesPoints: como mucho unas 7 etiquetas', () => {
   expect(points.map((p) => p.value)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
   expect(points.filter((p) => p.label !== '')).toHaveLength(6);
   expect(points[0].label).toBe('13/07');
+  // Sin etiqueta en el eje, pero el lector de pantalla oye el día de cada punto.
+  expect(points[1]).toEqual({ label: '', a11yLabel: '14/07', value: 1 });
+  expect(points.every((p) => p.a11yLabel !== '')).toBe(true);
   expect(seriesPoints(makeReport().timeseries, (p) => p.aiCalls)).toEqual([
-    { label: '28/09', value: 3 },
-    { label: '29/09', value: 1 },
+    { label: '28/09', a11yLabel: '28/09', value: 3 },
+    { label: '29/09', a11yLabel: '29/09', value: 1 },
   ]);
 });
 

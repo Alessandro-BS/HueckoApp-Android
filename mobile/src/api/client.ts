@@ -28,6 +28,13 @@ export const setUnauthorizedHandler = (fn: ((reason: SessionEndReason, message: 
   onSessionEnd = fn;
 };
 
+// 403 NOT_ADMIN con el token vigente: a esta cuenta le quitaron el rol de administrador. No se cierra la sesión;
+// AuthContext vuelve a pedir /auth/me y el menú y las pantallas de administración desaparecen (M3).
+let onNotAdmin: (() => void) | null = null;
+export const setNotAdminHandler = (fn: (() => void) | null) => {
+  onNotAdmin = fn;
+};
+
 api.interceptors.request.use((config) => {
   if (authToken) config.headers.Authorization = `Bearer ${authToken}`;
   return config;
@@ -52,6 +59,7 @@ api.interceptors.response.use(
     const sentWithCurrentToken = Boolean(authToken) && error.config?.headers?.Authorization === `Bearer ${authToken}`;
     if (sentWithCurrentToken && status === 401) onSessionEnd?.('UNAUTHORIZED', message);
     if (sentWithCurrentToken && status === 403 && code === 'ACCOUNT_SUSPENDED') onSessionEnd?.('ACCOUNT_SUSPENDED', message);
+    if (sentWithCurrentToken && status === 403 && code === 'NOT_ADMIN') onNotAdmin?.();
     throw new ApiError(status, code, message, data?.error?.details ?? null);
   },
 );
