@@ -11,6 +11,7 @@ export type DrawerParamList = {
   Dashboard: undefined;
   Schedule: undefined;
   Groups: undefined;
+  Admin: undefined;
   Profile: undefined;
 };
 
@@ -28,6 +29,9 @@ export type AppStackParamList = {
 
 // Pestañas del detalle de grupo.
 export type GroupTabsParamList = { Plans: undefined; Availability: undefined; Members: undefined };
+
+// Pestañas del panel de administración (solo rol ADMIN).
+export type AdminTabsParamList = { Stats: undefined; Reports: undefined };
 
 export type AppStackScreen<K extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, K>;
 

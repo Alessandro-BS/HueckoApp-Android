@@ -38,7 +38,8 @@
           "cameraPermission": "HueckoApp usa la cámara para fotografiar tu horario y leerlo con Huecko IA.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }
