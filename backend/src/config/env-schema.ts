@@ -15,6 +15,12 @@ const parseUrl = (value: string): URL | null => {
   }
 };
 
+/** true si la URL de Postgres apunta a esta máquina (localhost, 127.0.0.1 o [::1]). */
+export const isLocalDatabaseUrl = (value: string): boolean => {
+  const url = parseUrl(value);
+  return url !== null && LOCAL_HOSTS.has(url.hostname);
+};
+
 // Vacía = PGlite local (desarrollo). Con valor: Postgres (Neon), y con TLS si el servidor no es esta máquina (D9).
 const databaseUrlSchema = z
   .string()

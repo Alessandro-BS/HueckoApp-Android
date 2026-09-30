@@ -49,7 +49,11 @@ npm run backend                        # http://localhost:3000/api/health
 2. En **Connect**, copia la cadena de conexión (la *pooled* sirve) y cambia `sslmode=require` por `sslmode=verify-full` (mismo cifrado, sin el aviso de seguridad de `pg`).
 3. Ponla en `DATABASE_URL` del entorno del servidor (nunca en el repo ni en la app). Con `NODE_ENV=production` el servidor no arranca sin ella.
 4. Al arrancar, el servidor crea o actualiza las tablas (migraciones en `backend/src/db/migrations.ts`, anotadas en `schema_migrations`).
-5. Primer administrador: `npm run make-admin -w backend -- <correo>` con esa misma `DATABASE_URL` en tu `backend/.env` (la consola solo abre una base que ya tenga el esquema). La semilla (`npm run seed -w backend`) es solo para desarrollo: no la ejecutes contra la base de producción.
+5. Primer administrador: `npm run make-admin -w backend -- <correo>` con la `DATABASE_URL` de producción **solo para ese comando**, en el entorno de la terminal; **nunca la escribas en `backend/.env`** (así ni `npm run backend` ni la semilla tocan producción por descuido). Una variable ya definida en la terminal gana a `backend/.env`:
+   - bash: `DATABASE_URL='postgresql://…' npm run make-admin -w backend -- <correo>`
+   - PowerShell: `$env:DATABASE_URL='postgresql://…'; npm run make-admin -w backend -- <correo>; Remove-Item Env:DATABASE_URL`
+
+   La consola solo abre una base que ya tenga el esquema. La semilla (`npm run seed -w backend`) es solo para desarrollo: con una `DATABASE_URL` que no apunte a esta máquina se niega (salvo `-- --allow-remote`, para una base de pruebas), porque crea cuentas con contraseña conocida, una de ellas ADMIN.
 6. Antes de desplegar en Render, arranca el servidor una vez contra un proyecto Neon de pruebas (con su `DATABASE_URL` real) y comprueba salud, inicio de sesión, Inicio y `make-admin`: los tests no usan red, así que Neon no se prueba automáticamente.
 
 ### 2b. Datos de ejemplo (opcional)

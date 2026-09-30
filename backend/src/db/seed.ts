@@ -1,14 +1,18 @@
 // Semilla de desarrollo: npm run seed -w backend. Los datos viven en demo-data.ts (también lo usan los tests).
-// Se puede repetir: no duplica nada y renueva los dos planes de ejemplo con fechas de hoy. Nunca en producción.
+// Se puede repetir: no duplica nada y renueva los dos planes de ejemplo con fechas de hoy. Nunca en producción, y
+// contra un Postgres remoto solo con --allow-remote (seed-guard.ts).
 import { hashPassword } from '../auth/passwords';
 import { env } from '../config/env';
 import { databaseConfig, openDatabase } from './connect';
 import { DEMO_ADMIN_EMAIL, DEMO_PASSWORD, seedDemoData } from './demo-data';
+import { assertSeedTarget } from './seed-guard';
 
 async function main() {
   if (env.NODE_ENV === 'production') throw new Error('La semilla es solo para desarrollo.');
+  const config = databaseConfig(env);
+  assertSeedTarget(config, process.argv.slice(2)); // antes de conectarse
   const passwordHash = await hashPassword(DEMO_PASSWORD);
-  const db = await openDatabase(databaseConfig(env));
+  const db = await openDatabase(config);
   try {
     const created = await seedDemoData(db, passwordHash, new Date());
     console.log(
