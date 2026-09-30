@@ -143,8 +143,10 @@ export function adminGroups(db: Db) {
       return db.transaction(async () => {
         const row = await findProposal(id);
         if (!row) throw proposalNotFound();
-        if (!canCancel(row.state)) throw new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.');
-        await proposals.setState(id, 'CANCELADO');
+        const alreadyCancelled = () => new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.');
+        if (!canCancel(row.state)) throw alreadyCancelled();
+        // Condicionado: si quien organiza la canceló justo ahora, no se cancela ni se anota dos veces.
+        if (!(await proposals.cancel(id))) throw alreadyCancelled();
         await audit.record({
           adminId: actor.adminId,
           action: 'PROPOSAL_CANCELLED',

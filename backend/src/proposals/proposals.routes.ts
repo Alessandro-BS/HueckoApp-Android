@@ -154,7 +154,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
     if (!chosen && windowId !== undefined) throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
     if (!chosen) throw new ApiError(409, 'NO_VOTES', 'Nadie ha votado todavía: elige la franja para confirmar.');
     const { scheduledAt, scheduledDate } = scheduleFor(chosen.dayOfWeek, chosen.startTime, ctx.now());
-    await ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate);
+    if (!(await ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
@@ -162,7 +162,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const userId = getUserId(res);
     const { proposal } = await loadForManager(req.params.id, userId);
     if (!canCancel(proposal.state)) throw invalidState();
-    await ctx.proposals.setState(proposal.id, 'CANCELADO');
+    if (!(await ctx.proposals.cancel(proposal.id))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
@@ -188,7 +188,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const { proposal } = await loadForManager(req.params.id, userId);
     const input = resolveIncidencesSchema(ctx.now()).parse(req.body);
     if (!isActivePlan(proposal)) throw invalidState();
-    await ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline);
+    if (!(await ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 

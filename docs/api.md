@@ -34,7 +34,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
 | 500 | Error inesperado del servidor |

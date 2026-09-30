@@ -71,6 +71,9 @@ export type NewProposal = {
 };
 
 // Una fila de proposals con el nombre del grupo y los datos de quien la creó.
+// Un plan activo: confirmado o re-coordinándose (sus incidencias se pueden resolver).
+const ACTIVE_STATES: readonly ProposalState[] = ['CONFIRMADO', 'EN_RECOORDINACION'];
+
 const SELECT_PROPOSAL = `
   SELECT p.*, g.name AS group_name, u.name AS creator_name, u.email AS creator_email
   FROM proposals p
@@ -244,18 +247,23 @@ export function proposalsRepository(db: Db) {
       await db.query('DELETE FROM votes WHERE proposal_id = $1 AND user_id = $2', [proposalId, userId]);
     },
 
-    async confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<void> {
-      await db.query(
-        "UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $1, scheduled_at = $2, scheduled_date = $3 WHERE id = $4",
+    // Los cambios de estado solo se aplican si el plan sigue en el estado que la ruta comprobó: false si otra petición
+    // lo cambió mientras tanto (p. ej. un admin lo canceló), y la ruta responde 409 en vez de pisarlo o resucitarlo.
+    async confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<boolean> {
+      const { rowCount } = await db.query(
+        `UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $1, scheduled_at = $2, scheduled_date = $3
+         WHERE id = $4 AND state = 'PROPUESTO'`,
         [windowId, scheduledAt, scheduledDate, id],
       );
+      return rowCount > 0;
     },
 
-    async setState(id: string, state: ProposalState): Promise<void> {
-      await db.query('UPDATE proposals SET state = $1 WHERE id = $2', [state, id]);
+    async cancel(id: string): Promise<boolean> {
+      const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO' WHERE id = $1 AND state <> 'CANCELADO'", [id]);
+      return rowCount > 0;
     },
 
-    // La incidencia y, si falta un imprescindible, el paso a EN_RECOORDINACION: todo o nada.
+    // La incidencia y, si falta un imprescindible, el paso a EN_RECOORDINACION (solo si sigue CONFIRMADO): todo o nada.
     reportIncidence(proposalId: string, input: NewIncidence, escalate: boolean): Promise<void> {
       return db.transaction(async () => {
         await db.query(
@@ -263,23 +271,26 @@ export function proposalsRepository(db: Db) {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [randomUUID(), proposalId, input.userId, input.type, input.reason, input.delayMinutes, input.criticality, input.createdAt],
         );
-        if (escalate) await db.query("UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1", [proposalId]);
+        if (escalate) await db.query("UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
       });
     },
 
-    // Votación exprés (G4): todas las incidencias quedan resueltas; reprogramar abre una votación nueva.
-    resolveIncidences(id: string, newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO', votingDeadline: string | null): Promise<void> {
+    // Votación exprés (G4): todas las incidencias quedan resueltas; reprogramar abre una votación nueva. Solo sobre un
+    // plan activo (CONFIRMADO o EN_RECOORDINACION); false, sin tocar nada, si ya no lo es.
+    resolveIncidences(id: string, newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO', votingDeadline: string | null): Promise<boolean> {
       return db.transaction(async () => {
+        const { rowCount } =
+          newState === 'PROPUESTO'
+            ? await db.query(
+                `UPDATE proposals SET state = 'PROPUESTO', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL, voting_deadline = $1
+                 WHERE id = $2 AND state = ANY($3::text[])`,
+                [votingDeadline, id, ACTIVE_STATES],
+              )
+            : await db.query('UPDATE proposals SET state = $1 WHERE id = $2 AND state = ANY($3::text[])', [newState, id, ACTIVE_STATES]);
+        if (rowCount === 0) return false;
+        if (newState === 'PROPUESTO') await db.query('DELETE FROM votes WHERE proposal_id = $1', [id]);
         await db.query('UPDATE incidences SET resolved = TRUE WHERE proposal_id = $1', [id]);
-        if (newState === 'PROPUESTO') {
-          await db.query('DELETE FROM votes WHERE proposal_id = $1', [id]);
-          await db.query(
-            "UPDATE proposals SET state = 'PROPUESTO', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL, voting_deadline = $1 WHERE id = $2",
-            [votingDeadline, id],
-          );
-        } else {
-          await db.query('UPDATE proposals SET state = $1 WHERE id = $2', [newState, id]);
-        }
+        return true;
       });
     },
 

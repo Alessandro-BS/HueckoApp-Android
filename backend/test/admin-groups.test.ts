@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/db';
 import { insertGroup, registerAdmin } from './admin-fixtures';
-import { bearer, createGroup, createProposal, DEADLINE, makeTestApp, NOW, setupSeedGroup, voteFor } from './helpers';
+import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp, NOW, setupSeedGroup, voteFor } from './helpers';
 
 async function setupGroups() {
   const { app, db } = await makeTestApp({ now: () => NOW });
@@ -225,6 +225,16 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
     const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
     expect(audit.body.total).toBe(1);
     expect(audit.body.items[0].details.reason).toBe('Spam');
+  });
+
+  it('si quien organiza lo cancela entre la comprobación y la escritura: 409 INVALID_STATE y no se anota', async () => {
+    const { app, db, admin, yo, group } = await setupGroups();
+    const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
+    interleave(db, /^UPDATE proposals SET state/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [plan.id]);
+    const res = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: 'INVALID_STATE', message: 'La propuesta ya está cancelada.' });
+    expect(await count(db, 'SELECT COUNT(*) AS n FROM admin_audit_log')).toBe(0);
   });
 
   it('quien organiza el plan no puede usar la ruta de moderación (403 NOT_ADMIN), pero su /cancel de siempre sigue igual', async () => {
