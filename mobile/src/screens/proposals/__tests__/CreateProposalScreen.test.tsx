@@ -251,7 +251,7 @@ it('un borrador con plazo pasado sigue pasando por la validación del formulario
   expect(mocked.createProposal).not.toHaveBeenCalled();
 });
 
-const NO_WINDOW_HINT = 'Huecko IA no encontró un hueco en común: elige una franja o deja que Huecko elija las mejores.';
+const NO_WINDOW_HINT = 'Huecko IA no eligió franja: añade una a mano (o deja que Huecko elija si el grupo tiene huecos en común).';
 
 it('avisa en «Franjas» solo si la IA no encontró hueco (control positivo y negativos)', async () => {
   const base = { title: 'Algo', placeName: null, votingDeadline: null, category: 'OTRO' };
@@ -284,5 +284,17 @@ it('si se sale de la pantalla mientras el borrador está pendiente, no se aplica
   await fireEvent.press(screen.getByText('Rellenar con IA'));
   await view.unmount();
   await act(async () => resolve(makeDraft()));
+  expect(showToast).not.toHaveBeenCalled();
+});
+
+it('en «las 3 mejores», si el grupo no tiene huecos en común muestra el 409 del servidor y se queda', async () => {
+  const message = 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.';
+  mocked.createProposal.mockRejectedValue(new ApiError(409, 'NO_COMMON_WINDOWS', message));
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Repaso');
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  expect(await screen.findByText(message)).toBeTruthy();
+  expect(navigation.goBack).not.toHaveBeenCalled();
   expect(showToast).not.toHaveBeenCalled();
 });

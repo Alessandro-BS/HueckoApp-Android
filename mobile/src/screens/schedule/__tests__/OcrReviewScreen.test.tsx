@@ -108,6 +108,36 @@ it('«Descartar» vuelve atrás sin guardar', async () => {
   expect(mockedSchedule.createTimeBlocksBulk).not.toHaveBeenCalled();
 });
 
+it('mientras guarda, «Descartar» está desactivado; al terminar vuelve atrás una sola vez', async () => {
+  let resolve!: (value: Awaited<ReturnType<typeof scheduleApi.createTimeBlocksBulk>>) => void;
+  mockedAi.scanSchedule.mockResolvedValue({ blocks: [block({})] });
+  mockedSchedule.createTimeBlocksBulk.mockReturnValue(new Promise((r) => (resolve = r)));
+  await renderScreen();
+  const discard = () => screen.getByRole('button', { name: 'Descartar' });
+  expect((await screen.findByRole('button', { name: 'Descartar' })).props.accessibilityState.disabled).toBe(false);
+
+  await fireEvent.press(saveButton());
+  expect(discard().props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(discard());
+  expect(navigation.goBack).not.toHaveBeenCalled();
+
+  await act(async () => resolve([]));
+  expect(navigation.goBack).toHaveBeenCalledTimes(1);
+});
+
+it('si la pantalla se cierra mientras guarda, al terminar no vuelve atrás ni avisa (control positivo arriba)', async () => {
+  let resolve!: (value: Awaited<ReturnType<typeof scheduleApi.createTimeBlocksBulk>>) => void;
+  mockedAi.scanSchedule.mockResolvedValue({ blocks: [block({})] });
+  mockedSchedule.createTimeBlocksBulk.mockReturnValue(new Promise((r) => (resolve = r)));
+  const { unmount } = await renderScreen();
+  await fireEvent.press(await screen.findByRole('button', { name: 'Añadir a mi horario' }));
+  expect(mockedSchedule.createTimeBlocksBulk).toHaveBeenCalledTimes(1);
+  await unmount();
+  await act(async () => resolve([]));
+  expect(navigation.goBack).not.toHaveBeenCalled();
+  expect(showToast).not.toHaveBeenCalled();
+});
+
 it('si el servidor rechaza el guardado, muestra el error y se queda', async () => {
   mockedAi.scanSchedule.mockResolvedValue({ blocks: [block({})] });
   mockedSchedule.createTimeBlocksBulk.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.'));

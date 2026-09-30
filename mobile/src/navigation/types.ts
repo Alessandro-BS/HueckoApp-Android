@@ -1,8 +1,9 @@
-import type { OcrImage } from '../api/ai';
-import type { ProposalPrefill } from '../utils/ai';
 import type { DrawerScreenProps } from '@react-navigation/drawer';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import type { OcrImage } from '../api/ai';
+import type { ProposalPrefill } from '../utils/ai';
 
 export type AuthStackParamList = { Login: undefined; Register: undefined };
 

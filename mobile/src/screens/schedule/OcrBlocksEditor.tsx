@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import type { TimeBlockInput } from '@hueckoapp/shared';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createTimeBlocksBulk } from '../../api/schedule';
@@ -81,6 +81,14 @@ export function OcrBlocksEditor({ initial, onDiscard, onSaved }: Props) {
     initial.map((b, i) => ({ key: String(i), label: b.label, dayOfWeek: b.dayOfWeek ?? 1, startTime: b.startTime, endTime: b.endTime })),
   );
   const save = useAction(createTimeBlocksBulk);
+  // Si la pantalla se cerró mientras guardaba, onSaved no debe volver a navegar (sacaría al usuario de «Mi horario»).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const canSave = drafts.length > 0 && drafts.every(isValidDraft);
 
   const update = (key: string, patch: Partial<Draft>) => setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -89,7 +97,7 @@ export function OcrBlocksEditor({ initial, onDiscard, onSaved }: Props) {
   const submit = async () => {
     if (!canSave) return;
     const result = await save.run(drafts.map(toBlockInput));
-    if (result.ok) onSaved(result.value.length);
+    if (result.ok && mounted.current) onSaved(result.value.length);
   };
 
   return (
@@ -116,7 +124,7 @@ export function OcrBlocksEditor({ initial, onDiscard, onSaved }: Props) {
         )}
         {save.error ? <ErrorBanner message={save.error} /> : null}
         <View style={styles.actions}>
-          <SecondaryButton title="Descartar" style={styles.flex} onPress={onDiscard} />
+          <SecondaryButton title="Descartar" style={styles.flex} disabled={save.loading} onPress={onDiscard} />
           <PrimaryButton
             title="Añadir a mi horario"
             loadingTitle="Guardando…"

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import * as aiApi from '../../../api/ai';
 import { ApiError } from '../../../api/client';
@@ -51,6 +51,32 @@ it('si la IA falla muestra el motivo', async () => {
   await fireEvent.press(screen.getByText('Resumir votación'));
   expect(await screen.findByText('La IA respondió algo que no pudimos interpretar. Inténtalo de nuevo.')).toBeTruthy();
   expect(screen.getByText('Resumir votación')).toBeTruthy();
+});
+
+it('un doble toque mientras resume no llama dos veces (el botón queda desactivado)', async () => {
+  let resolve!: (value: ReturnType<typeof makeSummary>) => void;
+  mocked.summarizeVoting.mockReturnValue(new Promise((r) => (resolve = r)));
+  await render(<VotingSummaryCard proposalId="prop_2" />);
+  await fireEvent.press(screen.getByText('Resumir votación'));
+  expect(screen.getByRole('button', { name: /Resumiendo…/ }).props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(screen.getByText('Resumiendo…'));
+  expect(mocked.summarizeVoting).toHaveBeenCalledTimes(1);
+  await act(async () => resolve(makeSummary()));
+  expect(screen.getByText('Sugerencia: Confirmar')).toBeTruthy();
+  expect(mocked.summarizeVoting).toHaveBeenCalledTimes(1);
+});
+
+it('tras un error, «Resumir votación» vuelve a llamar y muestra el resumen', async () => {
+  mocked.summarizeVoting
+    .mockRejectedValueOnce(new ApiError(503, 'AI_UNAVAILABLE', 'La IA no está disponible en este momento. Inténtalo en unos minutos.'))
+    .mockResolvedValueOnce(makeSummary());
+  await render(<VotingSummaryCard proposalId="prop_2" />);
+  await fireEvent.press(screen.getByText('Resumir votación'));
+  expect(await screen.findByText('La IA no está disponible en este momento. Inténtalo en unos minutos.')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Resumir votación'));
+  expect(await screen.findByText('Sugerencia: Confirmar')).toBeTruthy();
+  expect(mocked.summarizeVoting).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText('La IA no está disponible en este momento. Inténtalo en unos minutos.')).toBeNull();
 });
 
 it('en modo demostración lo avisa junto al resumen, y solo después de tenerlo', async () => {

@@ -28,11 +28,11 @@ function SuggestionCard({ suggestion, onUse }: { suggestion: PlanSuggestion; onU
       <View style={styles.line}>
         <MaterialIcons name="schedule" size={16} color={colors.onSurfaceVariant} />
         <Text style={[typography.bodySmall, styles.muted]}>
-          {suggestion.window ? windowLabel(suggestion.window) : 'Sin hueco en común: elige una franja al crear o deja que Huecko elija las mejores.'}
+          {suggestion.window ? windowLabel(suggestion.window) : 'Huecko IA no eligió franja: añade una a mano al crear (o deja que Huecko elija si el grupo tiene huecos en común).'}
         </Text>
       </View>
       <Text style={[typography.bodyMedium, { color: colors.onSurface }]}>{suggestion.reason}</Text>
-      <PrimaryButton title="Usar" icon="edit-note" onPress={onUse} />
+      <PrimaryButton title="Usar" accessibilityLabel={`Usar «${suggestion.title}»`} icon="edit-note" onPress={onUse} />
     </HueckoCard>
   );
 }

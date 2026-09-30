@@ -55,3 +55,21 @@ it('sin mimeType se asume JPG; si algo lanza, error genérico', async () => {
   picker.launchImageLibraryAsync.mockRejectedValueOnce(new Error('sin actividad'));
   await expect(pickScheduleImage('gallery')).resolves.toEqual({ kind: 'error', message: IMAGE_MESSAGES.failed, canOpenSettings: false });
 });
+
+it.each([
+  [{ fileName: 'Foto.PNG', uri: 'file:///cache/abc' }, 'image/png', 'Foto.PNG'],
+  [{ fileName: null, uri: 'file:///cache/captura.webp' }, 'image/webp', 'horario.webp'],
+  [{ fileName: 'scan.jpeg', uri: 'content://media/42' }, 'image/jpeg', 'scan.jpeg'],
+  [{ fileName: null, uri: 'file:///cache/foto.png?v=2' }, 'image/png', 'horario.png'],
+  [{ fileName: 'sin-extension', uri: 'content://media/43' }, 'image/jpeg', 'sin-extension'],
+])('sin mimeType deduce el tipo por la extensión de fileName o uri: %j → %s', async (over, mimeType, fileName) => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked({ mimeType: undefined, ...over }));
+  await expect(pickScheduleImage('gallery')).resolves.toMatchObject({ kind: 'picked', image: { mimeType, fileName } });
+});
+
+it('sin fileSize (el sistema no lo informó) la foto se acepta', async () => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked({ fileSize: undefined }));
+  await expect(pickScheduleImage('gallery')).resolves.toEqual({
+    kind: 'picked', image: { uri: 'file:///horario.jpg', mimeType: 'image/jpeg', fileName: 'horario.jpg' },
+  });
+});

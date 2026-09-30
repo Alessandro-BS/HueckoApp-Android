@@ -79,11 +79,14 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
   expect(screen.getByText('Ideas con Huecko IA')).toBeTruthy();
   expect(screen.getByText('Lun · 12:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
-  expect(screen.getByText('Sin hueco en común: elige una franja al crear o deja que Huecko elija las mejores.')).toBeTruthy();
+  expect(screen.getByText('Huecko IA no eligió franja: añade una a mano al crear (o deja que Huecko elija si el grupo tiene huecos en común).')).toBeTruthy();
   expect(screen.getByText('Comida')).toBeTruthy();
   expect(screen.getByText('Un plan corto.')).toBeTruthy();
 
-  const useButton = screen.getAllByText('Usar')[2];
+  // Cada «Usar» nombra su idea para el lector de pantalla.
+  expect(screen.getByRole('button', { name: 'Usar «Sesión de estudio antes del parcial»' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Usar «Almuerzo del grupo»' })).toBeTruthy();
+  const useButton = screen.getByRole('button', { name: 'Usar «Partido de fulbito»' });
   await fireEvent.press(useButton);
   await fireEvent.press(useButton);
   expect(mockNavigate).toHaveBeenCalledTimes(1);

@@ -5,11 +5,11 @@ import { api, ApiError, errorMessage, setAuthToken, setUnauthorizedHandler } fro
 const original = api.defaults.adapter;
 
 // Adaptador falso: rechaza con un AxiosError (con o sin respuesta) para ejercitar el interceptor.
-const failWith = (status: number | null, data?: unknown): AxiosAdapter => (config) =>
+const failWith = (status: number | null, data?: unknown, code?: string): AxiosAdapter => (config) =>
   Promise.reject(
     new AxiosError(
       'fallo',
-      undefined,
+      code,
       config as InternalAxiosRequestConfig,
       null,
       status === null
@@ -63,6 +63,15 @@ describe('interceptor de respuesta', () => {
       status: 0,
       code: 'NETWORK_ERROR',
       message: 'No se pudo conectar con el servidor. Revisa tu conexión.',
+    });
+  });
+
+  it.each(['ECONNABORTED', 'ETIMEDOUT'])('tiempo agotado (%s) → ApiError 0 TIMEOUT con su propio mensaje', async (code) => {
+    api.defaults.adapter = failWith(null, undefined, code);
+    await expect(api.get('/x')).rejects.toMatchObject({
+      status: 0,
+      code: 'TIMEOUT',
+      message: 'El servidor tardó demasiado en responder. Inténtalo de nuevo.',
     });
   });
 

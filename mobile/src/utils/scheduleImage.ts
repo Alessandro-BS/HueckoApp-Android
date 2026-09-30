@@ -21,6 +21,16 @@ export type PickImageResult =
   | { kind: 'error'; message: string; canOpenSettings: boolean };
 
 const EXTENSION: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const TYPE_BY_EXTENSION: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
+// Si el selector no informó el tipo, se deduce de la extensión del nombre o de la uri (sin «?…» ni «#…»); JPG si no hay pista.
+function guessMimeType(...names: (string | null | undefined)[]): string {
+  for (const name of names) {
+    const extension = name?.split(/[?#]/)[0].match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase();
+    if (extension && TYPE_BY_EXTENSION[extension]) return TYPE_BY_EXTENSION[extension];
+  }
+  return 'image/jpeg';
+}
 
 /**
  * Foto del horario (tema del curso: cámara y permisos). La cámara pide permiso; la galería usa el selector del
@@ -37,7 +47,7 @@ export async function pickScheduleImage(source: ImageSource): Promise<PickImageR
     const asset = result.canceled ? undefined : result.assets[0];
     if (!asset) return { kind: 'canceled' };
 
-    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const mimeType = asset.mimeType ?? guessMimeType(asset.fileName, asset.uri);
     if (!OCR_IMAGE_TYPES.includes(mimeType)) return { kind: 'error', message: IMAGE_MESSAGES.unsupported, canOpenSettings: false };
     if (asset.fileSize !== undefined && asset.fileSize > OCR_MAX_BYTES) {
       return { kind: 'error', message: IMAGE_MESSAGES.tooLarge, canOpenSettings: false };

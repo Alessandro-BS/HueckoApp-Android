@@ -19,6 +19,21 @@ describe('PrimaryButton', () => {
   });
 });
 
+describe('accessibilityLabel opcional en los botones', () => {
+  it('si se pasa, es el nombre accesible; si no, el nombre es el título', async () => {
+    await render(
+      <>
+        <PrimaryButton title="Usar" accessibilityLabel="Usar «Karaoke»" onPress={() => {}} />
+        <SecondaryButton title="Quitar" accessibilityLabel="Quitar «Karaoke»" onPress={() => {}} />
+        <PrimaryButton title="Guardar" onPress={() => {}} />
+      </>,
+    );
+    expect(screen.getByRole('button', { name: 'Usar «Karaoke»' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Quitar «Karaoke»' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeTruthy();
+  });
+});
+
 describe('TextField', () => {
   it('muestra el error y alterna la visibilidad de la contraseña', async () => {
     await render(<TextField label="Contraseña" value="x" onChangeText={() => {}} error="Mínimo 8 caracteres" secureToggle />);

@@ -35,6 +35,10 @@ type ErrorBody = { error?: { code?: string; message?: string; details?: unknown 
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ErrorBody>) => {
+    // Sin respuesta: o se agotó el tiempo de espera (la IA con una foto grande y mala red) o no hubo conexión.
+    if (!error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) {
+      throw new ApiError(0, 'TIMEOUT', 'El servidor tardó demasiado en responder. Inténtalo de nuevo.');
+    }
     if (!error.response) {
       throw new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.');
     }

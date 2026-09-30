@@ -33,7 +33,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const [auto, setAuto] = useState(!prefill?.window);
   const [windows, setWindows] = useState<TimeWindowInput[]>(prefill?.window ? [prefill.window] : []);
   const [category, setCategory] = useState<PlanCategory | null>(prefill?.category ?? null);
-  // La IA no encontró hueco en común: se avisa en «Franjas» (el formulario queda en «las 3 mejores»).
+  // La IA no eligió franja: se avisa en «Franjas» (el formulario queda en «las 3 mejores», que da 409 si no hay huecos).
   const [noWindow, setNoWindow] = useState(Boolean(prefill && !prefill.window));
   const mounted = useRef(true);
   useEffect(() => {
@@ -160,7 +160,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           </View>
           {noWindow ? (
             <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
-              Huecko IA no encontró un hueco en común: elige una franja o deja que Huecko elija las mejores.
+              Huecko IA no eligió franja: añade una a mano (o deja que Huecko elija si el grupo tiene huecos en común).
             </Text>
           ) : null}
           {auto ? (
