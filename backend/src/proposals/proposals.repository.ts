@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
 
 import type { Db } from '../db/database';
+import { MEMBER_ORDER } from '../groups/groups.repository';
 import { withTransaction } from '../db/transaction';
 import { canManageProposal, type ManagerCandidate } from './permissions';
 
@@ -165,7 +166,7 @@ export function proposalsRepository(db: Db) {
           `SELECT m.group_id, m.user_id AS id, m.role
            FROM group_members m
            WHERE m.group_id IN (SELECT p.group_id FROM proposals p WHERE p.id ${IN_PROPOSAL_IDS})
-           ORDER BY m.joined_at, m.rowid`,
+           ${MEMBER_ORDER}`,
         )
         .all(ids) as MemberRow[],
       (r) => r.group_id,

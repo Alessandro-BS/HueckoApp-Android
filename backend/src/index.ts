@@ -25,7 +25,7 @@ if (ai.provider === 'mock') console.warn('GEMINI_API_KEY está vacía: Huecko IA
 if (env.TRUST_PROXY === true) {
   console.warn('TRUST_PROXY=true confía en cualquier X-Forwarded-For: usa el número de proxies (p. ej. TRUST_PROXY=1).');
 }
-if (env.NODE_ENV === 'production' && env.TRUST_PROXY === false) {
+if (env.NODE_ENV === 'production' && !env.TRUST_PROXY) {
   console.warn(
     'TRUST_PROXY=false en producción: si el servidor está detrás de un proxy (Render, Railway, nginx…), todos los clientes compartirán una sola IP para los límites de intentos. Usa TRUST_PROXY=1 (el número de proxies).',
   );

@@ -21,7 +21,7 @@ const toMember = (row: MemberRow): GroupMember => ({
 const MAX_CODE_ATTEMPTS = 5;
 
 // Los miembros siempre en orden de llegada (joined_at y, si empatan, orden de inserción).
-const MEMBER_ORDER = 'ORDER BY m.joined_at, m.rowid';
+export const MEMBER_ORDER = 'ORDER BY m.joined_at, m.rowid';
 
 export function groupsRepository(db: Db, generateCode: () => string = generateInviteCode) {
   const membersOf = (groupId: string): GroupMember[] =>

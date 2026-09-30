@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 import { THINKING_LEVELS } from '../ai/ai-client';
+import { LOGIN_RATE_LIMIT_DEFAULT, REGISTER_RATE_LIMIT_DEFAULT } from '../auth/auth.routes';
 import { trustProxySchema } from './trust-proxy';
 
 // Valida las variables de entorno al arrancar: si falta algo, el servidor
@@ -28,8 +29,8 @@ const envSchema = z.object({
   AI_RATE_LIMIT: z.coerce.number().int().positive().default(20),
   // Despliegue (ver .env.example): proxies delante del servidor y límites por IP de /auth.
   TRUST_PROXY: trustProxySchema,
-  LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(20),
-  REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(10),
+  LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(LOGIN_RATE_LIMIT_DEFAULT),
+  REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(REGISTER_RATE_LIMIT_DEFAULT),
 });
 
 export const env = envSchema.parse(process.env);

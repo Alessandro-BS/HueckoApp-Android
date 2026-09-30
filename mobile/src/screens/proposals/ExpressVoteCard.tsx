@@ -116,7 +116,7 @@ export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onRe
           })}
         </View>
       ) : (
-        <Text style={[typography.bodySmall, styles.warning, styles.onlyCreator]}>{'Solo quien organiza el plan puede decidir qué hacer con él.'}</Text>
+        <Text style={[typography.bodySmall, styles.warning, styles.onlyManager]}>{'Solo quien organiza el plan puede decidir qué hacer con él.'}</Text>
       )}
       {action.error && !reprogramming ? (
         <View style={styles.error}>
@@ -150,6 +150,6 @@ const styles = StyleSheet.create({
   choice: { flex: 1, height: 48, borderRadius: radius.xxl, alignItems: 'center', justifyContent: 'center' },
   choiceIdle: { backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: colors.outlineVariant },
   choiceSelected: { backgroundColor: colors.primary },
-  onlyCreator: { marginTop: 16 },
+  onlyManager: { marginTop: 16 },
   error: { marginTop: 12 },
 });
