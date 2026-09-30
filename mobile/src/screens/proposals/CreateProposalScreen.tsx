@@ -78,7 +78,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
 
   const generateDraft = async (text: string) => {
     const result = await draft.generate(text);
-    if (!result) return;
+    if (!result || !mounted.current) return;
     applyPrefill(prefillFromDraft(result));
     showToast('Borrador listo: revísalo antes de crear la propuesta.');
   };
