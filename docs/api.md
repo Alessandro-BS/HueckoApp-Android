@@ -78,6 +78,7 @@ Resumen de las entidades:
 | `VotingSummary` | Resumen de una votación con una recomendación de la IA |
 | `Page<T>` | Lista paginada de administración (`items`, `page`, `pageSize`, `total`) |
 | `AdminUserSummary` / `AdminUserDetail` | Cuenta vista por la administración (rol, estado, grupos, actividad) |
+| `AdminGroupSummary` / `AdminGroupDetail` / `AdminProposalSummary` | Grupo y propuestas vistos por la administración |
 | `AuditEntry` | Una acción del registro de administración |
 
 ---
@@ -371,6 +372,18 @@ Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Toda
 
 ### `PATCH /admin/users/:id/role`
 `{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a abrirse.
+
+### `GET /admin/groups?search=&page=`
+`200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, owner, createdAt }`, los más nuevos primero. `owner` es el `OWNER` actual (`User`) o `null` si no quedan miembros. `search` busca en el nombre y el código de invitación.
+
+### `GET /admin/groups/:id`
+`200 AdminGroupDetail` = `AdminGroupSummary` + `inviteCode`, `availabilityThreshold`, `members` (`GroupMember[]`, en orden de llegada) y `proposals` (`AdminProposalSummary[]`, las más recientes primero: `{ id, title, state, createdBy, createdAt, votingDeadline, scheduledAt, scheduledDate, voteCount, incidenceCount }`; `voteCount` solo cuenta a quienes siguen en el grupo). La administración lo ve **sin ser miembro**. `404 GROUP_NOT_FOUND`.
+
+### `DELETE /admin/groups/:id`
+Borra el grupo con sus miembros, propuestas, franjas, votos e incidencias. `204` · `404 GROUP_NOT_FOUND`. Se anota como `GROUP_DELETED` con `{ name, members, proposals }`.
+
+### `POST /admin/proposals/:id/cancel`
+Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni quien la organiza. Cuerpo opcional `AdminCancelProposalInput`: `{ "reason": "Contenido inapropiado" }` (≤ 200 caracteres tras `trim`; se guarda en el registro). Misma regla de estado que `POST /proposals/:id/cancel` (desde cualquier estado salvo `CANCELADO`). `200 AdminProposalSummary` · `409 INVALID_STATE` «La propuesta ya está cancelada.» · `404 PROPOSAL_NOT_FOUND` · `400 VALIDATION_ERROR`. Se anota como `PROPOSAL_CANCELLED` con `{ title, groupId, from, reason }`. Quien organiza el plan sigue usando `POST /proposals/:id/cancel`; esta ruta es solo para `ADMIN`.
 
 ### `GET /admin/audit?page=`
 `200 Page<AuditEntry>`, lo más reciente primero:

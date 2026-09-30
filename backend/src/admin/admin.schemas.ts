@@ -24,3 +24,8 @@ export const userStatusSchema = z.object({
 export const userRoleSchema = z.object({
   role: z.enum(['USER', 'ADMIN'], { error: 'El rol debe ser USER o ADMIN.' }),
 });
+
+// POST /admin/proposals/:id/cancel: motivo opcional para el registro de acciones.
+export const cancelProposalSchema = z.object({
+  reason: z.string({ error: 'El motivo debe ser un texto.' }).trim().max(200, 'El motivo admite hasta 200 caracteres.').optional(),
+});

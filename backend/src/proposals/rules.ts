@@ -1,4 +1,4 @@
-import type { Criticality, IncidenceType, MatchWindow, Proposal, TimeWindow } from '@hueckoapp/shared';
+import type { Criticality, IncidenceType, MatchWindow, Proposal, ProposalState, TimeWindow } from '@hueckoapp/shared';
 
 // Reglas puras de las propuestas (domain spec §5). Sin base de datos: se prueban aparte.
 
@@ -73,3 +73,6 @@ export function criticalityFor(type: IncidenceType, isEssential: boolean, delayM
 /** C1: se vota solo con la propuesta en PROPUESTO y antes de su plazo. */
 export const isVotingOpen = (p: Pick<Proposal, 'state' | 'votingDeadline'>, now: Date) =>
   p.state === 'PROPUESTO' && new Date(p.votingDeadline).getTime() > now.getTime();
+
+// Cancelar vale desde cualquier estado salvo CANCELADO. La usan quien gestiona el plan y la moderación (D7).
+export const canCancel = (state: ProposalState) => state !== 'CANCELADO';

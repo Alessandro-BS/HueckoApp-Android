@@ -244,3 +244,36 @@ export type AuditEntry = {
   details: AuditDetails;
   createdAt: string;
 };
+
+export type AdminGroupSummary = {
+  id: string;
+  name: string;
+  description: string;
+  memberCount: number;
+  proposalCount: number;
+  owner: User | null;              // OWNER actual; null si el grupo no tiene miembros
+  createdAt: string;
+};
+
+export type AdminProposalSummary = {
+  id: string;
+  title: string;
+  state: ProposalState;
+  createdBy: User;
+  createdAt: string;
+  votingDeadline: string;
+  scheduledAt: string | null;
+  scheduledDate: string | null;
+  voteCount: number;               // solo votos de quienes siguen en el grupo
+  incidenceCount: number;
+};
+
+export type AdminGroupDetail = AdminGroupSummary & {
+  inviteCode: string;
+  availabilityThreshold: number;
+  members: GroupMember[];
+  proposals: AdminProposalSummary[]; // las más recientes primero
+};
+
+// Cuerpo (opcional) de POST /admin/proposals/:id/cancel.
+export type AdminCancelProposalInput = { reason?: string };
