@@ -4,7 +4,8 @@ import { Router } from 'express';
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { groupAvailability, windowAvailability } from '../availability/group-availability';
-import { loadGroupForMember } from '../groups/group-access';
+import { isForeignKeyViolation } from '../db/errors';
+import { groupNotFound, loadGroupForMember } from '../groups/group-access';
 import { groupsRepository } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
@@ -70,15 +71,20 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
     if (windows.length === 0) {
       throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.');
     }
-    const id = await ctx.proposals.create({
-      groupId: group.id,
-      createdBy: userId,
-      title: input.title,
-      location: input.location,
-      votingDeadline: new Date(input.votingDeadline).toISOString(),
-      windows,
-      createdAt: now.toISOString(),
-    });
+    // Si el grupo se borró justo ahora (se fue su último miembro), su clave foránea falla: 404 como si no existiera.
+    const id = await ctx.proposals
+      .create({
+        groupId: group.id,
+        createdBy: userId,
+        title: input.title,
+        location: input.location,
+        votingDeadline: new Date(input.votingDeadline).toISOString(),
+        windows,
+        createdAt: now.toISOString(),
+      })
+      .catch((error: unknown) => {
+        throw isForeignKeyViolation(error, 'proposals_group_id_fkey') ? groupNotFound() : error;
+      });
     res.status(201).json(await ctx.proposals.findById(id, userId));
   });
 

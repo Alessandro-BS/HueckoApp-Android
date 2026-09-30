@@ -4,6 +4,7 @@ import { Router } from 'express';
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { groupWindows } from '../availability/group-availability';
+import { isForeignKeyViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { loadGroupForMember } from './group-access';
@@ -40,9 +41,14 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
     const { inviteCode } = joinGroupSchema.parse(req.body);
     const userId = getUserId(res);
     const groupId = await groups.findIdByInviteCode(inviteCode);
-    if (!groupId) throw new ApiError(404, 'INVALID_INVITE_CODE', 'Código de invitación inválido.');
-    // addMember no inserta si ya era miembro (también si llegan dos peticiones a la vez).
-    if (!(await groups.addMember(groupId, userId))) throw new ApiError(409, 'ALREADY_MEMBER', 'Ya perteneces a este grupo.');
+    const invalidCode = () => new ApiError(404, 'INVALID_INVITE_CODE', 'Código de invitación inválido.');
+    if (!groupId) throw invalidCode();
+    // addMember no inserta si ya era miembro (también si llegan dos peticiones a la vez). Si el grupo se borró justo
+    // ahora (se fue su último miembro), su clave foránea falla: el código ya no vale.
+    const added = await groups.addMember(groupId, userId).catch((error: unknown) => {
+      throw isForeignKeyViolation(error, 'group_members_group_id_fkey') ? invalidCode() : error;
+    });
+    if (!added) throw new ApiError(409, 'ALREADY_MEMBER', 'Ya perteneces a este grupo.');
     res.json(await groups.findById(groupId));
   });
 

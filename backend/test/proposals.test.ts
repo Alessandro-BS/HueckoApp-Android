@@ -3,12 +3,14 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { Db } from '../src/db/db';
 import {
   addWeeklyBlock,
   AFTER_DEADLINE,
   bearer,
   createProposal,
   DEADLINE,
+  interleave,
   makeClock,
   makeTestApp,
   NOW,
@@ -20,6 +22,7 @@ import {
 } from './helpers';
 
 let app: Express;
+let db: Db;
 let clock: ReturnType<typeof makeClock>;
 let yo: { token: string; user: User };
 let ana: { token: string; user: User };
@@ -27,7 +30,7 @@ let group: Group;
 
 beforeEach(async () => {
   clock = makeClock(NOW);
-  ({ app } = await makeTestApp({ now: clock.now }));
+  ({ app, db } = await makeTestApp({ now: clock.now }));
   ({ yo, ana, group } = await setupSeedGroup(app));
 });
 
@@ -142,6 +145,14 @@ describe('POST /api/groups/:id/proposals', () => {
     const otra = await registerUser(app);
     expect((await post({}, otra.token)).body.error.code).toBe('NOT_A_MEMBER');
     expect((await post({}, yo.token, 'no-existe')).status).toBe(404);
+  });
+
+  it('el grupo desaparece mientras se crea (su último miembro se fue): 404 GROUP_NOT_FOUND, no un 500, y nada a medias', async () => {
+    interleave(db, /^INSERT INTO proposals/, 'DELETE FROM groups WHERE id = $1', [group.id]);
+    const res = await post({ windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }] });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatchObject({ code: 'GROUP_NOT_FOUND', message: 'Grupo no encontrado.' });
+    expect(await db.one('SELECT COUNT(*) AS n FROM proposal_windows')).toEqual({ n: 0 });
   });
 });
 

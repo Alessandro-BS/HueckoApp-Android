@@ -4,7 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/db';
-import { bearer, createGroup, joinGroup, makeTestApp, registerUser } from './helpers';
+import { bearer, createGroup, interleave, joinGroup, makeTestApp, registerUser } from './helpers';
 
 let app: Express;
 let db: Db;
@@ -98,6 +98,17 @@ describe('POST /api/groups/join', () => {
   it('código inexistente → 404 INVALID_INVITE_CODE', async () => {
     const yo = await registerUser(app);
     const res = await request(app).post('/api/groups/join').set(bearer(yo.token)).send({ inviteCode: 'NOEXISTE' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatchObject({ code: 'INVALID_INVITE_CODE', message: 'Código de invitación inválido.' });
+  });
+
+  it('el grupo desaparece entre leer el código y entrar (su último miembro se fue): 404 INVALID_INVITE_CODE, no un 500', async () => {
+    const yo = await registerUser(app);
+    const ana = await registerUser(app);
+    const group = await createGroup(app, yo.token);
+    // En Neon, el INSERT espera al leave (FOR UPDATE) y después falla por la clave foránea (23503).
+    interleave(db, /^INSERT INTO group_members/, 'DELETE FROM groups WHERE id = $1', [group.id]);
+    const res = await request(app).post('/api/groups/join').set(bearer(ana.token)).send({ inviteCode: group.inviteCode });
     expect(res.status).toBe(404);
     expect(res.body.error).toMatchObject({ code: 'INVALID_INVITE_CODE', message: 'Código de invitación inválido.' });
   });

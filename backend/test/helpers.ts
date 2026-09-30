@@ -1,11 +1,12 @@
 import type { CurrentUser, Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
+import { vi } from 'vitest';
 
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
 import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
-import type { Db } from '../src/db/db';
+import type { Db, SqlParam } from '../src/db/db';
 import { openTestDatabase } from './db';
 
 export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
@@ -44,6 +45,22 @@ export async function makeTestApp(options?: {
     aiRateLimit: options?.aiRateLimit ?? 10_000,
   });
   return { app, db };
+}
+
+/**
+ * Simula otra petición que se cuela entre la comprobación y la escritura (lo que en Neon pasa con dos conexiones y
+ * PGlite, con una sola, no puede reproducir): justo antes de la primera consulta cuyo SQL cumpla `before`, ejecuta `sql`.
+ */
+export function interleave(db: Db, before: RegExp, sql: string, params: readonly SqlParam[] = []): void {
+  const original = db.query.bind(db);
+  let done = false;
+  vi.spyOn(db, 'query').mockImplementation((async (text: string, values?: readonly SqlParam[]) => {
+    if (!done && before.test(text)) {
+      done = true;
+      await original(sql, params);
+    }
+    return original(text, values);
+  }) as Db['query']);
 }
 
 // IA falsa, sin red: responde `reply` (texto, o una función de la petición) y guarda cada petición en `calls`.

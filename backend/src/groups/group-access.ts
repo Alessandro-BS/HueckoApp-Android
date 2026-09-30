@@ -5,6 +5,8 @@ import type { groupsRepository } from './groups.repository';
 
 type GroupsRepository = ReturnType<typeof groupsRepository>;
 
+export const groupNotFound = () => new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
+
 // 404 si el grupo no existe; 403 si existe pero no soy miembro (igual en todas las rutas del grupo y sus propuestas).
 export async function loadGroupForMember(
   groups: GroupsRepository,
@@ -12,7 +14,7 @@ export async function loadGroupForMember(
   userId: string,
 ): Promise<{ group: Group; me: GroupMember }> {
   const group = await groups.findById(groupId);
-  if (!group) throw new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
+  if (!group) throw groupNotFound();
   const me = group.members.find((m) => m.id === userId);
   if (!me) throw new ApiError(403, 'NOT_A_MEMBER', 'No perteneces a este grupo.');
   return { group, me };
