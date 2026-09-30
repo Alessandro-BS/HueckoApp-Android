@@ -2,7 +2,7 @@ import type { Proposal } from '@hueckoapp/shared';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { BridgeDb } from '../src/db/sqlite-bridge';
+import type { Db } from '../src/db/db';
 import { proposalsRepository } from '../src/proposals/proposals.repository';
 import { bearer, DEADLINE, makeTestApp, NOW, setupSeedGroup } from './helpers';
 
@@ -45,8 +45,8 @@ async function groupWithProposals(count: number) {
 }
 
 // Cuántas sentencias SQL ejecuta `fn`. TEMPORAL: el repositorio aún usa db.prepare; en el Task 4 pasa a contar db.query.
-async function countQueries(db: BridgeDb, fn: () => unknown): Promise<number> {
-  const spy = vi.spyOn(db, 'prepare');
+async function countQueries(db: Db, fn: () => unknown): Promise<number> {
+  const spy = vi.spyOn(db, 'query');
   try {
     await fn();
     return spy.mock.calls.length;
