@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { createDb, type Db } from './db';
 import { migrate } from './migrate';
+import { migrations } from './migrations';
 import { pgDriver } from './pg-driver';
 import { acquireDataDirLock } from './pglite-lock';
 import { openPglite, pgliteDriver } from './pglite-driver';
@@ -48,7 +49,8 @@ export async function openDatabase(config: DatabaseConfig): Promise<Db> {
 }
 
 /**
- * Las herramientas de consola (npm run make-admin): solo una base que YA existe y ya tiene el esquema de HueckoApp.
+ * Las herramientas de consola (npm run make-admin): solo una base que YA existe y ya tiene el esquema de HueckoApp, en
+ * la misma versión que este código (no la migra).
  * Con una carpeta o una URL equivocadas no crea una base vacía (donde el correo nunca aparecería): falla y dice qué revisar.
  */
 export async function openExistingDatabase(config: DatabaseConfig): Promise<Db> {
@@ -65,7 +67,16 @@ export async function openExistingDatabase(config: DatabaseConfig): Promise<Db> 
         `La base ${db.description} no tiene el esquema de HueckoApp. Revisa DATABASE_URL en backend/.env o arranca el servidor una vez para crearlo.`,
       );
     }
-    await migrate(db);
+    // No migra: con una copia del código más nueva que el servidor desplegado, migraría producción antes del despliegue.
+    const { current } = (await db.one<{ current: number }>('SELECT COALESCE(MAX(version), 0) AS current FROM schema_migrations'))!;
+    if (current !== migrations.length) {
+      throw new Error(
+        `La base ${db.description} está en la versión ${current} del esquema y este código espera la ${migrations.length}: ` +
+          (current < migrations.length
+            ? 'despliega (o arranca) antes el servidor con este código, que es quien la migra, y repite.'
+            : 'actualiza tu copia del repositorio (git pull) y repite.'),
+      );
+    }
     return db;
   } catch (error) {
     await db.close();

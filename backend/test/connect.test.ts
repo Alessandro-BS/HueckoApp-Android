@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { databaseConfig, openDatabase, openExistingDatabase } from '../src/db/connect';
+import { createDb } from '../src/db/db';
+import { migrate } from '../src/db/migrate';
 import { migrations } from '../src/db/migrations';
 import { acquireDataDirLock } from '../src/db/pglite-lock';
-import { openPglite } from '../src/db/pglite-driver';
+import { openPglite, pgliteDriver } from '../src/db/pglite-driver';
 
 // Crear una base PGlite en disco (initdb) tarda ≈ 2,5 s sola y bastante más con toda la suite a la vez.
 const DISK_TIMEOUT_MS = 60_000;
@@ -65,6 +67,41 @@ describe('openExistingDatabase (npm run make-admin)', () => {
     await (await openPglite({ dataDir })).close(); // una base Postgres vacía, sin migrar
     await expect(openExistingDatabase({ kind: 'pglite', dataDir })).rejects.toThrow('no tiene el esquema de HueckoApp');
     expect(existsSync(`${dataDir}.lock`)).toBe(false);
+  }, DISK_TIMEOUT_MS);
+});
+
+describe('openExistingDatabase no migra (M5): la base la migra el servidor desplegado', () => {
+  // Una base en disco con las migraciones de `list` (como la dejaría un servidor con otro código).
+  const diskDatabaseAt = async (list: readonly string[]) => {
+    const dataDir = join(tempDir(), 'pglite');
+    const db = createDb(pgliteDriver(await openPglite({ dataDir }), 'PGlite (preparación)'));
+    await migrate(db, list);
+    await db.close();
+    return dataDir;
+  };
+  const versionOf = async (dataDir: string) => {
+    const lite = await openPglite({ dataDir });
+    try {
+      return (await lite.query<{ v: number }>('SELECT MAX(version) AS v FROM schema_migrations')).rows[0].v;
+    } finally {
+      await lite.close();
+    }
+  };
+
+  it('una base con migraciones pendientes se rechaza sin tocarla: dice qué versión tiene y cuál espera', async () => {
+    const dataDir = await diskDatabaseAt(migrations.slice(0, 3));
+    await expect(openExistingDatabase({ kind: 'pglite', dataDir })).rejects.toThrow(
+      `está en la versión 3 del esquema y este código espera la ${migrations.length}`,
+    );
+    expect(await versionOf(dataDir)).toBe(3);
+    expect(existsSync(`${dataDir}.lock`)).toBe(false); // quedó cerrada
+  }, DISK_TIMEOUT_MS);
+
+  it('una base más nueva que este código también se rechaza (actualiza tu copia)', async () => {
+    const dataDir = await diskDatabaseAt([...migrations, 'CREATE TABLE futura (id INTEGER)']);
+    await expect(openExistingDatabase({ kind: 'pglite', dataDir })).rejects.toThrow(
+      `está en la versión ${migrations.length + 1} del esquema y este código espera la ${migrations.length}`,
+    );
   }, DISK_TIMEOUT_MS);
 });
 

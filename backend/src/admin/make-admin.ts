@@ -3,8 +3,8 @@
 //   npm run make-admin -w backend -- ana@test.com
 //   npm run make-admin -w backend -- ana@test.com --revoke
 // Usa la base de backend/.env (DATABASE_URL o, si está vacía, PGlite en PGLITE_DATA_DIR) y solo abre una que ya exista
-// con el esquema de HueckoApp. Con la base local, detén antes el servidor (PGlite admite un solo proceso). Queda en el registro de
-// acciones como «Consola del servidor».
+// con el esquema de HueckoApp al día (no migra: eso lo hace el servidor). Con la base local, detén antes el servidor
+// (PGlite admite un solo proceso). Queda en el registro de acciones como «Consola del servidor».
 import 'dotenv/config';
 import { z } from 'zod';
 

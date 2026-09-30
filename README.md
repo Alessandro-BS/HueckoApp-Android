@@ -53,7 +53,7 @@ npm run backend                        # http://localhost:3000/api/health
    - bash: `DATABASE_URL='postgresql://…' npm run make-admin -w backend -- <correo>`
    - PowerShell: `$env:DATABASE_URL='postgresql://…'; npm run make-admin -w backend -- <correo>; Remove-Item Env:DATABASE_URL`
 
-   La consola solo abre una base que ya tenga el esquema. La semilla (`npm run seed -w backend`) es solo para desarrollo: con una `DATABASE_URL` que no apunte a esta máquina se niega (salvo `-- --allow-remote`, para una base de pruebas), porque crea cuentas con contraseña conocida, una de ellas ADMIN.
+   La consola solo abre una base que ya tenga el esquema **en la misma versión que tu copia del código**: no la migra (eso lo hace el servidor desplegado al arrancar), así que despliega antes y usa el mismo commit. La semilla (`npm run seed -w backend`) es solo para desarrollo: con una `DATABASE_URL` que no apunte a esta máquina se niega (salvo `-- --allow-remote`, para una base de pruebas), porque crea cuentas con contraseña conocida, una de ellas ADMIN.
 6. Antes de desplegar en Render, arranca el servidor una vez contra un proyecto Neon de pruebas (con su `DATABASE_URL` real) y comprueba salud, inicio de sesión, Inicio y `make-admin`: los tests no usan red, así que Neon no se prueba automáticamente.
 
 ### 2b. Datos de ejemplo (opcional)
@@ -84,7 +84,7 @@ Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral: estad
 npm run make-admin -w backend -- ana@test.com            # dar el rol
 npm run make-admin -w backend -- ana@test.com --revoke   # quitarlo
 ```
-Usa la base de `backend/.env` (`DATABASE_URL` o, si está vacía, PGlite en `PGLITE_DATA_DIR`) y solo abre una que ya exista con el esquema de HueckoApp (si la carpeta o la URL están mal, lo dice en vez de crear una vacía). Con la base local, detén antes el servidor: PGlite admite un solo proceso. No deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve (o deja de ver) el menú **al volver a la app (primer plano), al reabrirla o al iniciar sesión**; si pierde el rol mientras usa «Administración», la app lo detecta en la siguiente petición y sale de esas pantallas. Con la semilla (paso 2b) ya existe `admin@test.com`.
+Usa la base de `backend/.env` (`DATABASE_URL` o, si está vacía, PGlite en `PGLITE_DATA_DIR`) y solo abre una que ya exista con el esquema de HueckoApp en la versión de este código (si la carpeta o la URL están mal, lo dice en vez de crear una vacía; si le faltan migraciones, pide arrancar antes el servidor, que es quien migra). Con la base local, detén antes el servidor: PGlite admite un solo proceso. No deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve (o deja de ver) el menú **al volver a la app (primer plano), al reabrirla o al iniciar sesión**; si pierde el rol mientras usa «Administración», la app lo detecta en la siguiente petición y sale de esas pantallas. Con la semilla (paso 2b) ya existe `admin@test.com`.
 
 #### Prueba manual en un celular (pendiente antes de `release/2.0.0`)
 Los gráficos, el PDF, el CSV y el menú compartir solo se prueban con mocks en Jest. Antes de publicar, con Expo Go:
