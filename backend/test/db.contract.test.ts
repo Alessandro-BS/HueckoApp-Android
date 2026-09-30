@@ -1,5 +1,5 @@
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createDb, type Db } from '../src/db/db';
 import { pgDriver } from '../src/db/pg-driver';
@@ -122,8 +122,67 @@ describe.each(adapters)('Db con el adaptador %s', (_name, open) => {
     expect(await ids()).toEqual(['fuera']);
   });
 
+  it('si un error de Postgres se captura dentro y la función termina bien, no se da por confirmada: lanza y no guarda nada', async () => {
+    await db.query("INSERT INTO t (id) VALUES ('a')");
+    // Tras un error, Postgres deja la transacción abortada y su COMMIT es en realidad un ROLLBACK (sin error).
+    await expect(
+      db.transaction(async () => {
+        await db.query("INSERT INTO t (id) VALUES ('b')");
+        await db.query("INSERT INTO t (id) VALUES ('a')").catch(() => undefined);
+        return 'listo';
+      }),
+    ).rejects.toThrow('Postgres deshizo la transacción');
+    expect(await ids()).toEqual(['a']);
+    await db.query("INSERT INTO t (id) VALUES ('b')"); // la conexión sigue sirviendo
+    expect(await ids()).toEqual(['a', 'b']);
+  });
+
+  it('la conexión de una transacción terminada no se puede usar (una consulta que se quedó para después falla)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let late!: Promise<unknown>;
+    await db.transaction(async () => {
+      await db.query("INSERT INTO t (id) VALUES ('dentro')");
+      late = gate.then(() => db.query("INSERT INTO t (id) VALUES ('tarde')")); // hereda el contexto de la transacción
+    });
+    release();
+    await expect(late).rejects.toThrow('la transacción ya terminó');
+    expect(await ids()).toEqual(['dentro']);
+  });
+
   it('exec ejecuta varias sentencias seguidas', async () => {
     await db.exec("INSERT INTO t (id) VALUES ('a'); INSERT INTO t (id) VALUES ('b');");
     expect(await ids()).toEqual(['a', 'b']);
+  });
+});
+
+describe('adaptador pg: la conexión se cae en mitad de una transacción', () => {
+  it('el proceso no se cae (hay quien escucha el error de la conexión): la transacción falla', async () => {
+    const lonely = new PGLiteSocketServer({ db: await openPglite(), port: 0, host: '127.0.0.1' });
+    await lonely.start();
+    const db = createDb(pgDriver(`postgresql://postgres@${lonely.getServerConn()}/postgres?sslmode=disable`, { max: 1 }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let started!: () => void;
+      const inside = new Promise<void>((resolve) => (started = resolve));
+      const tx = db.transaction(async () => {
+        await db.query('SELECT 1');
+        started();
+        await gate;
+        await db.query('SELECT 1');
+      });
+      await inside;
+      await lonely.stop(); // corta la conexión mientras la transacción la tiene en uso (sin consulta en curso)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      release();
+      await expect(tx).rejects.toThrow();
+      expect(errors).toHaveBeenCalledWith(expect.stringContaining('[db]'), expect.anything());
+    } finally {
+      errors.mockRestore();
+      await db.close();
+      await lonely.db.close();
+    }
   });
 });

@@ -36,10 +36,38 @@ export interface Db {
   /**
    * Todo o nada: COMMIT si `fn` termina, ROLLBACK y relanza si lanza. Toda consulta hecha con este `Db` mientras
    * `fn` corre (también desde otros repositorios) va por la conexión de la transacción. Reentrante: si ya hay una
-   * abierta, `fn` corre dentro de ella y la de fuera decide.
+   * abierta, `fn` corre dentro de ella y la de fuera decide. Si `fn` captura un error de la base y termina bien, lanza
+   * igual (Postgres ya la deshizo). Después de terminar, la conexión de la transacción ya no admite consultas.
    */
   transaction<T>(fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
+}
+
+/**
+ * La conexión de una transacción, válida solo hasta que termina. Una consulta que la siga usando después (una promesa
+ * lanzada dentro sin `await` hereda el contexto asíncrono) falla en vez de ir, con pg, a una conexión ya devuelta al
+ * Pool, quizá metida en la transacción de otra petición.
+ */
+function untilEnd(tx: Runner): { runner: Runner; end: () => void } {
+  let active = true;
+  const assertActive = () => {
+    if (!active) throw new Error('Consulta fuera de tiempo: la transacción ya terminó (¿una promesa sin await dentro de db.transaction?).');
+  };
+  return {
+    runner: {
+      async query(sql, params) {
+        assertActive();
+        return tx.query(sql, params);
+      },
+      async exec(sql) {
+        assertActive();
+        return tx.exec(sql);
+      },
+    },
+    end: () => {
+      active = false;
+    },
+  };
 }
 
 class DriverDb implements Db {
@@ -82,7 +110,14 @@ class DriverDb implements Db {
 
   transaction<T>(fn: () => Promise<T>): Promise<T> {
     if (this.inTransaction) return fn();
-    return this.#driver.transaction((tx) => this.#tx.run(tx, fn));
+    return this.#driver.transaction(async (tx) => {
+      const { runner, end } = untilEnd(tx);
+      try {
+        return await this.#tx.run(runner, fn);
+      } finally {
+        end();
+      }
+    });
   }
 
   close(): Promise<void> {

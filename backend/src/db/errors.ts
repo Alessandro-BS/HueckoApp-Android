@@ -7,3 +7,10 @@ export function isUniqueViolation(error: unknown, constraint: string): boolean {
   const e = error as { code?: unknown; constraint?: unknown } | null;
   return typeof e === 'object' && e !== null && e.code === UNIQUE_VIOLATION && e.constraint === constraint;
 }
+
+/**
+ * Tras un error dentro de una transacción, Postgres la deja abortada y su COMMIT en realidad la deshace (sin error).
+ * Si la función capturó ese error y terminó bien, se lanza esto: nada de lo que hizo quedó guardado.
+ */
+export const abortedTransactionError = () =>
+  new Error('Postgres deshizo la transacción: una consulta falló dentro y su error se capturó sin relanzarlo. No se guardó nada.');

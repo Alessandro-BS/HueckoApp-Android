@@ -38,7 +38,9 @@ export async function acquireDataDirLock(dataDir: string, waitMs = LOCK_WAIT_MS)
     } catch {
       continue; // lo soltaron justo ahora: se vuelve a intentar
     }
-    if (!Number.isNaN(owner) && !isAlive(owner)) {
+    // Vacío o 0: otro proceso acaba de crear el candado y aún no escribió su pid. Está ocupado, no huérfano: borrarlo
+    // dejaría a los dos creyéndose dueños. (Solo se recupera el de un pid real que ya no existe.)
+    if (Number.isInteger(owner) && owner > 0 && !isAlive(owner)) {
       rmSync(path, { force: true }); // candado huérfano (el proceso murió sin soltarlo)
       continue;
     }

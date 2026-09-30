@@ -78,6 +78,16 @@ describe('acquireDataDirLock (D10)', () => {
     again();
   });
 
+  it.each([
+    ['vacío', ''],
+    ['con pid 0', '0'],
+  ])('un candado %s no se toma por huérfano: el otro proceso acaba de crearlo y aún no escribió su pid', async (_label, content) => {
+    const dataDir = join(tempDir(), 'pglite');
+    writeFileSync(`${dataDir}.lock`, content);
+    await expect(acquireDataDirLock(dataDir, 0)).rejects.toThrow('está abierta por otro proceso');
+    expect(readFileSync(`${dataDir}.lock`, 'utf8')).toBe(content); // no se borró
+  });
+
   it('el candado de un proceso que ya no existe se recupera', async () => {
     const dataDir = join(tempDir(), 'pglite');
     writeFileSync(`${dataDir}.lock`, '2147483646'); // pid que no existe
