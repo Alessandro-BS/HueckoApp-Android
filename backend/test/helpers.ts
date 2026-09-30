@@ -63,6 +63,25 @@ export function interleave(db: Db, before: RegExp, sql: string, params: readonly
   }) as Db['query']);
 }
 
+/**
+ * Anota cada consulta hecha con `db` (query, many, one y exec), en orden y con si iba dentro de una transacción. Para
+ * comprobar que una defensa contra carreras (candado, FOR UPDATE) es lo primero de su transacción.
+ */
+export function recordQueries(db: Db): { sql: string; params: readonly SqlParam[]; inTransaction: boolean }[] {
+  const calls: { sql: string; params: readonly SqlParam[]; inTransaction: boolean }[] = [];
+  const query = db.query.bind(db);
+  const exec = db.exec.bind(db);
+  vi.spyOn(db, 'query').mockImplementation((async (sql: string, params: readonly SqlParam[] = []) => {
+    calls.push({ sql, params, inTransaction: db.inTransaction });
+    return query(sql, params);
+  }) as Db['query']);
+  vi.spyOn(db, 'exec').mockImplementation(async (sql: string) => {
+    calls.push({ sql, params: [], inTransaction: db.inTransaction });
+    return exec(sql);
+  });
+  return calls;
+}
+
 // IA falsa, sin red: responde `reply` (texto, o una función de la petición) y guarda cada petición en `calls`.
 export function fakeAi(reply: string | ((request: AiRequest) => string)) {
   const calls: AiRequest[] = [];

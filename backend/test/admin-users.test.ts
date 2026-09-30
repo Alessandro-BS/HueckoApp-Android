@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { adminUsers } from '../src/admin/admin-users';
 import type { Db } from '../src/db/db';
 import { insertUser, registerAdmin } from './admin-fixtures';
-import { bearer, createGroup, makeTestApp, NOW, registerUser } from './helpers';
+import { bearer, createGroup, makeTestApp, NOW, recordQueries, registerUser } from './helpers';
 
 type AuditRow = { action: string; admin_id: string | null; target_id: string; details: string };
 const auditRows = (db: Db) => db.many<AuditRow>('SELECT action, admin_id, target_id, details FROM admin_audit_log ORDER BY seq');
@@ -234,6 +234,19 @@ describe('PATCH /api/admin/users/:id/role', () => {
     await insertUser(db, { role: 'ADMIN' });
     expect(await adminUsers(db).setRole(actor, only, 'USER')).toBe(true); // control positivo
     expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_DEMOTED']);
+  });
+
+  it.each([
+    ['setStatus', (db: Db, actor: { adminId: string; now: Date }, id: string) => adminUsers(db).setStatus(actor, id, 'SUSPENDED')],
+    ['setRole', (db: Db, actor: { adminId: string; now: Date }, id: string) => adminUsers(db).setRole(actor, id, 'USER')],
+  ])('servicio: %s empieza su transacción con el candado de cambios de administración (D15)', async (_name, change) => {
+    // Sin el candado, dos admins que se quitan el rol a la vez en Neon podrían dejar la app sin ninguno (PGlite no lo reproduce).
+    const { db } = await makeTestApp();
+    const actor = { adminId: await insertUser(db, { role: 'ADMIN' }), now: NOW };
+    const target = await insertUser(db, { role: 'ADMIN' });
+    const calls = recordQueries(db);
+    expect(await change(db, actor, target)).toBe(true);
+    expect(calls[0]).toEqual({ sql: 'SELECT pg_advisory_xact_lock($1)', params: [72_616_002], inTransaction: true });
   });
 
   it('400 con un rol desconocido; con uno válido, 200', async () => {

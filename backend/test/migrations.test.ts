@@ -4,6 +4,7 @@ import type { Db } from '../src/db/db';
 import { migrate } from '../src/db/migrate';
 import { migrations } from '../src/db/migrations';
 import { openEmptyDatabase, openTestDatabase } from './db';
+import { recordQueries } from './helpers';
 
 // Errores de Postgres que se esperan: 23505 clave repetida, 23503 clave foránea, 23514 CHECK, 42804 tipo, 42703 columna.
 const failsWith = (promise: Promise<unknown>, code: string) => expect(promise).rejects.toMatchObject({ code });
@@ -19,6 +20,15 @@ describe('migrate', () => {
     expect(await versions(db)).toEqual(ALL_VERSIONS);
     const dates = await db.many<{ applied_at: string }>('SELECT applied_at FROM schema_migrations');
     for (const { applied_at } of dates) expect(applied_at).toMatch(ISO_MS);
+  });
+
+  it('lo primero, dentro de su transacción, es el candado de migraciones (dos servidores a la vez no migran dos veces)', async () => {
+    // PGlite tiene una sola conexión y no puede reproducir la carrera: este test impide que un cambio quite el candado.
+    const db = await openEmptyDatabase();
+    const calls = recordQueries(db);
+    await migrate(db);
+    expect(calls[0]).toEqual({ sql: 'SELECT pg_advisory_xact_lock($1)', params: [72_616_001], inTransaction: true });
+    expect(calls.slice(1).some((c) => !c.inTransaction)).toBe(false);
   });
 
   it('es idempotente: migrar una base ya migrada no hace nada', async () => {
