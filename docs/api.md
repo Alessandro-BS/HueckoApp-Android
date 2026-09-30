@@ -72,6 +72,7 @@ Resumen de las entidades:
 | `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
 | `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
 | `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
+| `AiTask` | Función de la app que llamó a la IA (estadísticas) |
 | `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
 | `ProposalDraft` / `PlanSuggestion` / `PlanCategory` | Borrador e ideas de plan de la IA (sin guardar) |
 | `VotingSummary` | Resumen de una votación con una recomendación de la IA |
@@ -286,7 +287,8 @@ Toda llamada a la IA pasa por el backend (Google Gemini, modelo `GEMINI_MODEL`):
 - La respuesta de la IA se valida siempre: si no cumple el formato → `502 AI_BAD_RESPONSE`; si el proveedor falla o tarda más de 30 s → `503 AI_UNAVAILABLE`. Nunca se devuelven datos inventados para tapar un fallo.
 - Si el modelo principal está saturado (503), sin cuota (429), no existe (404: nombre mal escrito o modelo retirado) o agota su tiempo (el principal solo puede usar 2/3 de `GEMINI_TIMEOUT_MS`), el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL`; `GEMINI_TIMEOUT_MS` (30 s) es el tope total de los dos intentos. Cualquier otro fallo no se reintenta.
 - Modelos por defecto: `GEMINI_MODEL=gemini-3.5-flash-lite` y `GEMINI_FALLBACK_MODEL=gemini-3.5-flash`. Cada llamada envía `generation_config.thinking_level` con `GEMINI_THINKING_LEVEL` (`minimal` · `low` · `medium` · `high`; por defecto `low`) para responder más rápido.
-- La IA **solo sugiere**: ninguna de estas rutas guarda nada. El usuario revisa el resultado y lo confirma con los endpoints de siempre.
+- La IA **solo sugiere**: ninguna de estas rutas guarda datos del usuario (solo la anotación de uso de la viñeta siguiente). El usuario revisa el resultado y lo confirma con los endpoints de siempre.
+- **Registro de uso:** cada petición que llega al proveedor se anota en `ai_calls` con quién la hizo, la función (`AiTask`: `schedule-ocr`, `proposal-draft`, `plan-suggestions`, `voting-summary`), si salió bien (respuesta válida) o mal (`502`/`503`), cuánto tardó y cuándo. **Nunca** se guarda el prompt, la foto ni la respuesta. Lo que no llega a la IA (`429`, `400` de la subida, `403`, `404`, `409`) no se anota. Lo usan las estadísticas de «Administración».
 - **Modo demostración:** si el servidor no tiene `GEMINI_API_KEY`, las respuestas son datos de ejemplo fijos (validados igual).
 
 ### `GET /ai/status`

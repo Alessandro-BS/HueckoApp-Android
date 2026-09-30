@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import type { AiRequest, AiTask } from '../src/ai/ai-client';
-import { askAi, stripFences } from '../src/ai/ask-ai';
+import { askAi, stripFences, type AiCallRecorder } from '../src/ai/ask-ai';
 import { createMockAiClient, MOCK_RESPONSES } from '../src/ai/mock-client';
 import { userData } from '../src/ai/prompt';
 import { bearer, failingAi, fakeAi, makeTestApp, registerUser } from './helpers';
 
 const REQUEST: AiRequest = { task: 'voting-summary', prompt: 'Resume la votación', schema: { type: 'object' } };
 const schema = z.object({ answer: z.string() });
+const noRecord: AiCallRecorder = () => {};
 
 describe('stripFences', () => {
   it.each([
@@ -38,12 +39,12 @@ describe('userData', () => {
 describe('askAi', () => {
   it('pasa la petición al cliente y devuelve la respuesta validada (sin campos de más)', async () => {
     const { client, calls } = fakeAi('```json\n{"answer":"sí","extra":1}\n```');
-    await expect(askAi(client, REQUEST, schema)).resolves.toEqual({ answer: 'sí' });
+    await expect(askAi(client, REQUEST, schema, noRecord)).resolves.toEqual({ answer: 'sí' });
     expect(calls).toEqual([REQUEST]);
   });
 
   it.each(['no es json', '{"answer": 3}', '', '[]'])('respuesta %j → 502 AI_BAD_RESPONSE', async (text) => {
-    await expect(askAi(fakeAi(text).client, REQUEST, schema)).rejects.toMatchObject({ status: 502, code: 'AI_BAD_RESPONSE' });
+    await expect(askAi(fakeAi(text).client, REQUEST, schema, noRecord)).rejects.toMatchObject({ status: 502, code: 'AI_BAD_RESPONSE' });
   });
 
   it('un 502 deja en el log la tarea y las rutas de los errores, nunca el contenido (fuera de los tests)', async () => {
@@ -52,10 +53,10 @@ describe('askAi', () => {
     process.env.NODE_ENV = 'development';
     try {
       const secreto = '{"answer": 3, "nota": "dato-privado"}';
-      await expect(askAi(fakeAi(secreto).client, REQUEST, schema)).rejects.toMatchObject({ status: 502 });
+      await expect(askAi(fakeAi(secreto).client, REQUEST, schema, noRecord)).rejects.toMatchObject({ status: 502 });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0]).toEqual(['[ia] voting-summary: respuesta no válida', ['answer']]);
-      await expect(askAi(fakeAi('dato-privado sin json').client, REQUEST, schema)).rejects.toMatchObject({ status: 502 });
+      await expect(askAi(fakeAi('dato-privado sin json').client, REQUEST, schema, noRecord)).rejects.toMatchObject({ status: 502 });
       expect(warn).toHaveBeenCalledTimes(2);
       expect(warn.mock.calls[1]).toEqual(['[ia] voting-summary: la respuesta no es JSON']);
       expect(JSON.stringify(warn.mock.calls)).not.toContain('dato-privado');
@@ -68,7 +69,7 @@ describe('askAi', () => {
   it('en los tests un 502 no escribe en el log', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      await expect(askAi(fakeAi('no es json').client, REQUEST, schema)).rejects.toMatchObject({ status: 502 });
+      await expect(askAi(fakeAi('no es json').client, REQUEST, schema, noRecord)).rejects.toMatchObject({ status: 502 });
       expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();
@@ -76,7 +77,7 @@ describe('askAi', () => {
   });
 
   it('si el proveedor falla → 503 AI_UNAVAILABLE', async () => {
-    await expect(askAi(failingAi(), REQUEST, schema)).rejects.toMatchObject({ status: 503, code: 'AI_UNAVAILABLE' });
+    await expect(askAi(failingAi(), REQUEST, schema, noRecord)).rejects.toMatchObject({ status: 503, code: 'AI_UNAVAILABLE' });
   });
 });
 

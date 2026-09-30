@@ -162,6 +162,9 @@ export type AiProvider = 'gemini' | 'mock';
 
 export type AiStatus = { provider: AiProvider };
 
+// Función de la app que llamó a la IA (estadísticas de administración, `ai_calls`).
+export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary';
+
 // Respuesta de POST /ai/schedule-ocr: bloques SIN guardar, para revisarlos y guardarlos con /me/time-blocks/bulk.
 export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
 
