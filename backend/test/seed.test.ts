@@ -55,9 +55,15 @@ describe('semilla de datos de ejemplo (D8)', () => {
     const db = openDatabase(':memory:');
     seedDemoData(db, HASH, NOW);
     const before = snapshot(db);
+    const demoIds = () => column(db, "SELECT id AS v FROM proposals WHERE title IN ('Reunión de avance del proyecto', 'Repaso antes de la entrega') ORDER BY title");
+    const idsBefore = demoIds();
     const later = new Date(NOW.getTime() + 10 * DAY); // viernes 9/10 10:00
     expect(seedDemoData(db, HASH, later)).toEqual({ users: 0, groups: 0, blocks: 0, proposals: 2 });
     expect(snapshot(db)).toEqual(before);
+    // Las dos propuestas de ejemplo se recrean con ids nuevos.
+    const idsAfter = demoIds();
+    expect(idsAfter).toHaveLength(2);
+    expect(idsAfter.filter((id) => idsBefore.includes(id))).toEqual([]);
     const d = dashboardOf(db, later);
     expect(d.nextPlan?.scheduledAt).toBe(new Date(2026, 9, 11, 11, 0).toISOString());
     expect(d.pendingVotes.map((p) => p.votingDeadline)).toEqual([new Date(2026, 9, 10, 20, 0).toISOString()]);
@@ -80,11 +86,32 @@ describe('semilla de datos de ejemplo (D8)', () => {
     groupsRepository(db).leave(groupId, anaId);
 
     seedDemoData(db, HASH, NOW);
+    // Sigue existiendo con el mismo id (findById lo encuentra por él).
+    expect(proposalsRepository(db).findById(mine, anaId)?.id).toBe(mine);
     expect(proposalsRepository(db).findById(mine, anaId)?.title).toBe('Plan propio');
     expect(count(db, 'proposals')).toBe(3);
     expect(groupsRepository(db).findById(groupId)!.members.map((m) => [m.name, m.role])).toEqual([
       ['Usuario de Prueba', 'OWNER'],
       ['Ana', 'MEMBER'],
     ]);
+  });
+
+  it.each([
+    ['sábado 23:30', new Date(2026, 9, 3, 23, 30), new Date(2026, 9, 5, 11, 0), new Date(2026, 9, 4, 20, 0)],
+    ['miércoles 20:30, ya pasadas las 20:00', new Date(2026, 8, 30, 20, 30), new Date(2026, 9, 2, 11, 0), new Date(2026, 9, 1, 20, 0)],
+  ])('con el reloj en %s: plan confirmado en 2 días a las 11:00 y plazo de votación futuro', (_label, now, scheduled, deadline) => {
+    const db = openDatabase(':memory:');
+    seedDemoData(db, HASH, now);
+    const id = userId(db, 'test@test.com');
+    const all = proposalsRepository(db).listForUser(id);
+    const confirmed = all.find((p) => p.state === 'CONFIRMADO')!;
+    expect(confirmed.scheduledAt).toBe(scheduled.toISOString());
+    // La franja elegida cae en el mismo día de la semana que la fecha del plan.
+    const chosen = confirmed.windows.find((w) => w.id === confirmed.chosenWindowId)!;
+    expect(chosen.dayOfWeek).toBe(((scheduled.getDay() + 6) % 7) + 1);
+    expect(chosen.startTime).toBe('11:00');
+    const open = all.find((p) => p.state === 'PROPUESTO')!;
+    expect(open.votingDeadline).toBe(deadline.toISOString());
+    expect(new Date(open.votingDeadline).getTime()).toBeGreaterThan(now.getTime());
   });
 });

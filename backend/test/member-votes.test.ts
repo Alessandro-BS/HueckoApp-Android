@@ -57,6 +57,12 @@ describe('votos de quien sale del grupo (D5)', () => {
   });
 
   it('«la más votada» al confirmar solo cuenta a los miembros actuales', async () => {
+    // Control positivo: si nadie se va, gana el jueves (2 votos contra 1).
+    const control = await votedPlan();
+    const kept = await request(app).post(`/api/proposals/${control.id}/confirm`).set(bearer(yo.token)).send({});
+    expect(kept.status).toBe(200);
+    expect(kept.body.chosenWindowId).toBe(windowOf(control, 4).id);
+
     const p = await votedPlan();
     await leave(ana.token);
     await leave(carlos.token);

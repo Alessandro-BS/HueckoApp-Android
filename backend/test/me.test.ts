@@ -51,6 +51,13 @@ async function seedProposals() {
 }
 
 describe('GET /api/me/dashboard', () => {
+  it('con el mismo createdAt, el resumen del grupo sigue a la propuesta insertada después', async () => {
+    // El reloj no avanza: ambas propuestas tienen exactamente el mismo createdAt y decide el orden de inserción.
+    await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }] });
+    await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [{ dayOfWeek: 5, startTime: '10:00', endTime: '12:00' }] });
+    expect(((await get('dashboard', yo.token)).body as Dashboard).groups[0].nextWindow).toMatchObject({ dayOfWeek: 5, startTime: '10:00' });
+  });
+
   it('el resumen del grupo sigue a la propuesta más reciente; si se cancela, vuelve a la anterior', async () => {
     const { prop2 } = await seedProposals();
     expect(((await get('dashboard', yo.token)).body as Dashboard).groups[0].nextWindow).toMatchObject({ dayOfWeek: 2, startTime: '16:00' });
