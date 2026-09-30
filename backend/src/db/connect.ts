@@ -6,7 +6,6 @@ import { migrate } from './migrate';
 import { migrations } from './migrations';
 import { pgDriver } from './pg-driver';
 import { acquireDataDirLock } from './pglite-lock';
-import { openPglite, pgliteDriver } from './pglite-driver';
 
 /** Dónde está la base: Postgres (Neon) por URL, PGlite en una carpeta (desarrollo) o PGlite en memoria. */
 export type DatabaseConfig = { kind: 'postgres'; url: string } | { kind: 'pglite'; dataDir: string } | { kind: 'memory' };
@@ -16,10 +15,11 @@ export function databaseConfig(env: { DATABASE_URL: string; PGLITE_DATA_DIR: str
   return env.DATABASE_URL ? { kind: 'postgres', url: env.DATABASE_URL } : { kind: 'pglite', dataDir: env.PGLITE_DATA_DIR };
 }
 
+// PGlite se carga solo si se usa: en producción (DATABASE_URL) el servidor nunca importa @electric-sql/pglite.
 async function connect(config: DatabaseConfig): Promise<Db> {
+  if (config.kind === 'postgres') return createDb(pgDriver(config.url));
+  const { openPglite, pgliteDriver } = await import('./pglite-driver.js');
   switch (config.kind) {
-    case 'postgres':
-      return createDb(pgDriver(config.url));
     case 'memory':
       return createDb(pgliteDriver(await openPglite(), 'PGlite (memoria)'));
     case 'pglite': {
