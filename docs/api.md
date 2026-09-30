@@ -36,10 +36,13 @@ Todos los errores tienen la misma forma:
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
-| 429 | `TOO_MANY_REQUESTS`: demasiados intentos en `/auth` (20 cada 15 min por IP) o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
+| 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
 | 500 | Error inesperado del servidor |
 | 502 | `AI_BAD_RESPONSE`: la IA respondió algo que no cumple el formato esperado |
 | 503 | `AI_UNAVAILABLE`: la IA no respondió (proveedor caído o más de 30 s) |
+
+### Límites e IP del cliente
+Los límites de `/auth` son **por IP**, con contadores separados para login (`LOGIN_RATE_LIMIT`, 20) y registro (`REGISTER_RATE_LIMIT`, 10) cada 15 min. Si el backend está detrás de un proxy (Render, Railway, nginx…), `TRUST_PROXY` debe decir cuántos hay (normalmente `1`) para que la IP salga de `X-Forwarded-For`; con `false` (por defecto) esa cabecera se ignora.
 
 ---
 

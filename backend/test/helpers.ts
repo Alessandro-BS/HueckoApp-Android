@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import request from 'supertest';
 
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
+import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
 import { openDatabase, type Db } from '../src/db/database';
 
@@ -18,7 +19,9 @@ export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
 export const AFTER_DEADLINE = new Date(2026, 9, 3, 20, 1);
 
 export function makeTestApp(options?: {
-  authRateLimit?: number;
+  loginRateLimit?: number;
+  registerRateLimit?: number;
+  trustProxy?: TrustProxy;
   now?: () => Date;
   ai?: AiClient;
   aiRateLimit?: number;
@@ -28,7 +31,9 @@ export function makeTestApp(options?: {
     db,
     jwtSecret: TEST_SECRET,
     jwtExpiresIn: '1h',
-    authRateLimit: options?.authRateLimit ?? 10_000,
+    loginRateLimit: options?.loginRateLimit ?? 10_000,
+    registerRateLimit: options?.registerRateLimit ?? 10_000,
+    trustProxy: options?.trustProxy,
     now: options?.now,
     // Sin `ai`, createApp usa el cliente de demostración (como un servidor sin GEMINI_API_KEY).
     ai: options?.ai,

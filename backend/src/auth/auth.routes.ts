@@ -10,21 +10,34 @@ import { DUMMY_HASH, hashPassword, verifyPassword } from './passwords';
 import { getUserId, requireAuth } from './require-auth';
 import { signToken } from './tokens';
 
-export function authRouter({ db, jwtSecret, jwtExpiresIn, authRateLimit = 20 }: AppDeps) {
-  const router = Router();
-  const users = usersRepository(db);
+export const LOGIN_RATE_LIMIT_DEFAULT = 20;
+export const REGISTER_RATE_LIMIT_DEFAULT = 10;
 
-  // Frena ataques de fuerza bruta: 20 intentos cada 15 minutos por IP.
-  const limiter = rateLimit({
+// Frena la fuerza bruta por IP cada 15 minutos. La IP es req.ip: detrás de un proxy depende de TRUST_PROXY (D9).
+function authLimiter(limit: number) {
+  return rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: authRateLimit,
+    limit,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    handler: (_req, _res, next) =>
-      next(new ApiError(429, 'TOO_MANY_REQUESTS', 'Demasiados intentos. Espera unos minutos.')),
+    handler: (_req, _res, next) => next(new ApiError(429, 'TOO_MANY_REQUESTS', 'Demasiados intentos. Espera unos minutos.')),
   });
+}
 
-  router.post('/register', limiter, async (req, res) => {
+export function authRouter({
+  db,
+  jwtSecret,
+  jwtExpiresIn,
+  loginRateLimit = LOGIN_RATE_LIMIT_DEFAULT,
+  registerRateLimit = REGISTER_RATE_LIMIT_DEFAULT,
+}: AppDeps) {
+  const router = Router();
+  const users = usersRepository(db);
+  // Contadores separados (D10): crear cuentas no gasta los intentos de entrar, ni al revés.
+  const loginLimiter = authLimiter(loginRateLimit);
+  const registerLimiter = authLimiter(registerRateLimit);
+
+  router.post('/register', registerLimiter, async (req, res) => {
     const { name, email, password } = registerSchema.parse(req.body);
     if (users.findByEmail(email)) {
       throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
@@ -34,7 +47,7 @@ export function authRouter({ db, jwtSecret, jwtExpiresIn, authRateLimit = 20 }: 
     res.status(201).json(body);
   });
 
-  router.post('/login', limiter, async (req, res) => {
+  router.post('/login', loginLimiter, async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
     const found = users.findByEmail(email);
     const ok = await verifyPassword(password, found?.passwordHash ?? DUMMY_HASH);

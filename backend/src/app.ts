@@ -8,6 +8,7 @@ import { aiRouter, groupAiRouter, proposalAiRouter } from './ai/ai.routes';
 import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
 import { requireAuth } from './auth/require-auth';
+import type { TrustProxy } from './config/trust-proxy';
 import type { Db } from './db/database';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
@@ -19,8 +20,11 @@ export type AppDeps = {
   db: Db;
   jwtSecret: string;
   jwtExpiresIn: string;
-  // Intentos por IP cada 15 min en /auth (20 si se omite); las pruebas lo suben.
-  authRateLimit?: number;
+  // Proxies delante del servidor (app.set('trust proxy')): false si se omite. Ver TRUST_PROXY en .env.example.
+  trustProxy?: TrustProxy;
+  // Intentos por IP cada 15 min en /auth/login (20) y /auth/register (10) si se omiten; las pruebas los cambian.
+  loginRateLimit?: number;
+  registerRateLimit?: number;
   // Reloj de la app (plazos de votación, scheduledAt). Los tests lo fijan; por defecto, la hora real.
   now?: () => Date;
   // Cliente de IA. Si se omite, el de demostración (como sin GEMINI_API_KEY); los tests inyectan uno falso.
@@ -44,6 +48,8 @@ export function createApp(appDeps: AppDeps) {
     aiLimiter: aiRateLimiter(appDeps.aiRateLimit ?? AI_RATE_LIMIT_DEFAULT),
   };
   const app = express();
+  // Con un proxy delante, req.ip (y por tanto los límites por IP) sale de X-Forwarded-For solo si se confía en él.
+  app.set('trust proxy', appDeps.trustProxy ?? false);
 
   app.use(helmet());
   app.use(cors());

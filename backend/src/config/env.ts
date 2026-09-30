@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 import { THINKING_LEVELS } from '../ai/ai-client';
+import { trustProxySchema } from './trust-proxy';
 
 // Valida las variables de entorno al arrancar: si falta algo, el servidor
 // no levanta y el error dice qué falta, en vez de fallar más tarde.
@@ -25,6 +26,10 @@ const envSchema = z.object({
   GEMINI_THINKING_LEVEL: z.enum(THINKING_LEVELS).default('low'),
   GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   AI_RATE_LIMIT: z.coerce.number().int().positive().default(20),
+  // Despliegue (ver .env.example): proxies delante del servidor y límites por IP de /auth.
+  TRUST_PROXY: trustProxySchema,
+  LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(20),
+  REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 });
 
 export const env = envSchema.parse(process.env);

@@ -37,6 +37,8 @@ npm run backend                        # http://localhost:3000/api/health
 
 > **Zona horaria:** `TZ` en `backend/.env` (por defecto `America/Lima`) es la zona en la que el servidor calcula la fecha y hora de los planes confirmados (`scheduledAt` y `scheduledDate`). En el despliegue hay que fijarla siempre: sin ella el servidor usa la suya (normalmente UTC) y los planes caerían en otra fecha u hora.
 
+> **Despliegue detrás de un proxy:** en Render, Railway o detrás de nginx pon `TRUST_PROXY=1` (el número de proxies) en el `.env` del servidor; si no, todas las peticiones parecen venir de la misma IP y el límite de intentos de login (`LOGIN_RATE_LIMIT`) y de registro (`REGISTER_RATE_LIMIT`) bloquearía a todos a la vez.
+
 > **Huecko IA (opcional):** pon tu clave de Gemini en `GEMINI_API_KEY` de `backend/.env` (se consigue en https://aistudio.google.com/apikey). El modelo se cambia con `GEMINI_MODEL` (por defecto `gemini-3.5-flash-lite`, que responde en pocos segundos); si está saturado, sin cuota, no existe o tarda demasiado, el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL` (por defecto `gemini-3.5-flash`). `GEMINI_THINKING_LEVEL` (por defecto `low`) limita el razonamiento del modelo para que responda más rápido. Estos valores caben en el plan gratuito de Gemini (`gemini-3.8-flash` solo permite 20 peticiones al día y suele estar saturado). Sin clave, la IA responde con datos de ejemplo y la app muestra «Modo demostración». La clave nunca va en la app.
 
 ### 2b. Datos de ejemplo (opcional)
