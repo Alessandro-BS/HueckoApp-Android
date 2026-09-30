@@ -5,11 +5,11 @@ import { generateInviteCode, normalizeInviteCode } from '../src/groups/invite-co
 import { groupsRepository } from '../src/groups/groups.repository';
 import { usersRepository } from '../src/users/users.repository';
 
-const input = { name: 'Grupo', description: '', availabilityThreshold: 80 };
+const input = { name: 'Grupo', description: '', availabilityThreshold: 80, createdAt: '2026-09-29T15:00:00.000Z' };
 
 const setup = (generateCode: () => string) => {
   const db = openDatabase(':memory:');
-  const owner = usersRepository(db).create({ name: 'Ana', email: 'ana@correo.com', passwordHash: 'x' });
+  const owner = usersRepository(db).create({ name: 'Ana', email: 'ana@correo.com', passwordHash: 'x', createdAt: '2026-09-29T15:00:00.000Z' });
   return { repo: groupsRepository(db, generateCode), owner };
 };
 

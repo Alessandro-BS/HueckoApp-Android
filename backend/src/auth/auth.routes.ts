@@ -2,12 +2,12 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 
 import type { AuthResponse } from '@hueckoapp/shared';
-import type { AppDeps } from '../app';
+import type { ResolvedDeps } from '../app';
 import { ApiError } from '../middleware/errors';
-import { usersRepository } from '../users/users.repository';
+import { toCurrentUser, usersRepository } from '../users/users.repository';
 import { loginSchema, registerSchema } from './auth.schemas';
 import { DUMMY_HASH, hashPassword, verifyPassword } from './passwords';
-import { getUserId, requireAuth } from './require-auth';
+import { accountSuspended, getUserId, requireAuth } from './require-auth';
 import { signToken } from './tokens';
 
 export const LOGIN_RATE_LIMIT_DEFAULT = 20;
@@ -28,9 +28,10 @@ export function authRouter({
   db,
   jwtSecret,
   jwtExpiresIn,
+  now,
   loginRateLimit = LOGIN_RATE_LIMIT_DEFAULT,
   registerRateLimit = REGISTER_RATE_LIMIT_DEFAULT,
-}: AppDeps) {
+}: ResolvedDeps) {
   const router = Router();
   const users = usersRepository(db);
   // Contadores separados (D10): crear cuentas no gasta los intentos de entrar, ni al revés.
@@ -42,7 +43,7 @@ export function authRouter({
     if (users.findByEmail(email)) {
       throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
     }
-    const user = users.create({ name, email, passwordHash: await hashPassword(password) });
+    const user = users.create({ name, email, passwordHash: await hashPassword(password), createdAt: now().toISOString() });
     const body: AuthResponse = { token: signToken(user.id, jwtSecret, jwtExpiresIn), user };
     res.status(201).json(body);
   });
@@ -54,15 +55,17 @@ export function authRouter({
     if (!found || !ok) {
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Correo o contraseña incorrectos.');
     }
-    const { passwordHash: _omit, ...user } = found;
-    const body: AuthResponse = { token: signToken(user.id, jwtSecret, jwtExpiresIn), user };
+    // Solo quien sabe la contraseña se entera de que la cuenta está suspendida (D2).
+    if (found.status === 'SUSPENDED') throw accountSuspended();
+    const { passwordHash: _omit, ...account } = found;
+    const body: AuthResponse = { token: signToken(account.id, jwtSecret, jwtExpiresIn), user: toCurrentUser(account) };
     res.json(body);
   });
 
-  router.get('/me', requireAuth(jwtSecret), (_req, res) => {
-    const user = users.findById(getUserId(res));
-    if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró. Inicia sesión de nuevo.');
-    res.json(user);
+  router.get('/me', requireAuth(db, jwtSecret), (_req, res) => {
+    const account = users.findById(getUserId(res));
+    if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró. Inicia sesión de nuevo.');
+    res.json(toCurrentUser(account));
   });
 
   return router;

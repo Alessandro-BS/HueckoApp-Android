@@ -1,7 +1,7 @@
 import type { GroupMember, MatchWindow } from '@hueckoapp/shared';
 import { Router } from 'express';
 
-import type { AppDeps } from '../app';
+import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { groupWindows } from '../availability/group-availability';
 import { ApiError } from '../middleware/errors';
@@ -11,7 +11,7 @@ import { groupsRepository } from './groups.repository';
 import { createGroupSchema, joinGroupSchema, updateGroupSchema, updateMemberSchema } from './groups.schemas';
 
 // Se monta detrás de requireAuth.
-export function groupsRouter({ db }: AppDeps) {
+export function groupsRouter({ db, now }: ResolvedDeps) {
   const router = Router();
   const groups = groupsRepository(db);
   const blocks = timeBlocksRepository(db);
@@ -33,7 +33,7 @@ export function groupsRouter({ db }: AppDeps) {
 
   router.post('/', (req, res) => {
     const input = createGroupSchema.parse(req.body);
-    res.status(201).json(groups.create(getUserId(res), input));
+    res.status(201).json(groups.create(getUserId(res), { ...input, createdAt: now().toISOString() }));
   });
 
   router.post('/join', (req, res) => {

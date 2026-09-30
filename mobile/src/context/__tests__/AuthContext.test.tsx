@@ -8,7 +8,7 @@ import { AuthProvider, useAuth } from '../AuthContext';
 
 jest.mock('../../api/auth');
 const mocked = authApi as jest.Mocked<typeof authApi>;
-const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com' };
+const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const };
 const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
 
 beforeEach(async () => {

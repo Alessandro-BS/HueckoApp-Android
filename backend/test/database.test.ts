@@ -136,3 +136,31 @@ describe('migración de propuestas', () => {
     }
   });
 });
+
+describe('migración de administración (Fase 4.5)', () => {
+  it('users nace con role USER y status ACTIVE, y rechaza otros valores', () => {
+    const db = openDatabase(':memory:');
+    db.prepare("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')").run();
+    expect({ ...(db.prepare('SELECT role, status FROM users').get() as object) }).toEqual({ role: 'USER', status: 'ACTIVE' });
+    expect(() => db.prepare("UPDATE users SET role = 'ROOT'").run()).toThrow(/CHECK/);
+    expect(() => db.prepare("UPDATE users SET status = 'BORRADO'").run()).toThrow(/CHECK/);
+  });
+
+  it('ai_calls solo acepta tareas conocidas y ok 0/1; admin_audit_log exige acciones conocidas y JSON válido', () => {
+    const db = openDatabase(':memory:');
+    const call = db.prepare('INSERT INTO ai_calls (user_id, task, ok, duration_ms, created_at) VALUES (NULL, ?, ?, 10, ?)');
+    expect(() => call.run('voting-summary', 1, '2026-09-29T15:00:00.000Z')).not.toThrow();
+    expect(() => call.run('inventada', 1, '2026-09-29T15:00:00.000Z')).toThrow(/CHECK/);
+    expect(() => call.run('voting-summary', 2, '2026-09-29T15:00:00.000Z')).toThrow(/CHECK/);
+    const audit = db.prepare("INSERT INTO admin_audit_log (id, admin_id, action, target_type, target_id, details) VALUES (?, NULL, ?, 'GROUP', 'g1', ?)");
+    expect(() => audit.run('a1', 'GROUP_DELETED', '{"name":"Grupo"}')).not.toThrow();
+    expect(() => audit.run('a2', 'GROUP_DELETED', 'no es json')).toThrow(/CHECK/);
+    expect(() => audit.run('a3', 'USER_DELETED', '{}')).toThrow(/CHECK/);
+  });
+
+  it('ai_calls no tiene columnas para el prompt ni la respuesta', () => {
+    const db = openDatabase(':memory:');
+    const columns = (db.prepare('PRAGMA table_info(ai_calls)').all() as { name: string }[]).map((c) => c.name);
+    expect(columns).toEqual(['id', 'user_id', 'task', 'ok', 'duration_ms', 'created_at']);
+  });
+});

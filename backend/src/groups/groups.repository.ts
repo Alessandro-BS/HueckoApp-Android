@@ -86,7 +86,8 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
 
     // Código único: se reintenta si ya existe (G11). node:sqlite es síncrono, así que entre la
     // comprobación y el INSERT no puede colarse otra petición.
-    create(ownerId: string, input: { name: string; description: string; availabilityThreshold: number }): Group {
+    // `createdAt` sale del reloj de la app, como el resto de fechas que cuentan las estadísticas.
+    create(ownerId: string, input: { name: string; description: string; availabilityThreshold: number; createdAt: string }): Group {
       let code = generateCode();
       for (let attempt = 1; codeExists(code); attempt++) {
         if (attempt >= MAX_CODE_ATTEMPTS) throw new Error('No se pudo generar un código de invitación único');
@@ -94,8 +95,8 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
       }
       const id = randomUUID();
       withTransaction(db, () => {
-        db.prepare('INSERT INTO groups (id, name, description, invite_code, availability_threshold) VALUES (?, ?, ?, ?, ?)').run(
-          id, input.name, input.description, code, input.availabilityThreshold,
+        db.prepare('INSERT INTO groups (id, name, description, invite_code, availability_threshold, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+          id, input.name, input.description, code, input.availabilityThreshold, input.createdAt,
         );
         db.prepare("INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, 'OWNER')").run(id, ownerId);
       });

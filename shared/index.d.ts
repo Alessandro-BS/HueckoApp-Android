@@ -3,7 +3,15 @@
 
 export type User = { id: string; name: string; email: string };
 
-export type AuthResponse = { token: string; user: User };
+// Rol en la app y estado de la cuenta (docs/api.md, «Rol y estado de la cuenta»).
+export type UserRole = 'USER' | 'ADMIN';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED';
+
+// Quien inició sesión: solo lo devuelve /auth. Los demás usuarios (miembros, creadores…) siguen siendo `User`:
+// el rol de otras personas no se publica.
+export type CurrentUser = User & { role: UserRole };
+
+export type AuthResponse = { token: string; user: CurrentUser };
 
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';
 

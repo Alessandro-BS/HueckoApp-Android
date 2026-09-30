@@ -31,8 +31,8 @@ Todos los errores tienen la misma forma:
 | 400 | Datos inválidos (`details` trae los campos que fallaron) |
 | 400 | Subida del OCR: `IMAGE_REQUIRED` (falta la imagen), `INVALID_IMAGE` (no es JPG/PNG/WEBP), `INVALID_UPLOAD` (campos de más o multipart roto) |
 | 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
-| 401 | Falta el token o expiró → la app vuelve al login |
-| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
+| 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
+| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
@@ -59,6 +59,7 @@ Resumen de las entidades:
 | Tipo | Qué es |
 |---|---|
 | `User` | Usuario (`id`, `name`, `email`) |
+| `CurrentUser` | Quien inició sesión: `User` + `role` (`USER`/`ADMIN`). Solo lo devuelven `/auth/register`, `/auth/login` y `/auth/me` |
 | `TimeBlock` | Bloque de horario: recurrente (`dayOfWeek`) o puntual (`date`) |
 | `GroupSummary` / `Group` | Grupo; el detalle incluye `inviteCode` y `members` |
 | `GroupMember` | Usuario + `role` (`OWNER`/`MEMBER`) + `isEssential` |
@@ -90,18 +91,24 @@ Sin autenticación. Responde `200 { "status": "ok" }`.
 ```
 `password` entre 8 y 72 caracteres. El correo se guarda con `trim` y en minúsculas.
 
-`201 { "token": "<jwt>", "user": User }` · `409 EMAIL_TAKEN`
+`201 { "token": "<jwt>", "user": CurrentUser }` · `409 EMAIL_TAKEN`. La cuenta nace siempre con `role: "USER"` (un `role` en el cuerpo se ignora).
 
 ### `POST /auth/login`
 ```json
 { "email": "ana@correo.com", "password": "..." }
 ```
-`200 { "token": "<jwt>", "user": User }` · `401 INVALID_CREDENTIALS`
+`200 { "token": "<jwt>", "user": CurrentUser }` · `401 INVALID_CREDENTIALS` · `403 ACCOUNT_SUSPENDED`
 
-El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe.
+El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe. `403 ACCOUNT_SUSPENDED` («Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.») solo sale si la contraseña es correcta; con una incorrecta la respuesta es el mismo `401`.
 
 ### `GET /auth/me`
-`200 User`. La app lo usa al abrir para comprobar si el token guardado sigue siendo válido.
+`200 CurrentUser` (`{ id, name, email, role }`). La app lo usa al abrir para comprobar si el token guardado sigue siendo válido y para saber si mostrar «Administración».
+
+### Rol y estado de la cuenta
+Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`). El JWT solo identifica a la persona (`sub`): **en cada petición con token el servidor lee el rol y el estado de la base**, así que un cambio surte efecto al instante, sin esperar a que caduque el token (un `role` metido en el JWT no cuenta).
+- Cuenta suspendida → `403 ACCOUNT_SUSPENDED` en cualquier ruta con token y en el login; la app cierra sesión.
+- Token de una cuenta que ya no existe → `401 UNAUTHORIZED`.
+- Solo las cuentas `ADMIN` entran en `/admin/...` (`403 NOT_ADMIN`). Nadie se hace administrador por la API (ver «Administración»).
 
 > **Cerrar sesión** se hace en la app: se borra el token de `SecureStore`. No hay endpoint.
 
