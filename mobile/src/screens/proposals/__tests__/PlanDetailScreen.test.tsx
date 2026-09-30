@@ -8,6 +8,7 @@ import { showToast } from '../../../utils/toast';
 import { PlanDetailScreen } from '../PlanDetailScreen';
 
 jest.mock('../../../api/proposals');
+jest.mock('../../../api/ai');
 jest.mock('../../../hooks/useRefreshOnFocus', () => ({ useRefreshOnFocus: jest.fn() }));
 jest.mock('../../../utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../../../utils/clock', () => ({ today: () => new Date(2026, 8, 29, 10, 0) }));
@@ -142,4 +143,16 @@ it('un plan confirmado que ya pasó no muestra la votación exprés ni «Reporta
   expect(screen.getByText('Ana · Imprevisto')).toBeTruthy();
   expect(screen.queryByText('Aviso de imprevisto')).toBeNull();
   expect(screen.queryByText('Reportar imprevisto')).toBeNull();
+});
+
+it('ofrece el resumen con IA salvo en un plan cancelado', async () => {
+  mocked.getProposal.mockResolvedValueOnce(makeConfirmed());
+  const { unmount } = await renderScreen();
+  expect(await screen.findByText('Resumen con Huecko IA')).toBeTruthy();
+  await unmount();
+
+  mocked.getProposal.mockResolvedValueOnce(makeProposal({ state: 'CANCELADO' }));
+  await renderScreen('prop_2');
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Resumen con Huecko IA')).toBeNull();
 });

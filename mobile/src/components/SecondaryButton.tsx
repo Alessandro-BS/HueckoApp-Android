@@ -7,18 +7,21 @@ import type { IconName } from './icons';
 type Props = {
   title: string;
   onPress: () => void;
+  /** Nombre para el lector de pantalla si el título solo no basta (p. ej. varios «Usar» en una lista). */
+  accessibilityLabel?: string;
   icon?: IconName;
   style?: StyleProp<ViewStyle>;
   color?: string;
   disabled?: boolean;
 };
 
-export function SecondaryButton({ title, onPress, icon, style, color, disabled = false }: Props) {
+export function SecondaryButton({ title, onPress, accessibilityLabel, icon, style, color, disabled = false }: Props) {
   const tint = disabled ? colors.disabledContent : (color ?? colors.primary);
   const border = disabled ? colors.disabledContainer : (color ?? colors.outline);
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

@@ -18,6 +18,7 @@ import { confirmCancelPlan } from './confirmCancelPlan';
 import { ExpressVoteCard } from './ExpressVoteCard';
 import { ProposalHeader } from './ProposalHeader';
 import { ReportIncidenceSheet } from './ReportIncidenceSheet';
+import { VotingSummaryCard } from './VotingSummaryCard';
 
 function IncidenceRow({ incidence }: { incidence: Incidence }) {
   const badge = CRITICALITY_BADGE[incidence.criticality];
@@ -95,6 +96,8 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
             onResolve={resolve}
           />
         ) : null}
+
+        {proposal.state !== 'CANCELADO' ? <VotingSummaryCard proposalId={proposal.id} /> : null}
 
         <Text style={[typography.titleMedium, { color: colors.onSurface }]}>Franjas horarias</Text>
         {proposal.windows.length === 0 ? (

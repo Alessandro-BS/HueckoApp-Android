@@ -37,6 +37,8 @@ npm run backend                        # http://localhost:3000/api/health
 
 > **Zona horaria:** `TZ` en `backend/.env` (por defecto `America/Lima`) es la zona en la que el servidor calcula la fecha y hora de los planes confirmados (`scheduledAt` y `scheduledDate`). En el despliegue hay que fijarla siempre: sin ella el servidor usa la suya (normalmente UTC) y los planes caerían en otra fecha u hora.
 
+> **Huecko IA (opcional):** pon tu clave de Gemini en `GEMINI_API_KEY` de `backend/.env` (se consigue en https://aistudio.google.com/apikey). El modelo se cambia con `GEMINI_MODEL` (por defecto `gemini-3.5-flash-lite`, que responde en pocos segundos); si está saturado, sin cuota, no existe o tarda demasiado, el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL` (por defecto `gemini-3.5-flash`). `GEMINI_THINKING_LEVEL` (por defecto `low`) limita el razonamiento del modelo para que responda más rápido. Estos valores caben en el plan gratuito de Gemini (`gemini-3.8-flash` solo permite 20 peticiones al día y suele estar saturado). Sin clave, la IA responde con datos de ejemplo y la app muestra «Modo demostración». La clave nunca va en la app.
+
 ### 2b. Datos de ejemplo (opcional)
 ```bash
 npm run seed -w backend   # usuarios, grupos y horarios de prueba; se puede repetir sin duplicar nada
@@ -70,11 +72,13 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 | Tema | Dónde |
 |---|---|
-| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`) |
+| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`, `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus`) |
 | **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend |
 | **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto del permiso en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
 | **Navegación** | `native-stack` (flujos), `drawer` (menú principal) y `material-top-tabs` (pestañas del grupo) |
+| **Cámara y galería** | `expo-image-picker` en `mobile/src/utils/scheduleImage.ts`: permiso de cámara en tiempo de ejecución (textos en el plugin de `app.json`), selector de fotos del sistema y validación de tipo y tamaño antes de subir |
+| **Inteligencia artificial** | Google Gemini **solo desde el backend** (`backend/src/ai/`, SDK `@google/genai`): OCR de horarios, borrador de propuesta a partir de una frase, ideas de plan para los huecos del grupo y resumen de votación. Respuestas validadas con zod, límite por usuario y modo demostración sin clave |
 
 ## Hoja de ruta
 
@@ -82,7 +86,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 - [x] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
 - [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
 - [x] **Fase 3** — Propuestas, votación y ubicación
-- [ ] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
+- [x] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
 - [ ] **Fase 5** — Tests, despliegue del backend (con `TZ` fijada, ver «Zona horaria») y APK con EAS Build
 
 ## Flujo de trabajo (git flow)

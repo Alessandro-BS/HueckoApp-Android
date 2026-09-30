@@ -27,3 +27,10 @@ jest.mock('expo-location', () => ({
   reverseGeocodeAsync: jest.fn(),
   Accuracy: { Balanced: 3 },
 }));
+
+// Cámara y galería: cada test fija lo que devuelven (jest.mocked(ImagePicker.launchCameraAsync).mockResolvedValue(...)).
+jest.mock('expo-image-picker', () => ({
+  requestCameraPermissionsAsync: jest.fn(),
+  launchCameraAsync: jest.fn(),
+  launchImageLibraryAsync: jest.fn(),
+}));

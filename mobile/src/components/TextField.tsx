@@ -24,6 +24,8 @@ type Props = {
   returnKeyType?: TextInputProps['returnKeyType'];
   onSubmitEditing?: TextInputProps['onSubmitEditing'];
   maxLength?: number;
+  /** Varias líneas (texto libre). */
+  multiline?: boolean;
   inputRef?: Ref<TextInput>;
   testID?: string;
 };
@@ -45,6 +47,7 @@ export function TextField({
   returnKeyType,
   onSubmitEditing,
   maxLength,
+  multiline = false,
   inputRef,
   testID,
 }: Props) {
@@ -61,13 +64,13 @@ export function TextField({
           <View style={{ height: 6 }} />
         </>
       ) : null}
-      <View style={[styles.container, { borderColor, borderWidth }]}>
+      <View style={[styles.container, multiline && styles.multilineContainer, { borderColor, borderWidth }]}>
         {leadingIcon ? <MaterialIcons name={leadingIcon} size={20} color={colors.onSurfaceVariant} style={styles.leading} /> : null}
         <TextInput
           ref={inputRef}
           testID={testID}
           accessibilityLabel={accessibilityLabel ?? label}
-          style={[typography.bodyLarge, styles.input, { color: colors.onSurface }]}
+          style={[typography.bodyLarge, styles.input, multiline && styles.multilineInput, { color: colors.onSurface }]}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -81,6 +84,8 @@ export function TextField({
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
           maxLength={maxLength}
+          multiline={multiline}
+          textAlignVertical={multiline ? 'top' : undefined}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
@@ -108,8 +113,10 @@ export function TextField({
 
 const styles = StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', minHeight: 56, borderRadius: radius.xxl, paddingHorizontal: 12 },
+  multilineContainer: { alignItems: 'flex-start', minHeight: 96, paddingVertical: 12 },
   leading: { marginRight: 10 },
   input: { flex: 1, paddingVertical: 0 },
+  multilineInput: { minHeight: 72 },
   toggle: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: -12 },
   hint: { marginTop: 4 },
 });

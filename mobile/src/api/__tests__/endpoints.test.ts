@@ -1,6 +1,7 @@
 import type { TimeBlockInput } from '@hueckoapp/shared';
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
 
+import * as ai from '../ai';
 import { api } from '../client';
 import * as dashboard from '../dashboard';
 import * as groups from '../groups';
@@ -56,10 +57,33 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['POST', '/proposals/p1/incidences', () => proposals.reportIncidence('p1', incidenceInput), incidenceInput],
   ['POST', '/proposals/p1/incidences/resolve', () => proposals.resolveIncidences('p1', { newState: 'CANCELADO' }), { newState: 'CANCELADO' }],
   ['GET', '/me/dashboard', () => dashboard.getDashboard(), undefined],
+  ['POST', '/me/time-blocks/bulk', () => schedule.createTimeBlocksBulk([block]), { blocks: [block] }],
+  ['GET', '/ai/status', () => ai.getAiStatus(), undefined],
+  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes'), { text: 'Estudiar el viernes' }],
+  ['POST', '/groups/g1/ai/suggestions', () => ai.suggestPlans('g1'), undefined],
+  ['POST', '/proposals/p1/ai/summary', () => ai.summarizeVoting('p1'), undefined],
 ])('%s %s', async (method, url, call, body) => {
   await call();
   expect(calls).toHaveLength(1);
   expect(calls[0].method?.toUpperCase()).toBe(method);
   expect(calls[0].url).toBe(url);
   if (body !== undefined) expect(JSON.parse(calls[0].data)).toEqual(body);
+});
+
+it('las llamadas que usan la IA esperan hasta 45 s; el resto, lo normal', async () => {
+  await ai.suggestPlans('g1');
+  await ai.draftProposal('g1', 'Estudiar');
+  await ai.summarizeVoting('p1');
+  await ai.getAiStatus();
+  expect(calls.map((c) => c.timeout)).toEqual([45_000, 45_000, 45_000, 15_000]);
+});
+
+it('POST /ai/schedule-ocr sube la foto como multipart/form-data', async () => {
+  await ai.scanSchedule({ uri: 'file:///horario.jpg', mimeType: 'image/jpeg', fileName: 'horario.jpg' });
+  expect(calls).toHaveLength(1);
+  expect(calls[0].method?.toUpperCase()).toBe('POST');
+  expect(calls[0].url).toBe('/ai/schedule-ocr');
+  expect(calls[0].data).toBeInstanceOf(FormData);
+  expect(String(calls[0].headers['Content-Type'])).toContain('multipart/form-data');
+  expect(calls[0].timeout).toBe(45_000);
 });

@@ -2,6 +2,7 @@ import type { Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 
+import type { AiClient, AiRequest } from '../src/ai/ai-client';
 import { createApp } from '../src/app';
 import { openDatabase, type Db } from '../src/db/database';
 
@@ -16,7 +17,12 @@ export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
 // Un minuto después del plazo: la votación ya cerró.
 export const AFTER_DEADLINE = new Date(2026, 9, 3, 20, 1);
 
-export function makeTestApp(options?: { authRateLimit?: number; now?: () => Date }): { app: Express; db: Db } {
+export function makeTestApp(options?: {
+  authRateLimit?: number;
+  now?: () => Date;
+  ai?: AiClient;
+  aiRateLimit?: number;
+}): { app: Express; db: Db } {
   const db = openDatabase(':memory:');
   const app = createApp({
     db,
@@ -24,9 +30,35 @@ export function makeTestApp(options?: { authRateLimit?: number; now?: () => Date
     jwtExpiresIn: '1h',
     authRateLimit: options?.authRateLimit ?? 10_000,
     now: options?.now,
+    // Sin `ai`, createApp usa el cliente de demostración (como un servidor sin GEMINI_API_KEY).
+    ai: options?.ai,
+    aiRateLimit: options?.aiRateLimit ?? 10_000,
   });
   return { app, db };
 }
+
+// IA falsa, sin red: responde `reply` (texto, o una función de la petición) y guarda cada petición en `calls`.
+export function fakeAi(reply: string | ((request: AiRequest) => string)) {
+  const calls: AiRequest[] = [];
+  const client: AiClient = {
+    provider: 'gemini',
+    generateJson: async (request) => {
+      calls.push(request);
+      return typeof reply === 'string' ? reply : reply(request);
+    },
+  };
+  return { client, calls };
+}
+
+export const fakeAiJson = (value: unknown) => fakeAi(JSON.stringify(value));
+
+// IA que siempre falla, como un proveedor caído o una espera agotada.
+export const failingAi = (): AiClient => ({
+  provider: 'gemini',
+  generateJson: async () => {
+    throw new Error('tiempo de espera agotado');
+  },
+});
 
 // Reloj que el test mueve a mano: makeTestApp({ now: clock.now }) y después clock.set(...).
 export function makeClock(start: Date) {

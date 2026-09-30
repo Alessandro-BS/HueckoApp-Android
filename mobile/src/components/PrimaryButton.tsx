@@ -7,6 +7,8 @@ import type { IconName } from './icons';
 type Props = {
   title: string;
   onPress: () => void;
+  /** Nombre para el lector de pantalla si el título solo no basta (p. ej. varios «Usar» en una lista). */
+  accessibilityLabel?: string;
   icon?: IconName;
   disabled?: boolean;
   loading?: boolean;
@@ -15,13 +17,24 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-export function PrimaryButton({ title, onPress, icon, disabled = false, loading = false, loadingTitle, size = 'md', style }: Props) {
+export function PrimaryButton({
+  title,
+  onPress,
+  accessibilityLabel,
+  icon,
+  disabled = false,
+  loading = false,
+  loadingTitle,
+  size = 'md',
+  style,
+}: Props) {
   const blocked = disabled || loading;
   const fg = disabled ? colors.disabledContent : colors.onPrimary;
   const textStyle = size === 'lg' ? typography.labelLarge : typography.labelMedium;
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: blocked, busy: loading }}
       disabled={blocked}
       onPress={onPress}

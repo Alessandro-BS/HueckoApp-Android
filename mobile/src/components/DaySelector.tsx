@@ -3,10 +3,16 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { dayLong, dayShort, WEEK_DAYS } from '../utils/days';
 import { ChoiceChip } from './ChoiceChip';
 
-type Props = { selected: number; onSelect: (iso: number) => void; captionFor: (iso: number) => string };
+type Props = {
+  selected: number;
+  onSelect: (iso: number) => void;
+  captionFor: (iso: number) => string;
+  /** Etiqueta de accesibilidad de cada chip (p. ej. cuando hay varios selectores en pantalla). */
+  chipLabel?: (iso: number) => string;
+};
 
 // HueckoDaySelector (UI spec §3.8): 7 chips Lun…Dom con una segunda línea por día.
-export function DaySelector({ selected, onSelect, captionFor }: Props) {
+export function DaySelector({ selected, onSelect, captionFor, chipLabel }: Props) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
       {WEEK_DAYS.map((iso) => {
@@ -17,7 +23,7 @@ export function DaySelector({ selected, onSelect, captionFor }: Props) {
             variant="title"
             label={dayShort(iso)}
             caption={caption || undefined}
-            accessibilityLabel={caption ? `${dayLong(iso)}, ${caption}` : dayLong(iso)}
+            accessibilityLabel={chipLabel ? chipLabel(iso) : caption ? `${dayLong(iso)}, ${caption}` : dayLong(iso)}
             selected={iso === selected}
             onPress={() => onSelect(iso)}
             style={styles.chip}

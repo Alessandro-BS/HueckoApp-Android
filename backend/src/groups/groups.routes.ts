@@ -3,7 +3,7 @@ import { Router } from 'express';
 
 import type { AppDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
-import { groupAvailability } from '../availability/group-availability';
+import { groupWindows } from '../availability/group-availability';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { loadGroupForMember } from './group-access';
@@ -78,11 +78,7 @@ export function groupsRouter({ db }: AppDeps) {
 
   router.get('/:id/availability', (req, res) => {
     const { group } = loadForMember(req.params.id, getUserId(res));
-    const memberIds = group.members.map((m) => m.id);
-    const windows: MatchWindow[] = groupAvailability(
-      { memberIds, availabilityThreshold: group.availabilityThreshold },
-      blocks.listRecurringByUsers(memberIds),
-    );
+    const windows: MatchWindow[] = groupWindows(group, blocks);
     res.json(windows);
   });
 

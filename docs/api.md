@@ -29,15 +29,17 @@ Todos los errores tienen la misma forma:
 | HTTP | Cuándo |
 |---|---|
 | 400 | Datos inválidos (`details` trae los campos que fallaron) |
+| 400 | Subida del OCR: `IMAGE_REQUIRED` (falta la imagen), `INVALID_IMAGE` (no es JPG/PNG/WEBP), `INVALID_UPLOAD` (campos de más o multipart roto) |
 | 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
 | 401 | Falta el token o expiró → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo) |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`) |
-| 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB) |
-| 422 | La IA no pudo interpretar la imagen |
-| 429 | Demasiados intentos en `/auth` (20 cada 15 min por IP) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`) |
+| 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
+| 429 | `TOO_MANY_REQUESTS`: demasiados intentos en `/auth` (20 cada 15 min por IP) o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
 | 500 | Error inesperado del servidor |
+| 502 | `AI_BAD_RESPONSE`: la IA respondió algo que no cumple el formato esperado |
+| 503 | `AI_UNAVAILABLE`: la IA no respondió (proveedor caído o más de 30 s) |
 
 ---
 
@@ -65,6 +67,10 @@ Resumen de las entidades:
 | `ProposalWithGroup` | `Proposal` + `groupName` |
 | `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
 | `Dashboard` | Resumen de «Inicio» (`GET /me/dashboard`) |
+| `AiStatus` | Si la IA del servidor es Gemini o el modo demostración |
+| `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
+| `ProposalDraft` / `PlanSuggestion` / `PlanCategory` | Borrador e ideas de plan de la IA (sin guardar) |
+| `VotingSummary` | Resumen de una votación con una recomendación de la IA |
 
 ---
 
@@ -199,10 +205,10 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 - `location` opcional (`null` u omitido = sin lugar). `name` 1–100 tras `trim`; `latitude` (−90…90) y `longitude` (−180…180) van **juntas** o ambas `null`/omitidas.
 - `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura»). Se guarda y se devuelve en UTC.
 - `windows` opcional, hasta 10 y sin repetir; cada una `{ dayOfWeek 1–7, startTime, endTime }` en `HH:mm` con `startTime < endTime` (`TimeWindowInput`). El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`).
-- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability`: mayor `availabilityPercentage`, luego mayor duración, luego día y hora más tempranos. Si el grupo no tiene ninguna franja, la propuesta nace sin franjas.
+- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability`: mayor `availabilityPercentage`, luego mayor duración, luego día y hora más tempranos. Si el grupo no tiene ningún hueco en común, **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
 - Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
 
-`201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`
+`201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
 
 ### `GET /proposals/:id`
 `200 Proposal`. `windows` van por día y hora; `myVoteWindowId` es la franja que votó quien pregunta.
@@ -255,19 +261,67 @@ La «votación exprés». Solo quien la creó, y solo con el plan `CONFIRMADO` o
 
 ## Inteligencia artificial
 
-Toda llamada a la IA pasa por el backend: la API key **nunca** va en la app.
+Toda llamada a la IA pasa por el backend (Google Gemini, modelo `GEMINI_MODEL`): la API key **nunca** va en la app. Reglas comunes:
+- Todas las rutas exigen token. Las que llaman a la IA comparten un límite de **20 llamadas cada 15 min por usuario** (`429 TOO_MANY_REQUESTS`); `GET /ai/status` no cuenta.
+- La respuesta de la IA se valida siempre: si no cumple el formato → `502 AI_BAD_RESPONSE`; si el proveedor falla o tarda más de 30 s → `503 AI_UNAVAILABLE`. Nunca se devuelven datos inventados para tapar un fallo.
+- Si el modelo principal está saturado (503), sin cuota (429), no existe (404: nombre mal escrito o modelo retirado) o agota su tiempo (el principal solo puede usar 2/3 de `GEMINI_TIMEOUT_MS`), el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL`; `GEMINI_TIMEOUT_MS` (30 s) es el tope total de los dos intentos. Cualquier otro fallo no se reintenta.
+- Modelos por defecto: `GEMINI_MODEL=gemini-3.5-flash-lite` y `GEMINI_FALLBACK_MODEL=gemini-3.5-flash`. Cada llamada envía `generation_config.thinking_level` con `GEMINI_THINKING_LEVEL` (`minimal` · `low` · `medium` · `high`; por defecto `low`) para responder más rápido.
+- La IA **solo sugiere**: ninguna de estas rutas guarda nada. El usuario revisa el resultado y lo confirma con los endpoints de siempre.
+- **Modo demostración:** si el servidor no tiene `GEMINI_API_KEY`, las respuestas son datos de ejemplo fijos (validados igual).
+
+### `GET /ai/status`
+`200 AiStatus`: `{ "provider": "gemini" }` o `{ "provider": "mock" }` (modo demostración; la app lo avisa).
 
 ### `POST /ai/schedule-ocr`
-`multipart/form-data` con el campo `image` (JPG o PNG, máx. 5 MB).
-Devuelve bloques **sin guardar**, para que el usuario los revise y los guarde con `POST /me/time-blocks/bulk`.
+`multipart/form-data` con el campo `image`: **una** foto JPG, PNG o WEBP de hasta 5 MB. Cuenta para el límite de IA.
+Devuelve `ScheduleOcrResult`: bloques **sin guardar**, para que el usuario los revise (puede editarlos o quitarlos) y los guarde con `POST /me/time-blocks/bulk`.
 ```json
 { "blocks": [ { "label": "Cálculo", "type": "CLASE", "startTime": "08:00", "endTime": "10:00",
                 "isRecurring": true, "dayOfWeek": 1, "date": null } ] }
 ```
-`200` · `422 AI_UNREADABLE` si la imagen no parece un horario.
+Reglas:
+- Cada bloque que lee la IA se valida por separado: `dayOfWeek` entero 1–7, horas `HH:mm` (`9:00` se corrige a `09:00`), inicio < fin y `label` no vacío (se recorta a 80). Los inválidos y los repetidos (mismo día, horas y nombre) **se descartan**.
+- Todos salen como clase recurrente: `type: "CLASE"`, `isRecurring: true`, `date: null`. Ordenados por día y hora; como máximo 100.
+- Si la foto no parece un horario o no se lee ningún bloque válido: `200 { "blocks": [] }` (no hay error `422`). Si la IA responde algo que no es JSON con esa forma: `502`; si el proveedor falla: `503`.
+- El tipo declarado debe ser `image/jpeg`, `image/png` o `image/webp`, pero manda el de los **primeros bytes** del archivo: si son de un JPG, PNG o WEBP real se acepta aunque el tipo declarado no coincida (p. ej. una PNG enviada como `image/jpeg`) y a la IA se le envía el tipo real; si no son de ninguno → `400 INVALID_IMAGE`.
+- La petición solo puede llevar la parte `image`: cualquier campo de texto de más → `400 INVALID_UPLOAD`.
 
-### Otras funciones de IA (por definir)
-Ayuda en votaciones y demás funciones: se agregan aquí cuando el equipo las defina, con el mismo formato.
+`200` · `400 IMAGE_REQUIRED` (falta el archivo) · `400 INVALID_IMAGE` (no es JPG/PNG/WEBP) · `400 INVALID_UPLOAD` (otro campo, más de un archivo o un multipart roto o cortado) · `413 PAYLOAD_TOO_LARGE` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /groups/:id/ai/proposal-draft`
+Convierte una frase en un borrador para «Nueva propuesta». Solo miembros (`403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`). Cuerpo = `ProposalDraftInput`:
+```json
+{ "text": "Estudiar para el parcial el martes en la biblioteca" }
+```
+`text` obligatorio, 3–500 caracteres tras `trim`. Responde `200 ProposalDraft` (no guarda nada):
+```json
+{ "title": "Estudiar para el parcial", "category": "ESTUDIO", "placeName": "Biblioteca central",
+  "window": { "dayOfWeek": 2, "startTime": "08:00", "endTime": "20:00", "availabilityPercentage": 100, "freeMembers": 2 },
+  "votingDeadline": "2026-09-30T15:00:00.000Z" }
+```
+- `category` ∈ `ESTUDIO | REUNION | COMIDA | DEPORTE | SALIDA | OTRO` (`PlanCategory`; una desconocida → `OTRO`). No se guarda en la propuesta.
+- `window` es **siempre** uno de los huecos reales de `GET /groups/:id/availability` (a la IA se le pasan numerados y responde con el número; si da uno que no existe, `window` es `null`).
+- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. Con `window`, el cierre se adelanta a 1 h antes de su próximo inicio (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
+- A la IA se le pasan como máximo 30 huecos (los primeros de `GET /groups/:id/availability`), así que `window` siempre es uno de ellos.
+- Títulos de más de 80 y lugares de más de 100 caracteres se recortan; un lugar vacío es `null`.
+
+`200` · `400 VALIDATION_ERROR` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /groups/:id/ai/suggestions`
+Sin cuerpo. 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta su descripción y sus últimas 5 propuestas (para no repetir). Solo miembros.
+`200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` sigue la misma regla que en el borrador. La app abre «Nueva propuesta» rellenada con la idea elegida.
+
+`200` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /proposals/:id/ai/summary`
+Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recomendación para quien lo creó. Cualquier miembro (`403 NOT_A_MEMBER` · `404 PROPOSAL_NOT_FOUND`); no para planes `CANCELADO` (`409 INVALID_STATE`). **Nunca cambia el plan**: confirmar, reprogramar o cancelar se hace con los endpoints de siempre.
+```json
+{ "summary": "Votó 1 de 2 integrantes: el jueves va ganando y no hay imprevistos.",
+  "recommendation": "CONFIRMAR", "reason": "Hay una franja clara y nadie reportó problemas." }
+```
+`recommendation` ∈ `CONFIRMAR | REPROGRAMAR | CANCELAR` (`SummaryRecommendation`; otra → `502`). `summary` ≤ 600 y `reason` ≤ 300 caracteres. A la IA solo van nombres de los miembros y datos de votos e imprevistos, nunca correos ni fotos.
+
+`200` · `403` · `404` · `409` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
 ---
 
@@ -286,3 +340,4 @@ Ayuda en votaciones y demás funciones: se agregan aquí cuando el equipo las de
 - **Votación exprés:** solo quien creó el plan la decide (antes, el primero que pulsaba) y reprogramar pide una nueva fecha límite.
 - **Criticidad** calculada por el servidor según el tipo, si es imprescindible y los minutos de retraso.
 - **Plan confirmado con fecha:** `scheduledAt` y `scheduledDate`; el «próximo plan» usa la franja elegida, no la primera.
+- **OCR revisable y honesto:** los bloques leídos se validan uno a uno, salen como clases recurrentes (antes llegaban con `id`, `type` y `isRecurring` vacíos), se pueden corregir o quitar antes de guardarlos, y si la IA falla se muestra el error en vez de un horario inventado. El modelo `gemini-1.5-flash` (retirado) se sustituye por `GEMINI_MODEL`.
