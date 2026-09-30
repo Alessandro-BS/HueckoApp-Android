@@ -23,7 +23,6 @@ export function meRouter({ db, now }: ResolvedDeps) {
     const userId = getUserId(res);
     res.json(
       buildDashboard({
-        userId,
         now: now(),
         groups: groups.listForUser(userId),
         proposals: proposals.listForUser(userId),

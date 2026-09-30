@@ -59,7 +59,7 @@ export type TimeWindow = {
   startTime: string;
   endTime: string;
   availabilityPercentage: number;
-  voteCount: number;
+  voteCount: number;               // solo votos de quienes siguen en el grupo (los de quien salió se conservan, pero no cuentan)
 };
 
 export type IncidenceType = 'FALTA' | 'TARDANZA' | 'IMPREVISTO';
@@ -86,6 +86,7 @@ export type Proposal = {
   state: ProposalState;
   windows: TimeWindow[];           // ordenadas por día y hora
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
+  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
   scheduledAt: string | null;      // ISO: próxima vez que ocurre la franja elegida, calculada al confirmar
   scheduledDate: string | null;    // "YYYY-MM-DD": la misma fecha en la zona horaria del servidor (para mostrarla sin depender de la del teléfono)
@@ -125,7 +126,7 @@ export type ExpressAlert = {
   who: string;                          // nombre de quien reportó la incidencia
   reason: string;
   kind: 'RECOORDINACION' | 'AVISO';     // EN_RECOORDINACION, o CONFIRMADO con incidencias sin resolver
-  canResolve: boolean;                  // true si el usuario actual creó el plan
+  canResolve: boolean;                  // = canManage del plan para el usuario actual
   createdBy: User;
 };
 

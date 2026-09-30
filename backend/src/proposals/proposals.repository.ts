@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Criticality, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
+import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
 
 import type { Db } from '../db/database';
+import { MEMBER_ORDER } from '../groups/groups.repository';
 import { withTransaction } from '../db/transaction';
+import { canManageProposal, type ManagerCandidate } from './permissions';
 
 type ProposalRow = {
   id: string;
@@ -23,9 +25,18 @@ type ProposalRow = {
   scheduled_date: string | null;
   created_at: string;
 };
-type WindowRow = { id: string; day_of_week: number; start_time: string; end_time: string; availability_percentage: number; vote_count: number };
+type WindowRow = {
+  id: string;
+  proposal_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  availability_percentage: number;
+  vote_count: number;
+};
 type IncidenceRow = {
   id: string;
+  proposal_id: string;
   user_id: string;
   user_name: string;
   user_email: string;
@@ -36,6 +47,8 @@ type IncidenceRow = {
   resolved: number;
   created_at: string;
 };
+type MyVoteRow = { proposal_id: string; window_id: string };
+type MemberRow = { group_id: string; id: string; role: GroupMember['role'] };
 
 export type NewWindow = { dayOfWeek: number; startTime: string; endTime: string; availabilityPercentage: number };
 export type NewIncidence = {
@@ -65,70 +78,118 @@ const SELECT_PROPOSAL = `
   JOIN groups g ON g.id = p.group_id
   JOIN users u ON u.id = p.created_by`;
 
+// Los ids de las propuestas van en UN parámetro JSON (json_each): la misma sentencia sirve para 1 o para 500
+// propuestas y no choca con el límite de parámetros de SQLite. Uso: `WHERE x.proposal_id ${IN_PROPOSAL_IDS}`.
+const IN_PROPOSAL_IDS = 'IN (SELECT value FROM json_each(?))';
+
+/** Agrupa filas por clave conservando su orden (el ORDER BY de la consulta). */
+function groupBy<R, T>(rows: readonly R[], keyOf: (row: R) => string, map: (row: R) => T): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const list = out.get(key);
+    if (list) list.push(map(row));
+    else out.set(key, [map(row)]);
+  }
+  return out;
+}
+
+const toWindow = (r: WindowRow): TimeWindow => ({
+  id: r.id,
+  dayOfWeek: r.day_of_week,
+  startTime: r.start_time,
+  endTime: r.end_time,
+  availabilityPercentage: r.availability_percentage,
+  voteCount: r.vote_count,
+});
+
+const toIncidence = (r: IncidenceRow): Incidence => ({
+  id: r.id,
+  user: { id: r.user_id, name: r.user_name, email: r.user_email },
+  type: r.type,
+  reason: r.reason,
+  delayMinutes: r.delay_minutes,
+  criticality: r.criticality,
+  resolved: r.resolved === 1,
+  createdAt: r.created_at,
+});
+
 export function proposalsRepository(db: Db) {
-  const windowsOf = (proposalId: string): TimeWindow[] =>
-    (
+  /**
+   * Completa las filas con sus franjas (y votos), incidencias y el voto de `viewerId` con un número FIJO de consultas,
+   * sin importar cuántas propuestas haya (antes eran 3 por propuesta: N+1). `viewerId` decide myVoteWindowId:
+   * la misma propuesta se ve distinta según quién pregunta. Mismo orden y mismas claves que antes.
+   */
+  const hydrate = (rows: readonly ProposalRow[], viewerId: string): Proposal[] => {
+    if (rows.length === 0) return [];
+    const ids = JSON.stringify(rows.map((r) => r.id));
+    // voteCount solo cuenta a quienes SIGUEN en el grupo de la propuesta (D5): el voto de quien sale no se borra,
+    // pero no suma; si vuelve a unirse, cuenta otra vez. De aquí salen pickWinner, Inicio y el resumen con IA.
+    const windows = groupBy(
       db
         .prepare(
-          `SELECT w.id, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
-                  (SELECT COUNT(*) FROM votes v WHERE v.window_id = w.id) AS vote_count
-           FROM proposal_windows w WHERE w.proposal_id = ?
+          `SELECT w.id, w.proposal_id, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
+                  COUNT(m.user_id) AS vote_count
+           FROM proposal_windows w
+           JOIN proposals p ON p.id = w.proposal_id
+           LEFT JOIN votes v ON v.window_id = w.id
+           LEFT JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
+           WHERE w.proposal_id ${IN_PROPOSAL_IDS}
+           GROUP BY w.id
            ORDER BY w.day_of_week, w.start_time, w.end_time`,
         )
-        .all(proposalId) as WindowRow[]
-    ).map((r) => ({
-      id: r.id,
-      dayOfWeek: r.day_of_week,
-      startTime: r.start_time,
-      endTime: r.end_time,
-      availabilityPercentage: r.availability_percentage,
-      voteCount: r.vote_count,
-    }));
-
-  const incidencesOf = (proposalId: string): Incidence[] =>
-    (
+        .all(ids) as WindowRow[],
+      (r) => r.proposal_id,
+      toWindow,
+    );
+    const incidences = groupBy(
       db
         .prepare(
           `SELECT i.*, u.name AS user_name, u.email AS user_email
            FROM incidences i JOIN users u ON u.id = i.user_id
-           WHERE i.proposal_id = ? ORDER BY i.created_at, i.rowid`,
+           WHERE i.proposal_id ${IN_PROPOSAL_IDS}
+           ORDER BY i.created_at, i.rowid`,
         )
-        .all(proposalId) as IncidenceRow[]
-    ).map((r) => ({
-      id: r.id,
-      user: { id: r.user_id, name: r.user_name, email: r.user_email },
-      type: r.type,
-      reason: r.reason,
-      delayMinutes: r.delay_minutes,
-      criticality: r.criticality,
-      resolved: r.resolved === 1,
-      createdAt: r.created_at,
+        .all(ids) as IncidenceRow[],
+      (r) => r.proposal_id,
+      toIncidence,
+    );
+    const myVotes = new Map(
+      (db.prepare(`SELECT proposal_id, window_id FROM votes WHERE user_id = ? AND proposal_id ${IN_PROPOSAL_IDS}`).all(viewerId, ids) as MyVoteRow[]).map(
+        (r) => [r.proposal_id, r.window_id] as const,
+      ),
+    );
+    // Miembros actuales de los grupos de estas propuestas, en orden de llegada (D3): deciden canManage.
+    const members = groupBy(
+      db
+        .prepare(
+          `SELECT m.group_id, m.user_id AS id, m.role
+           FROM group_members m
+           WHERE m.group_id IN (SELECT p.group_id FROM proposals p WHERE p.id ${IN_PROPOSAL_IDS})
+           ${MEMBER_ORDER}`,
+        )
+        .all(ids) as MemberRow[],
+      (r) => r.group_id,
+      (r): ManagerCandidate => ({ id: r.id, role: r.role }),
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      groupId: row.group_id,
+      title: row.title,
+      location: row.location_name === null ? null : { name: row.location_name, latitude: row.latitude, longitude: row.longitude },
+      createdBy: { id: row.created_by, name: row.creator_name, email: row.creator_email },
+      votingDeadline: row.voting_deadline,
+      state: row.state,
+      windows: windows.get(row.id) ?? [],
+      myVoteWindowId: myVotes.get(row.id) ?? null,
+      canManage: canManageProposal({ viewerId, creatorId: row.created_by, members: members.get(row.group_id) ?? [] }),
+      chosenWindowId: row.chosen_window_id,
+      scheduledAt: row.scheduled_at,
+      scheduledDate: row.scheduled_date,
+      incidences: incidences.get(row.id) ?? [],
+      createdAt: row.created_at,
     }));
-
-  const myVote = (proposalId: string, viewerId: string): string | null => {
-    const row = db.prepare('SELECT window_id FROM votes WHERE proposal_id = ? AND user_id = ?').get(proposalId, viewerId) as
-      | { window_id: string }
-      | undefined;
-    return row?.window_id ?? null;
   };
-
-  // `viewerId` decide myVoteWindowId: la misma propuesta se ve distinta según quién pregunta.
-  const toProposal = (row: ProposalRow, viewerId: string): Proposal => ({
-    id: row.id,
-    groupId: row.group_id,
-    title: row.title,
-    location: row.location_name === null ? null : { name: row.location_name, latitude: row.latitude, longitude: row.longitude },
-    createdBy: { id: row.created_by, name: row.creator_name, email: row.creator_email },
-    votingDeadline: row.voting_deadline,
-    state: row.state,
-    windows: windowsOf(row.id),
-    myVoteWindowId: myVote(row.id, viewerId),
-    chosenWindowId: row.chosen_window_id,
-    scheduledAt: row.scheduled_at,
-    scheduledDate: row.scheduled_date,
-    incidences: incidencesOf(row.id),
-    createdAt: row.created_at,
-  });
 
   // proposal_windows no tiene created_at: se ordenan por día y hora, no por creación.
   const insertWindow = (proposalId: string, w: NewWindow): string => {
@@ -142,13 +203,13 @@ export function proposalsRepository(db: Db) {
   return {
     findById(id: string, viewerId: string): Proposal | undefined {
       const row = db.prepare(`${SELECT_PROPOSAL} WHERE p.id = ?`).get(id) as ProposalRow | undefined;
-      return row && toProposal(row, viewerId);
+      return row ? hydrate([row], viewerId)[0] : undefined;
     },
 
     // Las más recientes primero (C10); a igual createdAt, la última insertada.
     listByGroup(groupId: string, viewerId: string): Proposal[] {
       const rows = db.prepare(`${SELECT_PROPOSAL} WHERE p.group_id = ? ORDER BY p.created_at DESC, p.rowid DESC`).all(groupId) as ProposalRow[];
-      return rows.map((r) => toProposal(r, viewerId));
+      return hydrate(rows, viewerId);
     },
 
     // La propuesta y sus franjas, todo o nada.
@@ -220,12 +281,13 @@ export function proposalsRepository(db: Db) {
       });
     },
 
-    // Todas las propuestas de mis grupos, de la más antigua a la más reciente (Inicio y /me/upcoming-plans).
+    // Todas las propuestas de mis grupos, de la más antigua a la más reciente (created_at, rowid): Inicio y /me/upcoming-plans.
     listForUser(userId: string): ProposalWithGroup[] {
       const rows = db
         .prepare(`${SELECT_PROPOSAL} JOIN group_members m ON m.group_id = p.group_id AND m.user_id = ? ORDER BY p.created_at, p.rowid`)
         .all(userId) as ProposalRow[];
-      return rows.map((r) => ({ ...toProposal(r, userId), groupName: r.group_name }));
+      const groupNames = new Map(rows.map((r) => [r.id, r.group_name] as const));
+      return hydrate(rows, userId).map((p) => ({ ...p, groupName: groupNames.get(p.id)! }));
     },
   };
 }

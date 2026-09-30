@@ -55,10 +55,14 @@ export function upcomingPlans<P extends Proposal>(proposals: readonly P[], now: 
     .sort((a, b) => a.scheduledAt!.localeCompare(b.scheduledAt!));
 }
 
-/** Resumen por grupo: la franja elegida (o la primera) de su propuesta no cancelada más antigua que tenga franjas. */
+/**
+ * Resumen por grupo (D6): la franja elegida (o la primera) de su propuesta MÁS RECIENTE que no esté cancelada y tenga
+ * franjas. «Más reciente» = mayor createdAt y, a igual createdAt, la insertada después: el orden de GET /groups/:id/proposals.
+ * `proposals` llega de listForUser, de la más antigua a la más reciente (created_at, rowid): basta buscar desde el final.
+ */
 export function groupSummaries(groups: readonly GroupSummary[], proposals: readonly ProposalWithGroup[]): DashboardGroup[] {
   return groups.map((g) => {
-    const p = proposals.find((x) => x.groupId === g.id && x.state !== 'CANCELADO' && x.windows.length > 0);
+    const p = proposals.findLast((x) => x.groupId === g.id && x.state !== 'CANCELADO' && x.windows.length > 0);
     const w = p ? (p.windows.find((x) => x.id === p.chosenWindowId) ?? p.windows[0]) : undefined;
     return {
       id: g.id,
@@ -73,7 +77,7 @@ export function groupSummaries(groups: readonly GroupSummary[], proposals: reado
  * G5: de los planes que aún no ocurrieron, el primero EN_RECOORDINACION («Votación exprés») o, si no hay,
  * el primero CONFIRMADO con incidencias sin resolver (aviso). Se muestra su incidencia ALTA o, si no, la más antigua.
  */
-export function expressAlertFor(proposals: readonly ProposalWithGroup[], userId: string, now: Date): ExpressAlert | null {
+export function expressAlertFor(proposals: readonly ProposalWithGroup[], now: Date): ExpressAlert | null {
   const candidates = proposals.filter(
     (p) =>
       (p.state === 'EN_RECOORDINACION' || p.state === 'CONFIRMADO') &&
@@ -91,20 +95,19 @@ export function expressAlertFor(proposals: readonly ProposalWithGroup[], userId:
     who: shown.user.name,
     reason: shown.reason,
     kind: p.state === 'EN_RECOORDINACION' ? 'RECOORDINACION' : 'AVISO',
-    canResolve: p.createdBy.id === userId,
+    canResolve: p.canManage,
     createdBy: p.createdBy,
   };
 }
 
 export function buildDashboard(input: {
-  userId: string;
   now: Date;
   groups: GroupSummary[];
   proposals: ProposalWithGroup[];
   totalBlocks: number;
   membersOf: (groupId: string) => GroupMember[];
 }): Dashboard {
-  const { userId, now, groups, proposals } = input;
+  const { now, groups, proposals } = input;
   const open = proposals.filter((p) => p.state === 'PROPUESTO');
   const next = upcomingPlans(proposals, now)[0];
   return {
@@ -112,6 +115,6 @@ export function buildDashboard(input: {
     nextPlan: next ? { ...next, attendees: attendeesOf(input.membersOf(next.groupId), next.incidences) } : null,
     groups: groupSummaries(groups, proposals),
     pendingVotes: [...open].sort((a, b) => a.votingDeadline.localeCompare(b.votingDeadline)),
-    expressAlert: expressAlertFor(proposals, userId, now),
+    expressAlert: expressAlertFor(proposals, now),
   };
 }

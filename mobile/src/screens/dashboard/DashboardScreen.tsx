@@ -140,7 +140,6 @@ export function DashboardScreen({ navigation }: DrawerScreen<'Dashboard'>) {
                   reason={dashboard.expressAlert.reason}
                   planTitle={dashboard.expressAlert.planTitle}
                   canResolve={dashboard.expressAlert.canResolve}
-                  creatorName={dashboard.expressAlert.createdBy.name}
                   onResolve={(input) => resolveIncidences(dashboard.expressAlert!.proposalId, input)}
                   onResolved={() => void reload()}
                 />

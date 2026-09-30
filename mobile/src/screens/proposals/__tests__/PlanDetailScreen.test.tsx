@@ -1,4 +1,3 @@
-import type { User } from '@hueckoapp/shared';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Alert, Linking } from 'react-native';
 
@@ -12,8 +11,6 @@ jest.mock('../../../api/ai');
 jest.mock('../../../hooks/useRefreshOnFocus', () => ({ useRefreshOnFocus: jest.fn() }));
 jest.mock('../../../utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../../../utils/clock', () => ({ today: () => new Date(2026, 8, 29, 10, 0) }));
-const mockAuthUser: { current: User } = { current: { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com' } };
-jest.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ user: mockAuthUser.current }) }));
 
 const mocked = proposalsApi as jest.Mocked<typeof proposalsApi>;
 const navigation = { navigate: jest.fn() } as any;
@@ -74,7 +71,7 @@ it('confirmar sin elegir franja deja que gane la más votada', async () => {
   await waitFor(() => expect(mocked.confirmProposal).toHaveBeenCalledWith('prop_2', undefined));
 });
 
-it('quien no creó el plan no ve «Confirmar plan» ni «Cancelar plan»', async () => {
+it('quien no gestiona el plan no ve «Confirmar plan» ni «Cancelar plan»', async () => {
   mocked.getProposal.mockResolvedValue(makeProposal());
   await renderScreen('prop_2');
   expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
@@ -116,7 +113,7 @@ it('reportar una tardanza exige los minutos (guarda por el teclado y control pos
   expect(mocked.reportIncidence).toHaveBeenCalledWith('prop_1', { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 20 });
 });
 
-it('quien creó el plan resuelve el aviso desde el detalle', async () => {
+it('quien gestiona el plan resuelve el aviso desde el detalle', async () => {
   const confirmed = makeConfirmed();
   mocked.getProposal.mockResolvedValue(confirmed);
   mocked.resolveIncidences.mockResolvedValue(makeConfirmed({ incidences: [{ ...confirmed.incidences[0], resolved: true }] }));
@@ -155,4 +152,28 @@ it('ofrece el resumen con IA salvo en un plan cancelado', async () => {
   await renderScreen('prop_2');
   expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.queryByText('Resumen con Huecko IA')).toBeNull();
+});
+
+it('los botones de gestión siguen a canManage, no a quién creó el plan (D1)', async () => {
+  // Ana creó el plan y se fue del grupo: lo gestiona el usuario actual (OWNER).
+  mocked.getProposal.mockResolvedValue(makeProposal({ canManage: true }));
+  const first = await renderScreen('prop_2');
+  expect(await screen.findByText('Confirmar plan')).toBeTruthy();
+  expect(screen.getByText('Cancelar plan')).toBeTruthy();
+  await first.unmount();
+
+  // Lo creó el usuario actual, pero el servidor dice que no lo gestiona.
+  mocked.getProposal.mockResolvedValue(makeProposal({ createdBy: TEST_USER, canManage: false }));
+  await renderScreen('prop_2');
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Confirmar plan')).toBeNull();
+  expect(screen.queryByText('Cancelar plan')).toBeNull();
+});
+
+it('aviso de imprevisto sin permiso de gestión: sin botones y con el texto genérico', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ canManage: false }));
+  await renderScreen();
+  expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
+  expect(screen.queryByText('Mantener')).toBeNull();
+  expect(screen.getByText('Solo quien organiza el plan puede decidir qué hacer con él.')).toBeTruthy();
 });

@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 
 import { makeTestApp, registerUser, TEST_SECRET } from './helpers';
@@ -91,16 +91,53 @@ describe('GET /api/auth/me', () => {
   });
 });
 
-describe('límite de intentos en /api/auth', () => {
+describe('límites de intentos en /api/auth (D10)', () => {
+  const login = (target: Express, ip?: string) => {
+    const req = request(target).post('/api/auth/login');
+    if (ip) req.set('X-Forwarded-For', ip);
+    return req.send({ email: 'ana@correo.com', password: 'contrasena-segura' });
+  };
+  const register = (target: Express, n: number) =>
+    request(target).post('/api/auth/register').send({ name: `Persona ${n}`, email: `persona${n}@correo.com`, password: 'contrasena-segura' });
+
   it('el tercer login con límite 2 responde 429 TOO_MANY_REQUESTS', async () => {
-    const limited = makeTestApp({ authRateLimit: 2 }).app;
-    const attempt = () =>
-      request(limited).post('/api/auth/login').send({ email: 'ana@correo.com', password: 'contrasena-segura' });
-    await attempt();
-    await attempt();
-    const res = await attempt();
+    const limited = makeTestApp({ loginRateLimit: 2 }).app;
+    await login(limited);
+    await login(limited);
+    const res = await login(limited);
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe('TOO_MANY_REQUESTS');
     expect(res.body.error.message).toBe('Demasiados intentos. Espera unos minutos.');
+  });
+
+  it('login y registro tienen contadores separados', async () => {
+    const limited = makeTestApp({ loginRateLimit: 1, registerRateLimit: 1 }).app;
+    expect((await login(limited)).status).toBe(401);
+    expect((await login(limited)).status).toBe(429);
+    // Agotar el login no bloquea el registro…
+    expect((await register(limited, 1)).status).toBe(201);
+    // …y el registro tiene su propio tope.
+    expect((await register(limited, 2)).status).toBe(429);
+  });
+
+  it('con trust proxy = 1, cada IP de X-Forwarded-For tiene su propio contador', async () => {
+    const limited = makeTestApp({ loginRateLimit: 1, trustProxy: 1 }).app;
+    expect((await login(limited, '203.0.113.1')).status).toBe(401);
+    expect((await login(limited, '203.0.113.1')).status).toBe(429);
+    expect((await login(limited, '203.0.113.2')).status).toBe(401);
+  });
+
+  it('sin trust proxy (por defecto) X-Forwarded-For se ignora: todo cuenta como la misma IP', async () => {
+    // express-rate-limit avisa por consola de la cabecera inesperada (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR): se silencia.
+    const quietError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const quietWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const limited = makeTestApp({ loginRateLimit: 1 }).app;
+      expect((await login(limited, '203.0.113.1')).status).toBe(401);
+      expect((await login(limited, '203.0.113.2')).status).toBe(429);
+    } finally {
+      quietError.mockRestore();
+      quietWarn.mockRestore();
+    }
   });
 });

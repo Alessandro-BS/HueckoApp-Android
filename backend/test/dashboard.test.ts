@@ -25,7 +25,7 @@ const prop1 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   id: 'prop_1', groupId: 'g1', groupName: 'Proyecto Integrador', title: 'Reunión de avance del proyecto',
   location: { name: 'Biblioteca central', latitude: null, longitude: null }, createdBy: test,
   votingDeadline: new Date(2026, 8, 28, 10, 0).toISOString(), state: 'CONFIRMADO',
-  windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], myVoteWindowId: 'w_1', chosenWindowId: 'w_1',
+  windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], myVoteWindowId: 'w_1', canManage: true, chosenWindowId: 'w_1',
   scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString(), scheduledDate: '2026-09-30', incidences: [incidence()],
   createdAt: new Date(2026, 8, 27, 10, 0).toISOString(), ...over,
 });
@@ -34,12 +34,12 @@ const prop2 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   location: { name: 'Google Meet', latitude: null, longitude: null }, createdBy: ana,
   votingDeadline: new Date(2026, 8, 29, 20, 0).toISOString(), state: 'PROPUESTO',
   windows: [win('w_21', 2, '16:00', '18:00', 100, 1), win('w_22', 4, '10:00', '12:00', 100, 0), win('w_23', 5, '16:00', '18:00', 50, 0)],
-  myVoteWindowId: null, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [],
+  myVoteWindowId: null, canManage: false, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [],
   createdAt: new Date(2026, 8, 29, 9, 0).toISOString(), ...over,
 });
 
-const build = (proposals: ProposalWithGroup[], userId = test.id) =>
-  buildDashboard({ userId, now: NOW, groups, proposals, totalBlocks: 2, membersOf: () => members });
+const build = (proposals: ProposalWithGroup[]) =>
+  buildDashboard({ now: NOW, groups, proposals, totalBlocks: 2, membersOf: () => members });
 
 describe('buildDashboard con la semilla (domain spec §2.2)', () => {
   it('valores esperados', () => {
@@ -51,8 +51,9 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
       { user: test, isEssential: false, status: 'PUNTUAL', delayMinutes: null },
       { user: ana, isEssential: false, status: 'NO_ASISTE', delayMinutes: null },
     ]);
+    // D6: el grupo muestra su propuesta más reciente (prop_2, creada después), no la más antigua.
     expect(d.groups).toEqual([
-      { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
+      { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
     ]);
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2']);
     expect(d.expressAlert).toEqual({
@@ -75,7 +76,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2', 'prop_1']);
   });
 
-  it('tras CANCELAR: sin próximo plan ni alerta; el grupo pasa a w_21; las horas bajan a 4 (las canceladas no cuentan)', () => {
+  it('tras CANCELAR: sin próximo plan ni alerta; el grupo sigue en w_21 (la más reciente); las horas bajan a 4 (las canceladas no cuentan)', () => {
     const d = build([prop1({ state: 'CANCELADO', incidences: [incidence({ resolved: true })] }), prop2()]);
     expect(d.nextPlan).toBeNull();
     expect(d.expressAlert).toBeNull();
@@ -91,17 +92,18 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
 });
 
 describe('alerta exprés (G5)', () => {
-  it('EN_RECOORDINACION tiene prioridad y usa la incidencia ALTA; canResolve solo para quien la creó', () => {
+  it('EN_RECOORDINACION tiene prioridad y usa la incidencia ALTA; canResolve es el canManage del plan', () => {
     const aviso = prop1();
     const recoordinacion = prop1({
-      id: 'prop_3', title: 'Presentación', state: 'EN_RECOORDINACION',
+      id: 'prop_3', title: 'Presentación', state: 'EN_RECOORDINACION', canManage: false,
       incidences: [
         incidence({ id: 'i1', type: 'TARDANZA', delayMinutes: 10, criticality: 'BAJA', reason: 'Tráfico' }),
         incidence({ id: 'i2', type: 'FALTA', criticality: 'ALTA', reason: 'Enferma' }),
       ],
     });
-    const d = build([aviso, recoordinacion], ana.id);
-    expect(d.expressAlert).toMatchObject({ proposalId: 'prop_3', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma', canResolve: false });
+    expect(build([aviso, recoordinacion]).expressAlert).toMatchObject({ proposalId: 'prop_3', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma', canResolve: false });
+    // Control positivo: el mismo plan, gestionable por quien pregunta (p. ej. el OWNER si quien lo creó se fue).
+    expect(build([aviso, { ...recoordinacion, canManage: true }]).expressAlert?.canResolve).toBe(true);
   });
 
   it('un plan que ya ocurrió no es el próximo ni dispara la alerta', () => {
@@ -136,5 +138,27 @@ describe('matchingHours y upcomingPlans', () => {
     const cercano = prop1({ id: 'cercano', scheduledAt: new Date(2026, 8, 29, 16, 0).toISOString() });
     const pasado = prop1({ id: 'pasado', scheduledAt: new Date(2026, 8, 29, 9, 0).toISOString() });
     expect(upcomingPlans([lejano, pasado, prop2(), cercano], NOW).map((p) => p.id)).toEqual(['cercano', 'lejano']);
+  });
+});
+
+describe('resumen por grupo (D6: la propuesta más reciente)', () => {
+  it('si la más reciente está cancelada, usa la anterior', () => {
+    const d = build([prop1(), prop2({ state: 'CANCELADO' })]);
+    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 });
+  });
+
+  it('de la más reciente toma la franja elegida si está confirmada', () => {
+    const newer = prop1({
+      id: 'prop_9',
+      createdAt: new Date(2026, 8, 29, 9, 30).toISOString(),
+      windows: [win('w_91', 1, '12:00', '14:00', 100, 0), win('w_92', 4, '10:00', '12:00', 80, 2)],
+      chosenWindowId: 'w_92',
+    });
+    const d = build([prop1(), prop2(), newer]);
+    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 80 });
+  });
+
+  it('sin propuestas con franjas, nextWindow es null', () => {
+    expect(build([prop2({ windows: [] })]).groups[0].nextWindow).toBeNull();
   });
 });

@@ -104,7 +104,7 @@ export function proposalAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);
 
-  // Solo lee: nunca confirma, cancela ni reprograma (lo decide quien creó el plan, D9).
+  // Solo lee: nunca confirma, cancela ni reprograma (lo decide quien organiza el plan, D9).
   router.post('/:id/ai/summary', aiLimiter, async (req, res) => {
     const userId = getUserId(res);
     const proposal = proposals.findById(String(req.params.id), userId);
