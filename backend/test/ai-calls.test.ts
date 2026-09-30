@@ -45,7 +45,7 @@ describe('askAi anota cada llamada (D6)', () => {
   });
 });
 
-type CallRow = { user_id: string | null; task: string; ok: number; duration_ms: number; created_at: string };
+type CallRow = { user_id: string | null; task: string; ok: boolean; duration_ms: number; created_at: string };
 const aiCalls = (db: Db) => db.many<CallRow>('SELECT user_id, task, ok, duration_ms, created_at FROM ai_calls ORDER BY id');
 
 const SUMMARY = { summary: 'Votó 1 de 2 integrantes.', recommendation: 'CONFIRMAR', reason: 'Hay una franja clara.' };
@@ -58,18 +58,18 @@ async function groupWithPlan(ai?: AiClient) {
 }
 
 describe('las rutas de IA guardan quién, qué función, si salió bien, cuánto tardó y cuándo', () => {
-  it('resumen correcto → una fila con ok 1, el usuario y la hora del reloj de la app', async () => {
+  it('resumen correcto → una fila con ok true, el usuario y la hora del reloj de la app', async () => {
     const { app, db, yo, plan } = await groupWithPlan(fakeAiJson(SUMMARY).client);
     expect((await request(app).post(`/api/proposals/${plan.id}/ai/summary`).set(bearer(yo.token))).status).toBe(200);
     expect(await aiCalls(db)).toEqual([
-      { user_id: yo.user.id, task: 'voting-summary', ok: 1, duration_ms: expect.any(Number), created_at: NOW.toISOString() },
+      { user_id: yo.user.id, task: 'voting-summary', ok: true, duration_ms: expect.any(Number), created_at: NOW.toISOString() },
     ]);
   });
 
-  it('con la IA caída la ruta responde 503 y la fila queda con ok 0', async () => {
+  it('con la IA caída la ruta responde 503 y la fila queda con ok false', async () => {
     const { app, db, yo, plan } = await groupWithPlan(failingAi());
     expect((await request(app).post(`/api/proposals/${plan.id}/ai/summary`).set(bearer(yo.token))).status).toBe(503);
-    expect((await aiCalls(db)).map((r) => [r.task, r.ok])).toEqual([['voting-summary', 0]]);
+    expect((await aiCalls(db)).map((r) => [r.task, r.ok])).toEqual([['voting-summary', false]]);
   });
 
   it('lo que no llega a la IA no se registra (plan cancelado → 409)', async () => {
@@ -79,10 +79,10 @@ describe('las rutas de IA guardan quién, qué función, si salió bien, cuánto
     expect(await aiCalls(db)).toEqual([]);
   });
 
-  it('una respuesta ilegible → 502 y la fila queda con ok 0', async () => {
+  it('una respuesta ilegible → 502 y la fila queda con ok false', async () => {
     const { app, db, yo, plan } = await groupWithPlan(fakeAi('hola').client);
     expect((await request(app).post(`/api/proposals/${plan.id}/ai/summary`).set(bearer(yo.token))).status).toBe(502);
-    expect((await aiCalls(db)).map((r) => [r.task, r.ok])).toEqual([['voting-summary', 0]]);
+    expect((await aiCalls(db)).map((r) => [r.task, r.ok])).toEqual([['voting-summary', false]]);
   });
 
   it('si la IA falla y además no se puede anotar, la ruta sigue respondiendo 503', async () => {
@@ -102,7 +102,7 @@ describe('las rutas de IA guardan quién, qué función, si salió bien, cuánto
     const res = await request(app).post('/api/ai/schedule-ocr').set(bearer(ana.token)).attach('image', PNG, { filename: 'h.png', contentType: 'image/png' });
     expect(res.status).toBe(200);
     expect(await aiCalls(db)).toEqual([
-      { user_id: ana.user.id, task: 'schedule-ocr', ok: 1, duration_ms: expect.any(Number), created_at: NOW.toISOString() },
+      { user_id: ana.user.id, task: 'schedule-ocr', ok: true, duration_ms: expect.any(Number), created_at: NOW.toISOString() },
     ]);
   });
 
@@ -120,8 +120,8 @@ describe('las rutas de IA guardan quién, qué función, si salió bien, cuánto
     await request(app).post(`/api/groups/${group.id}/ai/suggestions`).set(bearer(yo.token)).expect(200);
     await request(app).post(`/api/groups/${group.id}/ai/proposal-draft`).set(bearer(yo.token)).send({ text: 'Estudiar el martes' }).expect(200);
     expect((await aiCalls(db)).map((r) => [r.task, r.ok, r.user_id])).toEqual([
-      ['plan-suggestions', 1, yo.user.id],
-      ['proposal-draft', 1, yo.user.id],
+      ['plan-suggestions', true, yo.user.id],
+      ['proposal-draft', true, yo.user.id],
     ]);
   });
 });

@@ -25,7 +25,7 @@ describe('parseMakeAdminArgs', () => {
 });
 
 describe('setRoleByEmail (consola)', () => {
-  const auditRows = (db: Db) => db.many<{ action: string; admin_id: string | null }>('SELECT action, admin_id FROM admin_audit_log ORDER BY rowid');
+  const auditRows = (db: Db) => db.many<{ action: string; admin_id: string | null }>('SELECT action, admin_id FROM admin_audit_log ORDER BY seq');
 
   it('nombra administrador, repetirlo no cambia nada y quitarlo funciona; queda anotado como consola', async () => {
     const db = await makeTestDb();

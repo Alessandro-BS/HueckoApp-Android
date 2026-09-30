@@ -58,7 +58,7 @@ export function upcomingPlans<P extends Proposal>(proposals: readonly P[], now: 
 /**
  * Resumen por grupo (D6): la franja elegida (o la primera) de su propuesta MÁS RECIENTE que no esté cancelada y tenga
  * franjas. «Más reciente» = mayor createdAt y, a igual createdAt, la insertada después: el orden de GET /groups/:id/proposals.
- * `proposals` llega de listForUser, de la más antigua a la más reciente (created_at, rowid): basta buscar desde el final.
+ * `proposals` llega de listForUser, de la más antigua a la más reciente (created_at, seq): basta buscar desde el final.
  */
 export function groupSummaries(groups: readonly GroupSummary[], proposals: readonly ProposalWithGroup[]): DashboardGroup[] {
   return groups.map((g) => {

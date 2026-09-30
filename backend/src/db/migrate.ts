@@ -1,5 +1,5 @@
 import type { Db } from './db';
-import { migrations, NOW_ISO_SQL } from './pg-migrations';
+import { migrations, NOW_ISO_SQL } from './migrations';
 
 // Número fijo del candado de migraciones: dos procesos que arrancan a la vez (p. ej. dos instancias del servidor)
 // no aplican la misma migración dos veces; el segundo espera y ya la encuentra hecha.

@@ -7,7 +7,7 @@ import { generateInviteCode } from './invite-code';
 
 type GroupRow = { id: string; name: string; description: string; invite_code: string; availability_threshold: number };
 type SummaryRow = Omit<GroupRow, 'invite_code'> & { member_count: number };
-type MemberRow = { id: string; name: string; email: string; role: GroupMember['role']; is_essential: number };
+type MemberRow = { id: string; name: string; email: string; role: GroupMember['role']; is_essential: boolean };
 
 export type NewGroup = { name: string; description: string; availabilityThreshold: number; createdAt: string };
 
@@ -16,13 +16,13 @@ const toMember = (row: MemberRow): GroupMember => ({
   name: row.name,
   email: row.email,
   role: row.role,
-  isEssential: row.is_essential === 1,
+  isEssential: row.is_essential,
 });
 
 const MAX_CODE_ATTEMPTS = 5;
 
 // Los miembros siempre en orden de llegada (joined_at y, si empatan, orden de inserción).
-export const MEMBER_ORDER = 'ORDER BY m.joined_at, m.rowid';
+export const MEMBER_ORDER = 'ORDER BY m.joined_at, m.seq';
 
 export function groupsRepository(db: Db, generateCode: () => string = generateInviteCode) {
   const membersOf = async (groupId: string): Promise<GroupMember[]> => {
@@ -126,6 +126,9 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
     // pasa a serlo quien lleva más tiempo (domain spec C6).
     leave(groupId: string, userId: string): Promise<void> {
       return db.transaction(async () => {
+        // Bloquea el grupo hasta el final: si dos personas salen a la vez, la segunda ve lo que dejó la primera
+        // (si no, las dos podrían verse «acompañadas» y dejar un grupo sin nadie).
+        await db.query('SELECT id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
         await db.query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
         const { remaining, owners } = (await db.one<{ remaining: number; owners: number }>(
           `SELECT COUNT(*) AS remaining, COUNT(*) FILTER (WHERE role = 'OWNER') AS owners
@@ -138,7 +141,7 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
           await db.query(
             `UPDATE group_members SET role = 'OWNER'
              WHERE group_id = $1 AND user_id = (
-               SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY joined_at, rowid LIMIT 1
+               SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY joined_at, seq LIMIT 1
              )`,
             [groupId],
           );

@@ -37,6 +37,10 @@ const toSummary = (r: SummaryRow): AdminUserSummary => ({
 
 export const userNotFound = () => new ApiError(404, 'USER_NOT_FOUND', 'Usuario no encontrado.');
 
+// Candado de los cambios de rol y estado: dos a la vez (dos admins, o un admin y la consola) se hacen uno tras otro,
+// así la guarda LAST_ADMIN siempre cuenta con el resultado del otro y nunca quedan cero administradores activos.
+const ADMIN_CHANGES_LOCK_ID = 72_616_002;
+
 export function adminUsers(db: Db) {
   const audit = auditRepository(db);
 
@@ -67,11 +71,11 @@ export function adminUsers(db: Db) {
   return {
     async list(search: string, page: number): Promise<Page<AdminUserSummary>> {
       const filter: SqlParam[] = search ? [likePattern(search)] : [];
-      const where = search ? `WHERE u.name LIKE $1 ESCAPE '\\' OR u.email LIKE $1 ESCAPE '\\'` : '';
+      const where = search ? `WHERE u.name ILIKE $1 ESCAPE '\\' OR u.email ILIKE $1 ESCAPE '\\'` : '';
       const { total } = (await db.one<{ total: number }>(`SELECT COUNT(*) AS total FROM users u ${where}`, filter))!;
       const n = filter.length;
       const rows = await db.many<SummaryRow>(
-        `${SUMMARY_SELECT} ${where} ORDER BY u.created_at DESC, u.rowid DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
+        `${SUMMARY_SELECT} ${where} ORDER BY u.created_at DESC, u.seq DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
         [...filter, ADMIN_PAGE_SIZE, offsetOf(page)],
       );
       return toPage(rows.map(toSummary), page, total);
@@ -106,6 +110,7 @@ export function adminUsers(db: Db) {
     /** Suspende o reactiva. `false` si ya estaba así (no se anota nada). */
     setStatus(actor: AdminActor, id: string, status: UserStatus): Promise<boolean> {
       return db.transaction(async () => {
+        await db.query('SELECT pg_advisory_xact_lock($1)', [ADMIN_CHANGES_LOCK_ID]);
         const target = await load(id);
         if (target.status === status) return false;
         assertNotSelf(actor, id);
@@ -126,6 +131,7 @@ export function adminUsers(db: Db) {
     /** Da o quita el rol ADMIN. `false` si ya lo tenía así. */
     setRole(actor: AdminActor, id: string, role: UserRole): Promise<boolean> {
       return db.transaction(async () => {
+        await db.query('SELECT pg_advisory_xact_lock($1)', [ADMIN_CHANGES_LOCK_ID]);
         const target = await load(id);
         if (target.role === role) return false;
         assertNotSelf(actor, id);

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { CurrentUser, UserRole, UserStatus } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
+import { isUniqueViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
 
 type UserRow = { id: string; name: string; email: string; password_hash: string; role: UserRole; status: UserStatus };
@@ -27,7 +28,7 @@ export function usersRepository(db: Db) {
         ]);
       } catch (e) {
         // Dos registros simultáneos con el mismo correo pasan findByEmail; el UNIQUE los frena.
-        if (e instanceof Error && e.message.includes('UNIQUE constraint failed: users.email')) {
+        if (isUniqueViolation(e, 'users_email_key')) {
           throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
         }
         throw e;

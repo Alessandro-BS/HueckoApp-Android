@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildDashboard, upcomingPlans } from '../src/dashboard/dashboard';
+import type { Db } from '../src/db/db';
 import { seedDemoData } from '../src/db/demo-data';
 import { groupsRepository } from '../src/groups/groups.repository';
 import { proposalsRepository } from '../src/proposals/proposals.repository';
-import type { BridgeDb as Db } from '../src/db/sqlite-bridge'; // TEMPORAL: `import type { Db } from '../src/db/db'` en el Task 6
 import { makeTestDb, NOW } from './helpers';
 
 const DAY = 86_400_000;

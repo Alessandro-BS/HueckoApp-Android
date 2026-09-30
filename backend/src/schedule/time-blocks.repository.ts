@@ -11,7 +11,7 @@ type TimeBlockRow = {
   type: BlockType;
   start_time: string;
   end_time: string;
-  is_recurring: number;
+  is_recurring: boolean;
   day_of_week: number | null;
   date: string | null;
 };
@@ -23,13 +23,13 @@ const toTimeBlock = (row: TimeBlockRow): TimeBlock => ({
   type: row.type,
   startTime: row.start_time,
   endTime: row.end_time,
-  isRecurring: row.is_recurring === 1,
+  isRecurring: row.is_recurring,
   dayOfWeek: row.day_of_week,
   date: row.date,
 });
 
-// Recurrentes primero (por día y hora); después los puntuales (por fecha y hora).
-const ORDER = 'ORDER BY is_recurring DESC, day_of_week, date, start_time, rowid';
+// Recurrentes primero (por día y hora); después los puntuales (por fecha y hora); si empatan, orden de inserción.
+const ORDER = 'ORDER BY is_recurring DESC, day_of_week, date, start_time, seq';
 
 export function timeBlocksRepository(db: Db) {
   const insert = async (userId: string, input: TimeBlockInput): Promise<TimeBlock> => {
@@ -68,8 +68,8 @@ export function timeBlocksRepository(db: Db) {
     // Bloques recurrentes de varias personas (para el cruce de un grupo), con la lista de ids en UN parámetro.
     async listRecurringByUsers(userIds: readonly string[]): Promise<TimeBlock[]> {
       const rows = await db.many<TimeBlockRow>(
-        `SELECT * FROM time_blocks WHERE is_recurring AND user_id IN (SELECT value FROM json_each($1)) ${ORDER}`,
-        [JSON.stringify(userIds)],
+        `SELECT * FROM time_blocks WHERE is_recurring AND user_id = ANY($1::text[]) ${ORDER}`,
+        [userIds],
       );
       return rows.map(toTimeBlock);
     },

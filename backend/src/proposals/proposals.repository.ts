@@ -43,7 +43,7 @@ type IncidenceRow = {
   reason: string;
   delay_minutes: number | null;
   criticality: Criticality;
-  resolved: number;
+  resolved: boolean;
   created_at: string;
 };
 type MyVoteRow = { proposal_id: string; window_id: string };
@@ -79,7 +79,7 @@ const SELECT_PROPOSAL = `
 
 // Los ids de las propuestas van en UN parámetro (el número `param`): la misma sentencia sirve para 1 o para 500
 // propuestas. Uso: `WHERE x.proposal_id ${inProposalIds(1)}`.
-const inProposalIds = (param: number) => `IN (SELECT value FROM json_each($${param}))`;
+const inProposalIds = (param: number) => `= ANY($${param}::text[])`;
 
 /** Agrupa filas por clave conservando su orden (el ORDER BY de la consulta). */
 function groupBy<R, T>(rows: readonly R[], keyOf: (row: R) => string, map: (row: R) => T): Map<string, T[]> {
@@ -109,7 +109,7 @@ const toIncidence = (r: IncidenceRow): Incidence => ({
   reason: r.reason,
   delayMinutes: r.delay_minutes,
   criticality: r.criticality,
-  resolved: r.resolved === 1,
+  resolved: r.resolved,
   createdAt: r.created_at,
 });
 
@@ -121,7 +121,7 @@ export function proposalsRepository(db: Db) {
    */
   const hydrate = async (rows: readonly ProposalRow[], viewerId: string): Promise<Proposal[]> => {
     if (rows.length === 0) return [];
-    const ids = JSON.stringify(rows.map((r) => r.id));
+    const ids = rows.map((r) => r.id);
     // voteCount solo cuenta a quienes SIGUEN en el grupo de la propuesta (D5): el voto de quien sale no se borra,
     // pero no suma; si vuelve a unirse, cuenta otra vez. De aquí salen pickWinner, Inicio y el resumen con IA.
     const windows = groupBy(
@@ -145,7 +145,7 @@ export function proposalsRepository(db: Db) {
         `SELECT i.*, u.name AS user_name, u.email AS user_email
          FROM incidences i JOIN users u ON u.id = i.user_id
          WHERE i.proposal_id ${inProposalIds(1)}
-         ORDER BY i.created_at, i.rowid`,
+         ORDER BY i.created_at, i.seq`,
         [ids],
       ),
       (r) => r.proposal_id,
@@ -205,7 +205,7 @@ export function proposalsRepository(db: Db) {
 
     // Las más recientes primero (C10); a igual createdAt, la última insertada.
     async listByGroup(groupId: string, viewerId: string): Promise<Proposal[]> {
-      const rows = await db.many<ProposalRow>(`${SELECT_PROPOSAL} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.rowid DESC`, [groupId]);
+      const rows = await db.many<ProposalRow>(`${SELECT_PROPOSAL} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.seq DESC`, [groupId]);
       return hydrate(rows, viewerId);
     },
 
@@ -287,7 +287,7 @@ export function proposalsRepository(db: Db) {
     // Inicio y /me/upcoming-plans.
     async listForUser(userId: string): Promise<ProposalWithGroup[]> {
       const rows = await db.many<ProposalRow>(
-        `${SELECT_PROPOSAL} JOIN group_members m ON m.group_id = p.group_id AND m.user_id = $1 ORDER BY p.created_at, p.rowid`,
+        `${SELECT_PROPOSAL} JOIN group_members m ON m.group_id = p.group_id AND m.user_id = $1 ORDER BY p.created_at, p.seq`,
         [userId],
       );
       const groupNames = new Map(rows.map((r) => [r.id, r.group_name] as const));

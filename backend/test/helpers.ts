@@ -5,8 +5,8 @@ import request from 'supertest';
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
 import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
-import { openDatabase } from '../src/db/database';
-import { createSqliteDb, type BridgeDb } from '../src/db/sqlite-bridge';
+import type { Db } from '../src/db/db';
+import { openTestDatabase } from './db';
 
 export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
 
@@ -19,10 +19,8 @@ export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
 // Un minuto después del plazo: la votación ya cerró.
 export const AFTER_DEADLINE = new Date(2026, 9, 3, 20, 1);
 
-// Base vacía y migrada para un test. TEMPORAL: SQLite en memoria con la API async (puente); PGlite desde el Task 6.
-export async function makeTestDb(): Promise<BridgeDb> {
-  return createSqliteDb(openDatabase(':memory:'));
-}
+// Base PGlite nueva y migrada para un test (se cierra sola al terminar: test/setup.ts).
+export const makeTestDb = (): Promise<Db> => openTestDatabase();
 
 export async function makeTestApp(options?: {
   loginRateLimit?: number;
@@ -31,7 +29,7 @@ export async function makeTestApp(options?: {
   now?: () => Date;
   ai?: AiClient;
   aiRateLimit?: number;
-}): Promise<{ app: Express; db: BridgeDb }> {
+}): Promise<{ app: Express; db: Db }> {
   const db = await makeTestDb();
   const app = createApp({
     db,

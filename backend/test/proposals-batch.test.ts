@@ -44,7 +44,7 @@ async function groupWithProposals(count: number) {
   return { app, db, repo, ...seed };
 }
 
-// Cuántas sentencias SQL ejecuta `fn`. TEMPORAL: el repositorio aún usa db.prepare; en el Task 4 pasa a contar db.query.
+// Cuántas sentencias SQL ejecuta `fn` (db.many y db.one pasan por db.query: se cuentan todas).
 async function countQueries(db: Db, fn: () => unknown): Promise<number> {
   const spy = vi.spyOn(db, 'query');
   try {

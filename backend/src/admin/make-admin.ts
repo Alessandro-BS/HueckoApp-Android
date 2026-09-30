@@ -2,14 +2,14 @@
 // nadie se hace administrador al registrarse ni con una petición.
 //   npm run make-admin -w backend -- ana@test.com
 //   npm run make-admin -w backend -- ana@test.com --revoke
-// Usa DATABASE_PATH de backend/.env (como la semilla) y solo abre una base que ya exista. Queda en el registro de
+// Usa la base de backend/.env (DATABASE_URL o, si está vacía, PGlite en PGLITE_DATA_DIR) y solo abre una que ya exista
+// con el esquema de HueckoApp. Con la base local, detén antes el servidor (PGlite admite un solo proceso). Queda en el registro de
 // acciones como «Consola del servidor».
 import 'dotenv/config';
 import { z } from 'zod';
 
 import { parseEnv } from '../config/env-schema';
-import { openExistingDatabase } from '../db/database';
-import { createSqliteDb } from '../db/sqlite-bridge';
+import { databaseConfig, openExistingDatabase } from '../db/connect';
 import { setRoleByEmail } from './admin-users';
 import { parseMakeAdminArgs } from './make-admin-args';
 
@@ -18,7 +18,7 @@ async function main() {
   // salgan como un mensaje limpio por consola.
   const { email, revoke } = parseMakeAdminArgs(process.argv.slice(2));
   const env = parseEnv();
-  const db = createSqliteDb(openExistingDatabase(env.DATABASE_PATH)); // TEMPORAL: connect.ts en el Task 6
+  const db = await openExistingDatabase(databaseConfig(env));
   try {
     const { user, changed } = await setRoleByEmail(db, email, revoke ? 'USER' : 'ADMIN', new Date());
     const who = `${user.name} <${user.email}>`;

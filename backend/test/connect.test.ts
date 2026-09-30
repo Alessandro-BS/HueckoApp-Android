@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { databaseConfig, openDatabase, openExistingDatabase } from '../src/db/connect';
-import { migrations } from '../src/db/pg-migrations';
+import { migrations } from '../src/db/migrations';
 import { acquireDataDirLock } from '../src/db/pglite-lock';
 import { openPglite } from '../src/db/pglite-driver';
 

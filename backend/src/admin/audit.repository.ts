@@ -53,7 +53,7 @@ export function auditRepository(db: Db) {
         `SELECT a.id, a.action, a.target_type, a.target_id, a.details, a.created_at,
                 u.id AS admin_id, u.name AS admin_name, u.email AS admin_email
          FROM admin_audit_log a LEFT JOIN users u ON u.id = a.admin_id
-         ORDER BY a.created_at DESC, a.rowid DESC
+         ORDER BY a.created_at DESC, a.seq DESC
          LIMIT $1 OFFSET $2`,
         [ADMIN_PAGE_SIZE, offsetOf(page)],
       );

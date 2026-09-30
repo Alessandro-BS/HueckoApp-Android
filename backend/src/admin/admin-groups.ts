@@ -98,11 +98,11 @@ export function adminGroups(db: Db) {
   return {
     async list(search: string, page: number): Promise<Page<AdminGroupSummary>> {
       const filter: SqlParam[] = search ? [likePattern(search)] : [];
-      const where = search ? `WHERE g.name LIKE $1 ESCAPE '\\' OR g.invite_code LIKE $1 ESCAPE '\\'` : '';
+      const where = search ? `WHERE g.name ILIKE $1 ESCAPE '\\' OR g.invite_code ILIKE $1 ESCAPE '\\'` : '';
       const { total } = (await db.one<{ total: number }>(`SELECT COUNT(*) AS total FROM groups g ${where}`, filter))!;
       const n = filter.length;
       const rows = await db.many<GroupRow>(
-        `${GROUP_SELECT} ${where} ORDER BY g.created_at DESC, g.rowid DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
+        `${GROUP_SELECT} ${where} ORDER BY g.created_at DESC, g.seq DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
         [...filter, ADMIN_PAGE_SIZE, offsetOf(page)],
       );
       return toPage(rows.map(toGroup), page, total);
@@ -112,7 +112,7 @@ export function adminGroups(db: Db) {
       const row = await loadGroup(id);
       const group = await groups.findById(id);
       if (!group) throw groupNotFound();
-      const rows = await db.many<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.rowid DESC`, [id]);
+      const rows = await db.many<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.seq DESC`, [id]);
       return {
         ...toGroup(row),
         inviteCode: group.inviteCode,

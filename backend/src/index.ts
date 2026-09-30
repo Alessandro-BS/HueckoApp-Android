@@ -1,15 +1,8 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-
 import { createGeminiClient } from './ai/gemini-client';
 import { createMockAiClient } from './ai/mock-client';
 import { createApp } from './app';
 import { env } from './config/env';
-import { openDatabase } from './db/database';
-import { createSqliteDb } from './db/sqlite-bridge';
-
-mkdirSync(dirname(env.DATABASE_PATH), { recursive: true });
-const db = createSqliteDb(openDatabase(env.DATABASE_PATH));
+import { databaseConfig, openDatabase } from './db/connect';
 
 // Sin clave, la IA responde con datos de demostración para que la app se pueda probar igual (D2).
 const ai = env.GEMINI_API_KEY
@@ -32,15 +25,38 @@ if (env.NODE_ENV === 'production' && !env.TRUST_PROXY) {
   );
 }
 
-createApp({
-  db,
-  jwtSecret: env.JWT_SECRET,
-  jwtExpiresIn: env.JWT_EXPIRES_IN,
-  trustProxy: env.TRUST_PROXY,
-  loginRateLimit: env.LOGIN_RATE_LIMIT,
-  registerRateLimit: env.REGISTER_RATE_LIMIT,
-  ai,
-  aiRateLimit: env.AI_RATE_LIMIT,
-}).listen(env.PORT, () => {
-  console.log(`HueckoApp API escuchando en http://localhost:${env.PORT}/api`);
+async function main() {
+  // Postgres (Neon) con DATABASE_URL; si no, PGlite en PGLITE_DATA_DIR. Crea las tablas que falten (migraciones).
+  const db = await openDatabase(databaseConfig(env));
+  console.log(`Base de datos: ${db.description}`);
+
+  const server = createApp({
+    db,
+    jwtSecret: env.JWT_SECRET,
+    jwtExpiresIn: env.JWT_EXPIRES_IN,
+    trustProxy: env.TRUST_PROXY,
+    loginRateLimit: env.LOGIN_RATE_LIMIT,
+    registerRateLimit: env.REGISTER_RATE_LIMIT,
+    ai,
+    aiRateLimit: env.AI_RATE_LIMIT,
+  }).listen(env.PORT, () => {
+    console.log(`HueckoApp API escuchando en http://localhost:${env.PORT}/api`);
+  });
+
+  // Ctrl+C o el apagado de Render: deja de aceptar peticiones, termina las que están en curso y cierra la base
+  // (PGlite suelta su carpeta y su candado; Postgres, sus conexiones). Si algo se cuelga, sale a los 10 s.
+  const shutdown = (signal: NodeJS.Signals) => {
+    console.log(`${signal}: cerrando el servidor…`);
+    setTimeout(() => process.exit(1), 10_000).unref();
+    server.close(() => {
+      db.close().finally(() => process.exit(0));
+    });
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
 });

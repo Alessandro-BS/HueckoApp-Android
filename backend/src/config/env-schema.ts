@@ -40,7 +40,6 @@ const envSchema = z.object({
     .string()
     .regex(/^\d+[smhd]$/, 'JWT_EXPIRES_IN debe ser un número con unidad: s, m, h o d (p. ej. 7d)')
     .default('7d'),
-  DATABASE_PATH: z.string().default('./data/hueckoapp.db'),
   // Base de datos (D9): DATABASE_URL de Neon en producción; vacía, PGlite en PGLITE_DATA_DIR.
   DATABASE_URL: databaseUrlSchema,
   PGLITE_DATA_DIR: z.string().trim().min(1, 'PGLITE_DATA_DIR no puede estar vacío').default('./data/pglite'),

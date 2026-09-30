@@ -8,7 +8,7 @@ import { insertUser, registerAdmin } from './admin-fixtures';
 import { bearer, createGroup, makeTestApp, NOW, registerUser } from './helpers';
 
 type AuditRow = { action: string; admin_id: string | null; target_id: string; details: string };
-const auditRows = (db: Db) => db.many<AuditRow>('SELECT action, admin_id, target_id, details FROM admin_audit_log ORDER BY rowid');
+const auditRows = (db: Db) => db.many<AuditRow>('SELECT action, admin_id, target_id, details FROM admin_audit_log ORDER BY seq');
 
 const patchStatus = (app: Express, token: string, id: string, status: string) =>
   request(app).patch(`/api/admin/users/${id}/status`).set(bearer(token)).send({ status });

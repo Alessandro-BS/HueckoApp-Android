@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/db';
 import { migrate } from '../src/db/migrate';
-import { migrations } from '../src/db/pg-migrations';
+import { migrations } from '../src/db/migrations';
 import { openEmptyDatabase, openTestDatabase } from './db';
 
 // Errores de Postgres que se esperan: 23505 clave repetida, 23503 clave foránea, 23514 CHECK, 42804 tipo, 42703 columna.
