@@ -1,7 +1,6 @@
 import type { AdminUserActivity, AdminUserDetail, AdminUserGroup, AdminUserSummary, Page, UserRole, UserStatus } from '@hueckoapp/shared';
 
-import type { Db } from '../db/database';
-import { withTransaction } from '../db/transaction';
+import type { Db, SqlParam } from '../db/db';
 import { MEMBER_ORDER } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { auditRepository } from './audit.repository';
@@ -41,14 +40,14 @@ export const userNotFound = () => new ApiError(404, 'USER_NOT_FOUND', 'Usuario n
 export function adminUsers(db: Db) {
   const audit = auditRepository(db);
 
-  const load = (id: string): SummaryRow => {
-    const row = db.prepare(`${SUMMARY_SELECT} WHERE u.id = ?`).get(id) as SummaryRow | undefined;
+  const load = async (id: string): Promise<SummaryRow> => {
+    const row = await db.one<SummaryRow>(`${SUMMARY_SELECT} WHERE u.id = $1`, [id]);
     if (!row) throw userNotFound();
     return row;
   };
 
-  const activeAdmins = () =>
-    (db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE'").get() as { n: number }).n;
+  const activeAdmins = async () =>
+    (await db.one<{ n: number }>("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE'"))!.n;
 
   const assertNotSelf = (actor: AdminActor, targetId: string) => {
     if (actor.adminId === targetId) {
@@ -57,41 +56,43 @@ export function adminUsers(db: Db) {
   };
 
   // Quien deja de ser administrador activo (suspendido o sin rol) no puede ser el último (D4).
-  const assertNotLastAdmin = (target: SummaryRow) => {
-    if (target.role === 'ADMIN' && target.status === 'ACTIVE' && activeAdmins() <= 1) {
+  const assertNotLastAdmin = async (target: SummaryRow) => {
+    if (target.role === 'ADMIN' && target.status === 'ACTIVE' && (await activeAdmins()) <= 1) {
       throw new ApiError(409, 'LAST_ADMIN', 'Tiene que quedar al menos un administrador activo.');
     }
   };
 
-  const summary = (id: string): AdminUserSummary => toSummary(load(id));
+  const summary = async (id: string): Promise<AdminUserSummary> => toSummary(await load(id));
 
   return {
-    list(search: string, page: number): Page<AdminUserSummary> {
-      const where = search ? `WHERE u.name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\'` : '';
-      const params = search ? [likePattern(search), likePattern(search)] : [];
-      const { total } = db.prepare(`SELECT COUNT(*) AS total FROM users u ${where}`).get(...params) as { total: number };
-      const rows = db
-        .prepare(`${SUMMARY_SELECT} ${where} ORDER BY u.created_at DESC, u.rowid DESC LIMIT ? OFFSET ?`)
-        .all(...params, ADMIN_PAGE_SIZE, offsetOf(page)) as SummaryRow[];
+    async list(search: string, page: number): Promise<Page<AdminUserSummary>> {
+      const filter: SqlParam[] = search ? [likePattern(search)] : [];
+      const where = search ? `WHERE u.name LIKE $1 ESCAPE '\\' OR u.email LIKE $1 ESCAPE '\\'` : '';
+      const { total } = (await db.one<{ total: number }>(`SELECT COUNT(*) AS total FROM users u ${where}`, filter))!;
+      const n = filter.length;
+      const rows = await db.many<SummaryRow>(
+        `${SUMMARY_SELECT} ${where} ORDER BY u.created_at DESC, u.rowid DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
+        [...filter, ADMIN_PAGE_SIZE, offsetOf(page)],
+      );
       return toPage(rows.map(toSummary), page, total);
     },
 
     summary,
 
-    detail(id: string): AdminUserDetail {
-      const base = summary(id);
-      const groups = db
-        .prepare(`SELECT g.id, g.name, m.role FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? ${MEMBER_ORDER}`)
-        .all(id) as AdminUserGroup[];
-      const a = db
-        .prepare(
-          `SELECT (SELECT COUNT(*) FROM proposals WHERE created_by = ?) AS proposals_created,
-                  (SELECT COUNT(*) FROM votes WHERE user_id = ?) AS votes,
-                  (SELECT COUNT(*) FROM incidences WHERE user_id = ?) AS incidences,
-                  (SELECT COUNT(*) FROM time_blocks WHERE user_id = ?) AS time_blocks,
-                  (SELECT COUNT(*) FROM ai_calls WHERE user_id = ?) AS ai_calls`,
-        )
-        .get(id, id, id, id, id) as ActivityRow;
+    async detail(id: string): Promise<AdminUserDetail> {
+      const base = await summary(id);
+      const groups = await db.many<AdminUserGroup>(
+        `SELECT g.id, g.name, m.role FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = $1 ${MEMBER_ORDER}`,
+        [id],
+      );
+      const a = (await db.one<ActivityRow>(
+        `SELECT (SELECT COUNT(*) FROM proposals WHERE created_by = $1) AS proposals_created,
+                (SELECT COUNT(*) FROM votes WHERE user_id = $1) AS votes,
+                (SELECT COUNT(*) FROM incidences WHERE user_id = $1) AS incidences,
+                (SELECT COUNT(*) FROM time_blocks WHERE user_id = $1) AS time_blocks,
+                (SELECT COUNT(*) FROM ai_calls WHERE user_id = $1) AS ai_calls`,
+        [id],
+      ))!;
       const activity: AdminUserActivity = {
         proposalsCreated: a.proposals_created,
         votes: a.votes,
@@ -103,14 +104,14 @@ export function adminUsers(db: Db) {
     },
 
     /** Suspende o reactiva. `false` si ya estaba así (no se anota nada). */
-    setStatus(actor: AdminActor, id: string, status: UserStatus): boolean {
-      return withTransaction(db, () => {
-        const target = load(id);
+    setStatus(actor: AdminActor, id: string, status: UserStatus): Promise<boolean> {
+      return db.transaction(async () => {
+        const target = await load(id);
         if (target.status === status) return false;
         assertNotSelf(actor, id);
-        if (status === 'SUSPENDED') assertNotLastAdmin(target);
-        db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, id);
-        audit.record({
+        if (status === 'SUSPENDED') await assertNotLastAdmin(target);
+        await db.query('UPDATE users SET status = $1 WHERE id = $2', [status, id]);
+        await audit.record({
           adminId: actor.adminId,
           action: status === 'SUSPENDED' ? 'USER_SUSPENDED' : 'USER_REACTIVATED',
           targetType: 'USER',
@@ -123,14 +124,14 @@ export function adminUsers(db: Db) {
     },
 
     /** Da o quita el rol ADMIN. `false` si ya lo tenía así. */
-    setRole(actor: AdminActor, id: string, role: UserRole): boolean {
-      return withTransaction(db, () => {
-        const target = load(id);
+    setRole(actor: AdminActor, id: string, role: UserRole): Promise<boolean> {
+      return db.transaction(async () => {
+        const target = await load(id);
         if (target.role === role) return false;
         assertNotSelf(actor, id);
-        if (role === 'USER') assertNotLastAdmin(target);
-        db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
-        audit.record({
+        if (role === 'USER') await assertNotLastAdmin(target);
+        await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, id]);
+        await audit.record({
           adminId: actor.adminId,
           action: role === 'ADMIN' ? 'USER_PROMOTED' : 'USER_DEMOTED',
           targetType: 'USER',
@@ -145,10 +146,10 @@ export function adminUsers(db: Db) {
 }
 
 /** Para la consola (npm run make-admin): da o quita el rol por correo, con las mismas guardas. */
-export function setRoleByEmail(db: Db, email: string, role: UserRole, now: Date): { user: AdminUserSummary; changed: boolean } {
-  const row = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id: string } | undefined;
+export async function setRoleByEmail(db: Db, email: string, role: UserRole, now: Date): Promise<{ user: AdminUserSummary; changed: boolean }> {
+  const row = await db.one<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]);
   if (!row) throw new ApiError(404, 'USER_NOT_FOUND', `No hay ninguna cuenta con el correo «${email}».`);
   const users = adminUsers(db);
-  const changed = users.setRole({ adminId: null, now }, row.id, role);
-  return { user: users.summary(row.id), changed };
+  const changed = await users.setRole({ adminId: null, now }, row.id, role);
+  return { user: await users.summary(row.id), changed };
 }

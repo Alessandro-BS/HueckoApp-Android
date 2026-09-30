@@ -31,9 +31,9 @@ describe('setRoleByEmail (consola)', () => {
     const db = await makeTestDb();
     await insertUser(db, { email: 'primera@test.com', role: 'ADMIN' });
     const ana = await insertUser(db, { name: 'Ana', email: 'ana@test.com' });
-    expect(setRoleByEmail(db, 'ana@test.com', 'ADMIN', NOW)).toMatchObject({ changed: true, user: { id: ana, role: 'ADMIN' } });
-    expect(setRoleByEmail(db, 'ana@test.com', 'ADMIN', NOW).changed).toBe(false);
-    expect(setRoleByEmail(db, 'ana@test.com', 'USER', NOW)).toMatchObject({ changed: true, user: { role: 'USER' } });
+    expect(await setRoleByEmail(db, 'ana@test.com', 'ADMIN', NOW)).toMatchObject({ changed: true, user: { id: ana, role: 'ADMIN' } });
+    expect((await setRoleByEmail(db, 'ana@test.com', 'ADMIN', NOW)).changed).toBe(false);
+    expect(await setRoleByEmail(db, 'ana@test.com', 'USER', NOW)).toMatchObject({ changed: true, user: { role: 'USER' } });
     expect(await auditRows(db)).toEqual([
       { action: 'USER_PROMOTED', admin_id: null },
       { action: 'USER_DEMOTED', admin_id: null },
@@ -43,16 +43,16 @@ describe('setRoleByEmail (consola)', () => {
   it('no deja la app sin administradores activos (409 LAST_ADMIN); con otro admin activo, sí', async () => {
     const db = await makeTestDb();
     await insertUser(db, { email: 'unica@test.com', role: 'ADMIN' });
-    expect(() => setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).toThrow('Tiene que quedar al menos un administrador activo.');
+    await expect(setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
     // Una admin suspendida no cuenta como activa.
     await insertUser(db, { email: 'suspendida@test.com', role: 'ADMIN', status: 'SUSPENDED' });
-    expect(() => setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).toThrow('Tiene que quedar al menos un administrador activo.');
+    await expect(setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
     await insertUser(db, { email: 'otra@test.com', role: 'ADMIN' });
-    expect(setRoleByEmail(db, 'unica@test.com', 'USER', NOW).changed).toBe(true); // control positivo
+    expect((await setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).changed).toBe(true); // control positivo
   });
 
   it('correo desconocido → error que lo nombra', async () => {
     const db = await makeTestDb();
-    expect(() => setRoleByEmail(db, 'nadie@test.com', 'ADMIN', NOW)).toThrow('No hay ninguna cuenta con el correo «nadie@test.com».');
+    await expect(setRoleByEmail(db, 'nadie@test.com', 'ADMIN', NOW)).rejects.toThrow('No hay ninguna cuenta con el correo «nadie@test.com».');
   });
 });

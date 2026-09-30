@@ -1,7 +1,6 @@
 import type { AdminGroupDetail, AdminGroupSummary, AdminProposalSummary, Page, ProposalState } from '@hueckoapp/shared';
 
-import type { SqlParam } from '../db/db';
-import type { BridgeDb } from '../db/sqlite-bridge';
+import type { Db, SqlParam } from '../db/db';
 import { groupsRepository, MEMBER_ORDER } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { proposalsRepository } from '../proposals/proposals.repository';
@@ -84,8 +83,7 @@ const toProposal = (r: ProposalRow): AdminProposalSummary => ({
 const groupNotFound = () => new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
 const proposalNotFound = () => new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
 
-// TEMPORAL: BridgeDb mientras auditRepository y proposalsRepository sigan síncronos (Tasks 3–4); Db desde el Task 5.
-export function adminGroups(db: BridgeDb) {
+export function adminGroups(db: Db) {
   const audit = auditRepository(db);
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);

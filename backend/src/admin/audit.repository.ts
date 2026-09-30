@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { AuditAction, AuditDetails, AuditEntry, AuditTargetType, Page } from '@hueckoapp/shared';
 
-import type { Db } from '../db/database';
+import type { Db } from '../db/db';
 import { ADMIN_PAGE_SIZE, offsetOf, toPage } from './paging';
 
 export type NewAuditEntry = {
@@ -38,25 +38,25 @@ const toEntry = (r: AuditRow): AuditEntry => ({
 
 export function auditRepository(db: Db) {
   return {
-    // Se llama DENTRO de la transacción de la acción: si no se puede anotar, la acción se deshace (D5).
-    record(entry: NewAuditEntry): void {
-      db.prepare(
-        'INSERT INTO admin_audit_log (id, admin_id, action, target_type, target_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ).run(randomUUID(), entry.adminId, entry.action, entry.targetType, entry.targetId, JSON.stringify(entry.details), entry.createdAt);
+    // Se llama DENTRO de la transacción de la acción (db.transaction): si no se puede anotar, la acción se deshace (D5).
+    async record(entry: NewAuditEntry): Promise<void> {
+      await db.query(
+        'INSERT INTO admin_audit_log (id, admin_id, action, target_type, target_id, details, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [randomUUID(), entry.adminId, entry.action, entry.targetType, entry.targetId, JSON.stringify(entry.details), entry.createdAt],
+      );
     },
 
     // Lo más reciente primero; a igual fecha, lo anotado después.
-    list(page: number): Page<AuditEntry> {
-      const { total } = db.prepare('SELECT COUNT(*) AS total FROM admin_audit_log').get() as { total: number };
-      const rows = db
-        .prepare(
-          `SELECT a.id, a.action, a.target_type, a.target_id, a.details, a.created_at,
-                  u.id AS admin_id, u.name AS admin_name, u.email AS admin_email
-           FROM admin_audit_log a LEFT JOIN users u ON u.id = a.admin_id
-           ORDER BY a.created_at DESC, a.rowid DESC
-           LIMIT ? OFFSET ?`,
-        )
-        .all(ADMIN_PAGE_SIZE, offsetOf(page)) as AuditRow[];
+    async list(page: number): Promise<Page<AuditEntry>> {
+      const { total } = (await db.one<{ total: number }>('SELECT COUNT(*) AS total FROM admin_audit_log'))!;
+      const rows = await db.many<AuditRow>(
+        `SELECT a.id, a.action, a.target_type, a.target_id, a.details, a.created_at,
+                u.id AS admin_id, u.name AS admin_name, u.email AS admin_email
+         FROM admin_audit_log a LEFT JOIN users u ON u.id = a.admin_id
+         ORDER BY a.created_at DESC, a.rowid DESC
+         LIMIT $1 OFFSET $2`,
+        [ADMIN_PAGE_SIZE, offsetOf(page)],
+      );
       return toPage(rows.map(toEntry), page, total);
     },
   };

@@ -3,7 +3,7 @@ import type {
 } from '@hueckoapp/shared';
 
 import { AI_TASKS } from '../ai/ai-client';
-import type { Db } from '../db/database';
+import type { Db, SqlParam } from '../db/db';
 
 /** Intervalo [from, to) de instantes. La API recibe días (A1) y los convierte con `dayRange`. */
 export type DateRange = { from: Date; to: Date };
@@ -64,15 +64,15 @@ export function bucketKeys({ from, to }: DateRange, bucket: StatsBucket): string
 
 const isoRange = ({ from, to }: DateRange) => [from.toISOString(), to.toISOString()] as const;
 
-const count = (db: Db, sql: string, ...params: string[]) => (db.prepare(sql).get(...params) as { n: number }).n;
+const count = async (db: Db, sql: string, params: readonly SqlParam[] = []) => (await db.one<{ n: number }>(sql, params))!.n;
 
 // Solo tablas con created_at en ISO UTC (texto ordenable); el nombre es fijo, nunca viene de la petición.
 type TimedTable = 'users' | 'groups' | 'proposals' | 'ai_calls';
 
-// SQLite solo filtra por rango (usa los índices); el tramo se calcula en JS con la zona del servidor (D8):
-// el 'localtime' de SQLite usa la zona del sistema operativo, no la de TZ.
-function createdAtIn(db: Db, table: TimedTable, range: DateRange): string[] {
-  const rows = db.prepare(`SELECT created_at AS at FROM ${table} WHERE created_at >= ? AND created_at < ?`).all(...isoRange(range)) as { at: string }[];
+// La base solo filtra por rango (usa los índices); el tramo se calcula en JS con la zona del servidor (TZ, D8),
+// que es la que manda en toda la app (la zona horaria de la base no interviene).
+async function createdAtIn(db: Db, table: TimedTable, range: DateRange): Promise<string[]> {
+  const rows = await db.many<{ at: string }>(`SELECT created_at AS at FROM ${table} WHERE created_at >= $1 AND created_at < $2`, isoRange(range));
   return rows.map((r) => r.at);
 }
 
@@ -85,11 +85,11 @@ function countByBucket(timestamps: readonly string[], bucket: StatsBucket): Map<
   return counts;
 }
 
-export function timeseries(db: Db, range: DateRange, bucket: StatsBucket): TimeseriesPoint[] {
-  const registrations = countByBucket(createdAtIn(db, 'users', range), bucket);
-  const groupsCreated = countByBucket(createdAtIn(db, 'groups', range), bucket);
-  const proposalsCreated = countByBucket(createdAtIn(db, 'proposals', range), bucket);
-  const aiCalls = countByBucket(createdAtIn(db, 'ai_calls', range), bucket);
+export async function timeseries(db: Db, range: DateRange, bucket: StatsBucket): Promise<TimeseriesPoint[]> {
+  const registrations = countByBucket(await createdAtIn(db, 'users', range), bucket);
+  const groupsCreated = countByBucket(await createdAtIn(db, 'groups', range), bucket);
+  const proposalsCreated = countByBucket(await createdAtIn(db, 'proposals', range), bucket);
+  const aiCalls = countByBucket(await createdAtIn(db, 'ai_calls', range), bucket);
   return bucketKeys(range, bucket).map((start) => ({
     start,
     registrations: registrations.get(start) ?? 0,
@@ -100,11 +100,12 @@ export function timeseries(db: Db, range: DateRange, bucket: StatsBucket): Times
 }
 
 /** Hora de inicio (0–23, zona del servidor) de los planes en pie; con rango, los que caen en él. */
-export function popularHours(db: Db, range: DateRange | null): HourCount[] {
-  const where = range ? ' AND scheduled_at >= ? AND scheduled_at < ?' : '';
-  const rows = db
-    .prepare(`SELECT scheduled_at AS at FROM proposals WHERE ${LIVE_PLAN} AND scheduled_at IS NOT NULL${where}`)
-    .all(...(range ? isoRange(range) : [])) as { at: string }[];
+export async function popularHours(db: Db, range: DateRange | null): Promise<HourCount[]> {
+  const where = range ? ' AND scheduled_at >= $1 AND scheduled_at < $2' : '';
+  const rows = await db.many<{ at: string }>(
+    `SELECT scheduled_at AS at FROM proposals WHERE ${LIVE_PLAN} AND scheduled_at IS NOT NULL${where}`,
+    range ? isoRange(range) : [],
+  );
   const hours: HourCount[] = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
   for (const { at } of rows) hours[new Date(at).getHours()].count += 1;
   return hours;
@@ -113,11 +114,12 @@ export function popularHours(db: Db, range: DateRange | null): HourCount[] {
 const rate = (ok: number, calls: number) => (calls === 0 ? null : Math.round((ok * 100) / calls));
 
 /** Llamadas a la IA por función (todas, también las no usadas, en el orden de AI_TASKS) y % de éxito. */
-export function aiUsage(db: Db, range: DateRange | null): AiUsage {
-  const where = range ? ' WHERE created_at >= ? AND created_at < ?' : '';
-  const rows = db
-    .prepare(`SELECT task, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, AVG(duration_ms) AS avg_ms FROM ai_calls${where} GROUP BY task`)
-    .all(...(range ? isoRange(range) : [])) as { task: AiTask; calls: number; ok: number; avg_ms: number | null }[];
+export async function aiUsage(db: Db, range: DateRange | null): Promise<AiUsage> {
+  const where = range ? ' WHERE created_at >= $1 AND created_at < $2' : '';
+  const rows = await db.many<{ task: AiTask; calls: number; ok: number; avg_ms: number | null }>(
+    `SELECT task, COUNT(*) AS calls, COUNT(*) FILTER (WHERE ok) AS ok, AVG(duration_ms) AS avg_ms FROM ai_calls${where} GROUP BY task`,
+    range ? isoRange(range) : [],
+  );
   const byTask: AiTaskStats[] = AI_TASKS.map((task) => {
     const row = rows.find((r) => r.task === task);
     const calls = row?.calls ?? 0;
@@ -129,32 +131,31 @@ export function aiUsage(db: Db, range: DateRange | null): AiUsage {
   return { calls, ok, successRate: rate(ok, calls), byTask };
 }
 
-function proposalCounts(db: Db, range: DateRange | null): ProposalCounts {
-  const where = range ? ' WHERE created_at >= ? AND created_at < ?' : '';
-  const rows = db
-    .prepare(`SELECT state, COUNT(*) AS n FROM proposals${where} GROUP BY state`)
-    .all(...(range ? isoRange(range) : [])) as { state: ProposalState; n: number }[];
+async function proposalCounts(db: Db, range: DateRange | null): Promise<ProposalCounts> {
+  const where = range ? ' WHERE created_at >= $1 AND created_at < $2' : '';
+  const rows = await db.many<{ state: ProposalState; n: number }>(
+    `SELECT state, COUNT(*) AS n FROM proposals${where} GROUP BY state`,
+    range ? isoRange(range) : [],
+  );
   const counts: ProposalCounts = { PROPUESTO: 0, CONFIRMADO: 0, EN_RECOORDINACION: 0, CANCELADO: 0 };
   for (const r of rows) counts[r.state] = r.n;
   return counts;
 }
 
 /** Totales de ahora mismo (GET /admin/stats). `admins` cuenta todas las cuentas ADMIN, activas o no. */
-export function adminStats(db: Db): AdminStats {
-  const users = db
-    .prepare(
-      `SELECT COUNT(*) AS total, COALESCE(SUM(status = 'ACTIVE'), 0) AS active,
-              COALESCE(SUM(status = 'SUSPENDED'), 0) AS suspended, COALESCE(SUM(role = 'ADMIN'), 0) AS admins
-       FROM users`,
-    )
-    .get() as AdminStats['users'];
+export async function adminStats(db: Db): Promise<AdminStats> {
+  const users = (await db.one<AdminStats['users']>(
+    `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE status = 'ACTIVE') AS active,
+            COUNT(*) FILTER (WHERE status = 'SUSPENDED') AS suspended, COUNT(*) FILTER (WHERE role = 'ADMIN') AS admins
+     FROM users`,
+  ))!;
   return {
     users: { total: users.total, active: users.active, suspended: users.suspended, admins: users.admins },
-    groups: count(db, 'SELECT COUNT(*) AS n FROM groups'),
-    proposals: proposalCounts(db, null),
-    confirmedPlans: count(db, `SELECT COUNT(*) AS n FROM proposals WHERE ${LIVE_PLAN}`),
-    incidences: count(db, 'SELECT COUNT(*) AS n FROM incidences'),
-    ai: aiUsage(db, null),
+    groups: await count(db, 'SELECT COUNT(*) AS n FROM groups'),
+    proposals: await proposalCounts(db, null),
+    confirmedPlans: await count(db, `SELECT COUNT(*) AS n FROM proposals WHERE ${LIVE_PLAN}`),
+    incidences: await count(db, 'SELECT COUNT(*) AS n FROM incidences'),
+    ai: await aiUsage(db, null),
   };
 }
 
@@ -162,36 +163,35 @@ export function adminStats(db: Db): AdminStats {
  * Todas las cifras de un periodo en una respuesta: la pantalla, el PDF y el CSV usan exactamente estos datos.
  * `range` va de medianoche a medianoche en la zona del servidor (lo construye `dayRange`).
  */
-export function adminReport(db: Db, range: DateRange, now: Date): AdminReport {
+export async function adminReport(db: Db, range: DateRange, now: Date): Promise<AdminReport> {
   const bucket: StatsBucket = calendarDays(range) <= DAILY_REPORT_MAX_DAYS ? 'day' : 'week';
   const [from, to] = isoRange(range);
-  const ai = aiUsage(db, range);
+  const ai = await aiUsage(db, range);
   const topGroups = (
-    db
-      .prepare(
-        `SELECT g.id, g.name, COUNT(*) AS proposals
-         FROM proposals p JOIN groups g ON g.id = p.group_id
-         WHERE p.created_at >= ? AND p.created_at < ?
-         GROUP BY g.id ORDER BY proposals DESC, g.name, g.id LIMIT 5`,
-      )
-      .all(from, to) as TopGroup[]
+    await db.many<TopGroup>(
+      `SELECT g.id, g.name, COUNT(*) AS proposals
+       FROM proposals p JOIN groups g ON g.id = p.group_id
+       WHERE p.created_at >= $1 AND p.created_at < $2
+       GROUP BY g.id ORDER BY proposals DESC, g.name, g.id LIMIT 5`,
+      [from, to],
+    )
   ).map((g) => ({ id: g.id, name: g.name, proposals: g.proposals }));
   return {
     period: { from, to, fromDate: localDateKey(range.from), toDate: lastDayKey(range) },
     generatedAt: now.toISOString(),
     bucket,
     summary: {
-      newUsers: count(db, 'SELECT COUNT(*) AS n FROM users WHERE created_at >= ? AND created_at < ?', from, to),
-      newGroups: count(db, 'SELECT COUNT(*) AS n FROM groups WHERE created_at >= ? AND created_at < ?', from, to),
-      newProposals: count(db, 'SELECT COUNT(*) AS n FROM proposals WHERE created_at >= ? AND created_at < ?', from, to),
-      confirmedPlans: count(db, `SELECT COUNT(*) AS n FROM proposals WHERE ${LIVE_PLAN} AND scheduled_at >= ? AND scheduled_at < ?`, from, to),
-      incidences: count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE created_at >= ? AND created_at < ?', from, to),
+      newUsers: await count(db, 'SELECT COUNT(*) AS n FROM users WHERE created_at >= $1 AND created_at < $2', [from, to]),
+      newGroups: await count(db, 'SELECT COUNT(*) AS n FROM groups WHERE created_at >= $1 AND created_at < $2', [from, to]),
+      newProposals: await count(db, 'SELECT COUNT(*) AS n FROM proposals WHERE created_at >= $1 AND created_at < $2', [from, to]),
+      confirmedPlans: await count(db, `SELECT COUNT(*) AS n FROM proposals WHERE ${LIVE_PLAN} AND scheduled_at >= $1 AND scheduled_at < $2`, [from, to]),
+      incidences: await count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE created_at >= $1 AND created_at < $2', [from, to]),
       aiCalls: ai.calls,
     },
-    proposalsByState: proposalCounts(db, range),
+    proposalsByState: await proposalCounts(db, range),
     ai,
-    timeseries: timeseries(db, range, bucket),
-    popularHours: popularHours(db, range),
+    timeseries: await timeseries(db, range, bucket),
+    popularHours: await popularHours(db, range),
     topGroups,
   };
 }

@@ -181,10 +181,10 @@ describe('PATCH /api/admin/users/:id/status', () => {
     const actor = { adminId: await insertUser(db), now: NOW };
     const only = await insertUser(db, { role: 'ADMIN' });
     const users = adminUsers(db);
-    expect(() => users.setStatus(actor, only, 'SUSPENDED')).toThrow('Tiene que quedar al menos un administrador activo.');
+    await expect(users.setStatus(actor, only, 'SUSPENDED')).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
     expect(await auditRows(db)).toEqual([]); // un 409 no deja anotación
     await insertUser(db, { role: 'ADMIN' });
-    expect(users.setStatus(actor, only, 'SUSPENDED')).toBe(true); // control positivo
+    expect(await users.setStatus(actor, only, 'SUSPENDED')).toBe(true); // control positivo
   });
 });
 
@@ -229,10 +229,10 @@ describe('PATCH /api/admin/users/:id/role', () => {
     const { db } = await makeTestApp();
     const actor = { adminId: await insertUser(db), now: NOW };
     const only = await insertUser(db, { role: 'ADMIN' });
-    expect(() => adminUsers(db).setRole(actor, only, 'USER')).toThrow('Tiene que quedar al menos un administrador activo.');
+    await expect(adminUsers(db).setRole(actor, only, 'USER')).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
     expect(await auditRows(db)).toEqual([]);
     await insertUser(db, { role: 'ADMIN' });
-    expect(adminUsers(db).setRole(actor, only, 'USER')).toBe(true); // control positivo
+    expect(await adminUsers(db).setRole(actor, only, 'USER')).toBe(true); // control positivo
     expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_DEMOTED']);
   });
 
