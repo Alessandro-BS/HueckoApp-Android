@@ -186,3 +186,17 @@ describe('adaptador pg: la conexión se cae en mitad de una transacción', () =>
     }
   });
 });
+
+describe('adaptador pg: tiempo máximo de las consultas (M6)', () => {
+  it('dentro de una transacción, statement_timeout = 15 s (SET LOCAL); fuera, el de la base: no va en el arranque de la conexión', async () => {
+    // El pooler de Neon (PgBouncer) rechaza statement_timeout como parámetro de arranque: por eso va con SET LOCAL.
+    const db = createDb(pgDriver(pgUrl, { max: 1 }));
+    try {
+      const show = () => db.one<{ statement_timeout: string }>('SHOW statement_timeout');
+      expect(await db.transaction(show)).toEqual({ statement_timeout: '15s' });
+      expect(await show()).toEqual({ statement_timeout: '0' });
+    } finally {
+      await db.close();
+    }
+  });
+});

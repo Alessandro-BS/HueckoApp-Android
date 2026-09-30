@@ -10,6 +10,16 @@ const NUMERIC = 1700;
 const getTypeParser = ((oid: number, format?: 'text' | 'binary') =>
   oid === INT8 || oid === NUMERIC ? (value: string) => Number(value) : pg.types.getTypeParser(oid, format as 'text')) as typeof pg.types.getTypeParser;
 
+// Tiempos máximos (M6): una consulta colgada no retiene para siempre una petición ni la conexión de una transacción.
+// - Dentro de una transacción, Postgres cancela la sentencia a los 15 s (SET LOCAL statement_timeout, que dura lo que
+//   la transacción). No va como parámetro de arranque (opción statement_timeout de pg): el pooler de Neon (PgBouncer
+//   en modo transacción) rechaza la conexión con «unsupported startup parameter», y un SET de sesión se filtraría a
+//   otros clientes del pooler.
+// - Cualquier consulta: pg deja de esperar a los 20 s (query_timeout, en el cliente) y el Pool descarta esa conexión.
+//   Algo más que statement_timeout, para que dentro de una transacción responda primero Postgres.
+export const STATEMENT_TIMEOUT_MS = 15_000;
+export const QUERY_TIMEOUT_MS = 20_000;
+
 /** «Postgres (host)»: sin usuario ni contraseña, para mensajes y logs. */
 export function describePostgresUrl(url: string): string {
   return `Postgres (${new URL(url).host})`;
@@ -35,6 +45,7 @@ export function pgDriver(connectionString: string, options: { max?: number } = {
     // Neon suspende la base sin tráfico: la primera conexión tras un rato puede tardar en despertarla.
     connectionTimeoutMillis: 15_000,
     idleTimeoutMillis: 30_000,
+    query_timeout: QUERY_TIMEOUT_MS,
     types: { getTypeParser },
   });
   // Neon cierra conexiones inactivas: sin este manejador, ese error del Pool tumbaría el proceso.
@@ -55,7 +66,7 @@ export function pgDriver(connectionString: string, options: { max?: number } = {
       let result: T;
       let committed: boolean;
       try {
-        await client.query('BEGIN');
+        await client.query(`BEGIN; SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT_MS}`); // un solo viaje de red
         result = await fn(runner(client));
         // Transacción abortada (un error capturado dentro): el COMMIT responde «ROLLBACK» sin lanzar.
         committed = (await client.query('COMMIT')).command === 'COMMIT';
