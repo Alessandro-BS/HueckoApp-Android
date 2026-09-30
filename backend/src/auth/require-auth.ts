@@ -20,6 +20,8 @@ type AccessRow = { role: UserRole; status: UserStatus };
 export function requireAuth(db: Db, secret: string): RequestHandler {
   const findAccess = db.prepare('SELECT role, status FROM users WHERE id = ?');
   return (req, res, next) => {
+    // Ya comprobado en esta misma petición (p. ej. /groups/:id/ai/* atraviesa varios routers con este middleware).
+    if (typeof res.locals.userId === 'string') return next();
     const header = req.get('authorization') ?? '';
     const [scheme, token] = header.split(' ');
     const userId = scheme === 'Bearer' && token ? verifyToken(token, secret) : null;

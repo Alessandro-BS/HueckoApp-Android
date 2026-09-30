@@ -80,11 +80,9 @@ export function adminUsers(db: Db) {
 
     detail(id: string): AdminUserDetail {
       const base = summary(id);
-      const groups = (
-        db
-          .prepare(`SELECT g.id, g.name, m.role FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? ${MEMBER_ORDER}`)
-          .all(id) as AdminUserGroup[]
-      ).map((g) => ({ id: g.id, name: g.name, role: g.role }));
+      const groups = db
+        .prepare(`SELECT g.id, g.name, m.role FROM group_members m JOIN groups g ON g.id = m.group_id WHERE m.user_id = ? ${MEMBER_ORDER}`)
+        .all(id) as AdminUserGroup[];
       const a = db
         .prepare(
           `SELECT (SELECT COUNT(*) FROM proposals WHERE created_by = ?) AS proposals_created,

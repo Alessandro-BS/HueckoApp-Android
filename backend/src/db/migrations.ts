@@ -101,6 +101,9 @@ export const migrations: string[] = [
   // 4 — Fase 4.5: administración. Rol y estado de cada cuenta (se leen de aquí en cada petición, nunca del JWT),
   // registro de acciones de administración y de llamadas a la IA (sin prompt ni respuesta), e índices por fecha para
   // las estadísticas (filtran por rango de created_at / scheduled_at). admin_id NULL = consola (npm run make-admin).
+  // admin_audit_log.admin_id no tiene ON DELETE a propósito: la app no borra cuentas, y con SET NULL la entrada de un
+  // admin borrado se leería como «Consola del servidor». Si algún día se borran cuentas, guardar antes su nombre en
+  // `details` (una migración nueva; esta ya está aplicada y no se edita).
   `ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'USER' CHECK (role IN ('USER', 'ADMIN'));
    ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED'));
    CREATE INDEX users_created_idx ON users (created_at);

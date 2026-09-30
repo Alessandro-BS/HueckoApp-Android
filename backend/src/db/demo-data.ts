@@ -13,7 +13,8 @@ import { withTransaction } from './transaction';
 export const DEMO_PASSWORD = 'password123';
 export const DEMO_PROPOSAL_TITLES = ['Reunión de avance del proyecto', 'Repaso antes de la entrega'] as const;
 
-export type SeedCounts = { users: number; groups: number; blocks: number; proposals: number };
+// adminReset: admin@test.com había dejado de ser ADMIN activo y la semilla lo restableció (seed.ts lo avisa).
+export type SeedCounts = { users: number; groups: number; blocks: number; proposals: number; adminReset: boolean };
 
 export const DEMO_ADMIN_EMAIL = 'admin@test.com';
 
@@ -114,7 +115,7 @@ function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): number 
 
 export function seedDemoData(db: Db, passwordHash: string, now: Date): SeedCounts {
   return withTransaction(db, () => {
-    const created: SeedCounts = { users: 0, groups: 0, blocks: 0, proposals: 0 };
+    const created: SeedCounts = { users: 0, groups: 0, blocks: 0, proposals: 0, adminReset: false };
     const ids = {} as Record<UserKey, string>;
 
     for (const u of USERS) {
@@ -131,7 +132,11 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): SeedCount
       created.users++;
     }
     // La cuenta demo de administración sigue siéndolo aunque se haya cambiado desde la app o la consola.
-    db.prepare("UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE email = ?").run(DEMO_ADMIN_EMAIL);
+    // No se anota en el registro de acciones (solo desarrollo; la semilla no corre en producción): se avisa por consola.
+    const reset = db
+      .prepare("UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE email = ? AND (role <> 'ADMIN' OR status <> 'ACTIVE')")
+      .run(DEMO_ADMIN_EMAIL);
+    created.adminReset = Number(reset.changes) > 0;
 
     for (const g of GROUPS) {
       let group = db.prepare('SELECT id FROM groups WHERE invite_code = ?').get(g.inviteCode) as { id: string } | undefined;

@@ -46,7 +46,9 @@ describe('acceso a /api/admin (todas las rutas)', () => {
     const suspended = await registerAdmin(app, db, { name: 'Admin suspendido' });
     db.prepare("UPDATE users SET status = 'SUSPENDED' WHERE id = ?").run(suspended.user.id);
 
-    expect((await call(app, method, path)).status).toBe(401);
+    const anonymous = await call(app, method, path);
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.body.error.code).toBe('UNAUTHORIZED');
 
     const user = await call(app, method, path).set(bearer(ana.token));
     expect(user.status).toBe(403);
@@ -56,8 +58,9 @@ describe('acceso a /api/admin (todas las rutas)', () => {
     expect(blocked.status).toBe(403);
     expect(blocked.body.error.code).toBe('ACCOUNT_SUSPENDED');
 
-    // Control positivo: un ADMIN activo pasa la barrera (la ruta puede responder 200, 400 o 404, nunca 401/403).
+    // Control positivo: un ADMIN activo pasa la barrera (la ruta puede responder 200, 204, 400 o 404, nunca 401/403 ni 5xx).
     const ok = await call(app, method, path).set(bearer(admin.token));
     expect([401, 403]).not.toContain(ok.status);
+    expect(ok.status).toBeLessThan(500);
   });
 });

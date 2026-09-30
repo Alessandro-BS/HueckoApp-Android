@@ -6,12 +6,13 @@ import { openDatabase } from '../src/db/database';
 import { insertAiCall, insertGroup, insertProposal, insertUser, registerAdmin } from './admin-fixtures';
 import { bearer, makeTestApp, NOW, registerUser } from './helpers';
 
-// Estos tests suponen TZ=America/Lima (UTC−5 todo el año), como `TZ=America/Lima npm test` (Global Constraints).
+// Estos tests suponen TZ=America/Lima (UTC−5 todo el año); vitest.config.mts la fija para todo `npm test`.
 const lima = (y: number, m: number, d: number, h = 0) => new Date(y, m - 1, d, h);
 const empty = { groupsCreated: 0, proposalsCreated: 0, aiCalls: 0 };
 
 const FORMAT = 'Usa una fecha con el formato AAAA-MM-DD (p. ej. 2026-09-01).';
 const NO_SUCH_DAY = 'Esa fecha no existe en el calendario.';
+const YEAR_RANGE = 'El año debe estar entre 2000 y 9999.';
 
 describe('precondición', () => {
   it('los tests corren con TZ=America/Lima', () => {
@@ -164,6 +165,16 @@ describe('GET /api/admin/stats/timeseries', () => {
     expect(res.status).toBe(200);
   });
 
+  it('los años 2000 y 9999 son los límites aceptados', async () => {
+    const { app, admin } = await adminApp();
+    const get = (from: string, to: string) =>
+      request(app).get('/api/admin/stats/timeseries').query({ from, to, bucket: 'day' }).set(bearer(admin.token));
+    const first = await get('2000-01-01', '2000-01-02');
+    expect(first.status).toBe(200);
+    expect(first.body.points.map((p: { start: string }) => p.start)).toEqual(['2000-01-01', '2000-01-02']);
+    expect((await get('9999-12-30', '9999-12-31')).status).toBe(200);
+  });
+
   it.each([
     [{ from: '2026-10-01', to: '2026-09-30' }, '«to» no puede ser anterior a «from».'],
     [{ from: '2025-08-31', to: '2026-09-01' }, 'El periodo no puede superar 366 días.'],
@@ -172,6 +183,8 @@ describe('GET /api/admin/stats/timeseries', () => {
     [{ to: '2026-09-02' }, FORMAT],
     [{ from: '2026-02-30', to: '2026-03-02' }, NO_SUCH_DAY],
     [{ from: '2026-09-01', to: '2026-13-01' }, NO_SUCH_DAY],
+    [{ from: '0099-01-01', to: '0099-01-02' }, YEAR_RANGE],
+    [{ from: '1999-12-31', to: '2000-01-01' }, YEAR_RANGE],
     [{ from: '2026-09-01', to: '2026-09-02', bucket: 'month' }, 'bucket debe ser day o week.'],
   ])('%j → 400 «%s»', async (query, message) => {
     const { app, admin } = await adminApp();
@@ -255,6 +268,15 @@ describe('GET /api/admin/reports', () => {
     expect(res.body.timeseries[0].start).toBe('2026-07-27'); // el 1/8/2026 es sábado
     expect(res.body.timeseries.at(-1).start).toBe('2026-09-28');
     expect(res.body.period).toEqual({ from: lima(2026, 8, 1).toISOString(), to: lima(2026, 10, 1).toISOString(), fromDate: '2026-08-01', toDate: '2026-09-30' });
+  });
+
+  it('a igual número de propuestas y nombre, los grupos más activos salen en un orden fijo (por id)', async () => {
+    const { app, db, admin } = await adminApp();
+    const ana = insertUser(db);
+    const ids = [insertGroup(db, { name: 'Igual', ownerId: ana }), insertGroup(db, { name: 'Igual', ownerId: ana })];
+    for (const groupId of [...ids].reverse()) insertProposal(db, { groupId, createdBy: ana, createdAt: '2026-09-29T15:00:00.000Z' });
+    const res = await request(app).get('/api/admin/reports').query({ from: '2026-09-29', to: '2026-09-29' }).set(bearer(admin.token));
+    expect(res.body.topGroups.map((g: { id: string }) => g.id)).toEqual([...ids].sort());
   });
 
   it('sin periodo → 400', async () => {

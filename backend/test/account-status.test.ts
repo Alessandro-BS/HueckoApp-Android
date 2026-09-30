@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { requireAdmin, requireAuth } from '../src/auth/require-auth';
 import type { Db } from '../src/db/database';
 import { errorHandler } from '../src/middleware/errors';
-import { bearer, makeTestApp, NOW, registerUser, TEST_SECRET } from './helpers';
+import { bearer, createGroup, makeTestApp, NOW, registerUser, TEST_SECRET } from './helpers';
 
 const setRole = (db: Db, id: string, role: 'USER' | 'ADMIN') => db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
 const setStatus = (db: Db, id: string, status: 'ACTIVE' | 'SUSPENDED') =>
@@ -96,13 +96,56 @@ describe('cuentas suspendidas (D2)', () => {
     expect((await request(app).get('/api/groups').set(bearer(ana.token))).status).toBe(200);
   });
 
+  it('una cuenta suspendida tampoco puede usar la IA (POST) y no se anota ninguna llamada', async () => {
+    const { app, db } = makeTestApp({ now: () => NOW });
+    const ana = await registerUser(app);
+    const group = await createGroup(app, ana.token);
+    const suggest = () => request(app).post(`/api/groups/${group.id}/ai/suggestions`).set(bearer(ana.token));
+    const aiCalls = () => (db.prepare('SELECT COUNT(*) AS n FROM ai_calls').get() as { n: number }).n;
+    expect((await suggest()).status).toBe(200); // control positivo: activa, sí (y queda anotada)
+    expect(aiCalls()).toBe(1);
+    setStatus(db, ana.user.id, 'SUSPENDED');
+    const res = await suggest();
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatchObject(SUSPENDED);
+    expect(aiCalls()).toBe(1);
+  });
+
   it('el token de una cuenta que ya no existe → 401 UNAUTHORIZED', async () => {
     const { app, db } = makeTestApp();
     const ana = await registerUser(app);
+    expect((await request(app).get('/api/groups').set(bearer(ana.token))).status).toBe(200); // control positivo
     db.prepare('DELETE FROM users WHERE id = ?').run(ana.user.id);
     const res = await request(app).get('/api/groups').set(bearer(ana.token));
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+});
+
+describe('requireAuth idempotente (F11)', () => {
+  it('montado dos veces en la misma petición, lee la cuenta de la base una sola vez', async () => {
+    const { app, db } = makeTestApp();
+    const ana = await registerUser(app);
+    const prepare = db.prepare.bind(db);
+    let reads = 0;
+    const counting = {
+      prepare: (sql: string) => {
+        const statement = prepare(sql);
+        return { get: (...args: string[]) => ((reads += 1), statement.get(...args)) };
+      },
+    } as unknown as Db;
+    const auth = requireAuth(counting, TEST_SECRET);
+    const twice = express();
+    twice.get('/doble', auth, auth, (_req, res) => {
+      res.json({ userId: res.locals.userId });
+    });
+    twice.use(errorHandler);
+    const res = await request(twice).get('/doble').set(bearer(ana.token));
+    expect(res.body).toEqual({ userId: ana.user.id });
+    expect(reads).toBe(1);
+    // Control positivo: otra petición vuelve a leer (el atajo es solo dentro de la misma petición).
+    await request(twice).get('/doble').set(bearer(ana.token));
+    expect(reads).toBe(2);
   });
 });
 
@@ -141,6 +184,7 @@ describe('requireAdmin (D2)', () => {
     const { app, db } = makeTestApp();
     const ana = await registerUser(app);
     setRole(db, ana.user.id, 'ADMIN');
+    expect((await request(adminOnly(db)).get('/solo-admin').set(bearer(ana.token))).status).toBe(200); // control positivo
     setStatus(db, ana.user.id, 'SUSPENDED');
     const res = await request(adminOnly(db)).get('/solo-admin').set(bearer(ana.token));
     expect(res.status).toBe(403);

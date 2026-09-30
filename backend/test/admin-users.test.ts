@@ -64,6 +64,19 @@ describe('GET /api/admin/users', () => {
     expect(await search('   ')).toHaveLength(4); // vacía tras el trim = todas
   });
 
+  it('?page= vacío equivale a la página 1 (como omitirlo)', async () => {
+    const { app, admin } = await setup();
+    const res = await request(app).get('/api/admin/users?page=').set(bearer(admin.token));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ page: 1, total: 2 });
+    const audit = await request(app).get('/api/admin/audit?page=').set(bearer(admin.token));
+    expect(audit.status).toBe(200);
+    expect(audit.body.page).toBe(1);
+    // Control positivo: un número sigue valiendo y uno inválido sigue siendo 400.
+    expect((await request(app).get('/api/admin/users?page=2').set(bearer(admin.token))).body.page).toBe(2);
+    expect((await request(app).get('/api/admin/users?page=0').set(bearer(admin.token))).status).toBe(400);
+  });
+
   it.each([
     [{ page: 0 }, 'La página empieza en 1.'],
     [{ page: 'dos' }, 'La página debe ser un número.'],
@@ -122,6 +135,9 @@ describe('PATCH /api/admin/users/:id/status', () => {
     const res = await patchStatus(app, admin.token, ana.user.id, 'ACTIVE');
     expect(res.status).toBe(200);
     expect(auditRows(db)).toEqual([]);
+    // Control positivo: un cambio real sí se anota.
+    expect((await patchStatus(app, admin.token, ana.user.id, 'SUSPENDED')).status).toBe(200);
+    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_SUSPENDED']);
   });
 
   it('nadie puede suspenderse a sí mismo (409 CANNOT_CHANGE_SELF); a otra admin, sí', async () => {
@@ -145,6 +161,7 @@ describe('PATCH /api/admin/users/:id/status', () => {
     const missing = await patchStatus(app, admin.token, 'no-existe', 'SUSPENDED');
     expect(missing.status).toBe(404);
     expect(missing.body.error.code).toBe('USER_NOT_FOUND');
+    expect((await patchStatus(app, admin.token, ana.user.id, 'SUSPENDED')).status).toBe(200); // control positivo
   });
 
   it('la acción y su anotación van en la misma transacción: si no se puede anotar, no se suspende', async () => {
@@ -167,6 +184,7 @@ describe('PATCH /api/admin/users/:id/status', () => {
     const only = insertUser(db, { role: 'ADMIN' });
     const users = adminUsers(db);
     expect(() => users.setStatus(actor, only, 'SUSPENDED')).toThrow('Tiene que quedar al menos un administrador activo.');
+    expect(auditRows(db)).toEqual([]); // un 409 no deja anotación
     insertUser(db, { role: 'ADMIN' });
     expect(users.setStatus(actor, only, 'SUSPENDED')).toBe(true); // control positivo
   });
@@ -188,18 +206,57 @@ describe('PATCH /api/admin/users/:id/role', () => {
     ]);
   });
 
-  it('nadie puede quitarse el rol a sí mismo: 409 CANNOT_CHANGE_SELF', async () => {
-    const { app, admin } = await setup();
+  it('nadie puede quitarse el rol a sí mismo: 409 CANNOT_CHANGE_SELF, sin anotar nada; a otra admin, sí', async () => {
+    const { app, db, admin } = await setup();
     const res = await patchRole(app, admin.token, admin.user.id, 'USER');
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CANNOT_CHANGE_SELF');
+    expect(auditRows(db)).toEqual([]);
+    const other = await registerAdmin(app, db, { name: 'Otra admin' });
+    expect((await patchRole(app, admin.token, other.user.id, 'USER')).status).toBe(200); // control positivo
+    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_DEMOTED']);
   });
 
-  it('400 con un rol desconocido', async () => {
+  it('dar el rol que ya tiene responde 200 sin anotar nada', async () => {
+    const { app, db, admin, ana } = await setup();
+    const res = await patchRole(app, admin.token, ana.user.id, 'USER');
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe('USER');
+    expect(auditRows(db)).toEqual([]);
+    expect((await patchRole(app, admin.token, ana.user.id, 'ADMIN')).status).toBe(200); // control positivo
+    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_PROMOTED']);
+  });
+
+  it('servicio: quitar el rol al último ADMIN activo → 409 LAST_ADMIN sin anotar nada', () => {
+    const { db } = makeTestApp();
+    const actor = { adminId: insertUser(db), now: NOW };
+    const only = insertUser(db, { role: 'ADMIN' });
+    expect(() => adminUsers(db).setRole(actor, only, 'USER')).toThrow('Tiene que quedar al menos un administrador activo.');
+    expect(auditRows(db)).toEqual([]);
+    insertUser(db, { role: 'ADMIN' });
+    expect(adminUsers(db).setRole(actor, only, 'USER')).toBe(true); // control positivo
+    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_DEMOTED']);
+  });
+
+  it('400 con un rol desconocido; con uno válido, 200', async () => {
     const { app, admin, ana } = await setup();
     const res = await patchRole(app, admin.token, ana.user.id, 'ROOT');
     expect(res.status).toBe(400);
     expect(res.body.error.details).toContainEqual(expect.objectContaining({ message: 'El rol debe ser USER o ADMIN.' }));
+    expect((await patchRole(app, admin.token, ana.user.id, 'ADMIN')).status).toBe(200); // control positivo
+  });
+
+  it('la acción y su anotación van en la misma transacción: si no se puede anotar, el rol no cambia', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {}); // el 500 se escribe en el log
+    try {
+      const { app, db, admin, ana } = await setup();
+      db.exec('DROP TABLE admin_audit_log');
+      expect((await patchRole(app, admin.token, ana.user.id, 'ADMIN')).status).toBe(500);
+      const row = db.prepare('SELECT role FROM users WHERE id = ?').get(ana.user.id) as { role: string };
+      expect(row.role).toBe('USER');
+    } finally {
+      quiet.mockRestore();
+    }
   });
 });
 

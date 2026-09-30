@@ -5,7 +5,10 @@ import { z } from 'zod';
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
 import { askAi, type AiCallOutcome } from '../src/ai/ask-ai';
 import type { Db } from '../src/db/database';
-import { bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, setupSeedGroup } from './helpers';
+import { bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup } from './helpers';
+
+// Cabecera PNG: el servidor no decodifica la imagen, solo la reenvía a la IA.
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
 const REQUEST: AiRequest = { task: 'voting-summary', prompt: 'Resume la votación', schema: { type: 'object' } };
 const schema = z.object({ answer: z.string() });
@@ -75,6 +78,42 @@ describe('las rutas de IA guardan quién, qué función, si salió bien, cuánto
     await request(app).post(`/api/proposals/${plan.id}/cancel`).set(bearer(yo.token)).expect(200);
     expect((await request(app).post(`/api/proposals/${plan.id}/ai/summary`).set(bearer(yo.token))).status).toBe(409);
     expect(aiCalls(db)).toEqual([]);
+  });
+
+  it('una respuesta ilegible → 502 y la fila queda con ok 0', async () => {
+    const { app, db, yo, plan } = await groupWithPlan(fakeAi('hola').client);
+    expect((await request(app).post(`/api/proposals/${plan.id}/ai/summary`).set(bearer(yo.token))).status).toBe(502);
+    expect(aiCalls(db).map((r) => [r.task, r.ok])).toEqual([['voting-summary', 0]]);
+  });
+
+  it('si la IA falla y además no se puede anotar, la ruta sigue respondiendo 503', async () => {
+    const { app, db, yo, plan } = await groupWithPlan(failingAi());
+    db.exec('DROP TABLE ai_calls');
+    const res = await request(app).post(`/api/proposals/${plan.id}/ai/summary`).set(bearer(yo.token));
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('AI_UNAVAILABLE');
+  });
+
+  it('leer un horario de una foto anota schedule-ocr; sin foto (400) no se anota nada', async () => {
+    const { app, db } = makeTestApp({ now: () => NOW });
+    const ana = await registerUser(app);
+    const missing = await request(app).post('/api/ai/schedule-ocr').set(bearer(ana.token)).send({});
+    expect(missing.status).toBe(400);
+    expect(aiCalls(db)).toEqual([]);
+    const res = await request(app).post('/api/ai/schedule-ocr').set(bearer(ana.token)).attach('image', PNG, { filename: 'h.png', contentType: 'image/png' });
+    expect(res.status).toBe(200);
+    expect(aiCalls(db)).toEqual([
+      { user_id: ana.user.id, task: 'schedule-ocr', ok: 1, duration_ms: expect.any(Number), created_at: NOW.toISOString() },
+    ]);
+  });
+
+  it('una petición frenada por el límite de IA (429) no se anota', async () => {
+    const { app, db } = makeTestApp({ now: () => NOW, aiRateLimit: 1 });
+    const ana = await registerUser(app);
+    const scan = () => request(app).post('/api/ai/schedule-ocr').set(bearer(ana.token)).attach('image', PNG, { filename: 'h.png', contentType: 'image/png' });
+    expect((await scan()).status).toBe(200);
+    expect((await scan()).status).toBe(429);
+    expect(aiCalls(db)).toHaveLength(1);
   });
 
   it('ideas y borrador también anotan su función (modo demostración)', async () => {

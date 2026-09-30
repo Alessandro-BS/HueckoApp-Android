@@ -1,5 +1,7 @@
+import type { Proposal } from '@hueckoapp/shared';
+import type { Express } from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/database';
 import { insertGroup, registerAdmin } from './admin-fixtures';
@@ -14,6 +16,20 @@ async function setupGroups() {
 
 const count = (db: Db, sql: string, ...params: string[]) => (db.prepare(sql).get(...params) as { n: number }).n;
 const names = (body: { items: { name: string }[] }) => body.items.map((g) => g.name);
+
+type Session = { token: string; user: { id: string } };
+
+// Plan de un solo tramo (miércoles 11–13) votado por los dos y confirmado por quien lo creó.
+async function confirmedPlan(app: Express, yo: Session, ana: Session, groupId: string, title = 'Reunión'): Promise<Proposal> {
+  const plan = await createProposal(app, yo.token, groupId, {
+    title, votingDeadline: DEADLINE, windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00' }],
+  });
+  await voteFor(app, plan.id, plan.windows[0].id, yo.token).expect(200);
+  await voteFor(app, plan.id, plan.windows[0].id, ana.token).expect(200);
+  const res = await request(app).post(`/api/proposals/${plan.id}/confirm`).set(bearer(yo.token)).send({});
+  if (res.status !== 200) throw new Error(`confirmar falló: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body;
+}
 
 describe('GET /api/admin/groups', () => {
   it('cada grupo con miembros, propuestas y OWNER; busca por nombre o por código', async () => {
@@ -30,6 +46,18 @@ describe('GET /api/admin/groups', () => {
     const search = async (q: string) => names((await request(app).get('/api/admin/groups').query({ search: q }).set(bearer(admin.token))).body);
     expect(await search('huecko1')).toEqual(['Amigos de la Uni']);
     expect(await search('INTEGRADOR')).toEqual(['Proyecto Integrador']);
+  });
+
+  it('% y _ se buscan literalmente, no como comodines', async () => {
+    const { app, db, admin } = await setupGroups();
+    insertGroup(db, { name: 'Rebajas 100%', inviteCode: 'REBAJAS1' });
+    insertGroup(db, { name: 'Club_Lectura', inviteCode: 'CLUBLEC1' });
+    insertGroup(db, { name: 'Club Lectura', inviteCode: 'CLUBLEC2' });
+    const search = async (q: string) => names((await request(app).get('/api/admin/groups').query({ search: q }).set(bearer(admin.token))).body);
+    expect(await search('100%')).toEqual(['Rebajas 100%']);
+    expect(await search('%')).toEqual(['Rebajas 100%']);
+    expect(await search('b_l')).toEqual(['Club_Lectura']);
+    expect((await search('club')).sort()).toEqual(['Club Lectura', 'Club_Lectura']); // control positivo
   });
 
   it('los más nuevos primero y 20 por página', async () => {
@@ -82,14 +110,19 @@ describe('GET /api/admin/groups/:id', () => {
 describe('DELETE /api/admin/groups/:id', () => {
   it('borra el grupo con todo lo suyo, lo anota y no toca los demás grupos', async () => {
     const { app, db, admin, yo, ana, group } = await setupGroups();
-    const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
-    await voteFor(app, plan.id, plan.windows[0].id, ana.token).expect(200);
+    const plan = await confirmedPlan(app, yo, ana, group.id);
+    await request(app).post(`/api/proposals/${plan.id}/incidences`).set(bearer(ana.token)).send({ type: 'FALTA', reason: 'Enferma' }).expect(201);
     const other = await createGroup(app, ana.token, { name: 'Otro' });
+    const left = () => [
+      count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?', group.id),
+      count(db, 'SELECT COUNT(*) AS n FROM proposals WHERE group_id = ?', group.id),
+      count(db, 'SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = ?', plan.id),
+      count(db, 'SELECT COUNT(*) AS n FROM votes WHERE proposal_id = ?', plan.id),
+      count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = ?', plan.id),
+    ];
+    expect(left()).toEqual([2, 1, 1, 2, 1]); // control positivo: antes de borrar, todo existe
     expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(204);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?', group.id)).toBe(0);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM proposals WHERE group_id = ?', group.id)).toBe(0);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = ?', plan.id)).toBe(0);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM votes WHERE proposal_id = ?', plan.id)).toBe(0);
+    expect(left()).toEqual([0, 0, 0, 0, 0]);
     expect((await request(app).get(`/api/groups/${group.id}`).set(bearer(yo.token))).status).toBe(404);
     expect((await request(app).get(`/api/groups/${other.id}`).set(bearer(ana.token))).status).toBe(200);
     const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
@@ -105,6 +138,19 @@ describe('DELETE /api/admin/groups/:id', () => {
     expect(denied.body.error.code).toBe('NOT_ADMIN');
     expect((await request(app).get(`/api/groups/${group.id}`).set(bearer(yo.token))).status).toBe(200);
     expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(204); // control positivo
+  });
+
+  it('si no se puede anotar, el grupo no se borra (misma transacción)', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {}); // el 500 se escribe en el log
+    try {
+      const { app, db, admin, group } = await setupGroups();
+      db.exec('DROP TABLE admin_audit_log');
+      expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(500);
+      expect(count(db, 'SELECT COUNT(*) AS n FROM groups WHERE id = ?', group.id)).toBe(1);
+      expect(count(db, 'SELECT COUNT(*) AS n FROM group_members WHERE group_id = ?', group.id)).toBe(2);
+    } finally {
+      quiet.mockRestore();
+    }
   });
 
   it('404 GROUP_NOT_FOUND si no existe', async () => {
@@ -133,6 +179,39 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
       targetId: plan.id,
       details: { title: 'Fiesta', groupId: group.id, from: 'PROPUESTO', reason: 'Contenido inapropiado' },
     });
+  });
+
+  it('también cancela un plan CONFIRMADO o EN_RECOORDINACION y anota el estado de partida', async () => {
+    const { app, admin, yo, ana, group } = await setupGroups();
+    const confirmed = await confirmedPlan(app, yo, ana, group.id, 'Confirmado');
+    const recoordinating = await confirmedPlan(app, yo, ana, group.id, 'Re-coordinando');
+    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true }).expect(200);
+    const report = await request(app)
+      .post(`/api/proposals/${recoordinating.id}/incidences`)
+      .set(bearer(ana.token))
+      .send({ type: 'FALTA', reason: 'Enferma' });
+    expect(report.body.state).toBe('EN_RECOORDINACION'); // control del escenario
+    for (const plan of [confirmed, recoordinating]) {
+      const res = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe('CANCELADO');
+    }
+    const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
+    expect(audit.body.items.map((e: { details: { from: string } }) => e.details.from)).toEqual(['EN_RECOORDINACION', 'CONFIRMADO']);
+  });
+
+  it('si no se puede anotar, la propuesta no se cancela (misma transacción)', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {}); // el 500 se escribe en el log
+    try {
+      const { app, db, admin, yo, group } = await setupGroups();
+      const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
+      db.exec('DROP TABLE admin_audit_log');
+      const res = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
+      expect(res.status).toBe(500);
+      expect((await request(app).get(`/api/proposals/${plan.id}`).set(bearer(yo.token))).body.state).toBe('PROPUESTO');
+    } finally {
+      quiet.mockRestore();
+    }
   });
 
   it('otra vez → 409 INVALID_STATE y no se anota dos veces', async () => {

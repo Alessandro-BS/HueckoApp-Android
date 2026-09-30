@@ -9,12 +9,16 @@ export const listQuerySchema = z.object({
     .trim()
     .max(100, 'La búsqueda admite hasta 100 caracteres.')
     .default(''),
-  page: z.coerce
-    .number({ error: 'La página debe ser un número.' })
-    .int('La página debe ser un número entero.')
-    .min(1, 'La página empieza en 1.')
-    .max(100_000, 'Página demasiado alta.')
-    .default(1),
+  // `?page=` vacío cuenta como omitido (página 1): z.coerce lo convertiría en 0 y daría un 400 confuso.
+  page: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.coerce
+      .number({ error: 'La página debe ser un número.' })
+      .int('La página debe ser un número entero.')
+      .min(1, 'La página empieza en 1.')
+      .max(100_000, 'Página demasiado alta.')
+      .default(1),
+  ),
 });
 
 export const pageQuerySchema = listQuerySchema.pick({ page: true });
@@ -41,9 +45,14 @@ export const cancelProposalSchema = z.object({
 
 const DATE_FORMAT = 'Usa una fecha con el formato AAAA-MM-DD (p. ej. 2026-09-01).';
 
+// Años 2000–9999: con los años 0–99, `new Date(año, …)` (que usan los tramos) saltaría a 19xx.
+export const MIN_YEAR = 2000;
+export const MAX_YEAR = 9999;
+
 const dayKey = z.string({ error: DATE_FORMAT }).superRefine((value, ctx) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) ctx.addIssue({ code: 'custom', message: DATE_FORMAT });
   else if (!dateFromKey(value)) ctx.addIssue({ code: 'custom', message: 'Esa fecha no existe en el calendario.' });
+  else if (Number(value.slice(0, 4)) < MIN_YEAR) ctx.addIssue({ code: 'custom', message: `El año debe estar entre ${MIN_YEAR} y ${MAX_YEAR}.` });
 });
 
 // Problema del periodo, o null. Con alguna fecha inválida no dice nada: ese error ya lo da `dayKey`.

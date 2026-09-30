@@ -43,7 +43,7 @@ export function dayRange(fromKey: string, toKey: string): DateRange {
 }
 
 /** Días de calendario que toca [from, to) con límites en medianoches: redondear absorbe la hora de un cambio de horario. */
-export const calendarDays = ({ from, to }: DateRange) => Math.round((addDays(to, 0).getTime() - addDays(from, 0).getTime()) / DAY_MS);
+export const calendarDays = ({ from, to }: DateRange) => Math.round((to.getTime() - from.getTime()) / DAY_MS);
 
 /** Último día incluido en [from, to) cuando `to` es una medianoche. */
 export const lastDayKey = ({ to }: DateRange) => localDateKey(addDays(to, -1));
@@ -172,7 +172,7 @@ export function adminReport(db: Db, range: DateRange, now: Date): AdminReport {
         `SELECT g.id, g.name, COUNT(*) AS proposals
          FROM proposals p JOIN groups g ON g.id = p.group_id
          WHERE p.created_at >= ? AND p.created_at < ?
-         GROUP BY g.id ORDER BY proposals DESC, g.name LIMIT 5`,
+         GROUP BY g.id ORDER BY proposals DESC, g.name, g.id LIMIT 5`,
       )
       .all(from, to) as TopGroup[]
   ).map((g) => ({ id: g.id, name: g.name, proposals: g.proposals }));
