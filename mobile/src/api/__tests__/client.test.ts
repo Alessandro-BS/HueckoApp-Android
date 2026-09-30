@@ -103,3 +103,28 @@ describe('errorMessage', () => {
     expect(errorMessage(new Error('x'))).toBe('Ocurrió un error inesperado.');
   });
 });
+
+describe('fin de sesión por suspensión (D14)', () => {
+  it('401 avisa con el motivo UNAUTHORIZED y el mensaje del servidor', async () => {
+    setAuthToken('vigente');
+    api.defaults.adapter = failWith(401, { error: { code: 'UNAUTHORIZED', message: 'Tu sesión expiró.' } });
+    await expect(api.get('/auth/me')).rejects.toBeInstanceOf(ApiError);
+    expect(handler).toHaveBeenCalledWith('UNAUTHORIZED', 'Tu sesión expiró.');
+  });
+
+  it('403 ACCOUNT_SUSPENDED con el token vigente avisa con su mensaje; otro 403 no cierra sesión', async () => {
+    setAuthToken('vigente');
+    api.defaults.adapter = failWith(403, { error: { code: 'NOT_A_MEMBER', message: 'No perteneces a este grupo.' } });
+    await expect(api.get('/groups/g1')).rejects.toMatchObject({ status: 403, code: 'NOT_A_MEMBER' });
+    expect(handler).not.toHaveBeenCalled();
+    api.defaults.adapter = failWith(403, { error: { code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' } });
+    await expect(api.get('/groups')).rejects.toMatchObject({ status: 403, code: 'ACCOUNT_SUSPENDED' });
+    expect(handler).toHaveBeenCalledWith('ACCOUNT_SUSPENDED', 'Tu cuenta está suspendida.');
+  });
+
+  it('403 ACCOUNT_SUSPENDED sin sesión (el login) no llama al manejador', async () => {
+    api.defaults.adapter = failWith(403, { error: { code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' } });
+    await expect(api.post('/auth/login', {})).rejects.toMatchObject({ code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' });
+    expect(handler).not.toHaveBeenCalled();
+  });
+});

@@ -22,7 +22,7 @@ export const parseDateKey = (key: string) => {
   return new Date(y, m - 1, d);
 };
 
-const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+export const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
 /** Las 7 fechas (lunes a domingo) de la semana que contiene `today`. */
 export const weekDates = (today: Date) => WEEK_DAYS.map((iso) => toDateKey(addDays(today, iso - isoDayOf(today))));
