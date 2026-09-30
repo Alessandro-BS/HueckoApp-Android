@@ -41,13 +41,13 @@ npm run backend                        # http://localhost:3000/api/health
 
 ### 2b. Datos de ejemplo (opcional)
 ```bash
-npm run seed -w backend   # usuarios, grupos y horarios de prueba; se puede repetir sin duplicar nada
+npm run seed -w backend   # usuarios, grupos, horarios y dos planes con fechas de hoy; se puede repetir sin duplicar nada (renueva los planes)
 ```
 
 | Correo | Contraseña | Qué tiene |
 |---|---|---|
-| `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) junto con Ana. Clases el lunes 08–10 y el miércoles 14–16. Creó «Reunión de avance del proyecto» (confirmada, con un imprevisto de Ana: sale el aviso en Inicio) |
-| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Bloques el lunes, el miércoles y el viernes. Propuso «Repaso antes de la entrega» (en votación, con su voto) |
+| `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) junto con Ana. Clases el lunes 08–10 y el miércoles 14–16. Creó «Reunión de avance del proyecto» (confirmada para dentro de 2 días a las 11:00, con un imprevisto de Ana: sale el aviso en Inicio) |
+| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Bloques el lunes, el miércoles y el viernes. Propuso «Repaso antes de la entrega» (en votación hasta mañana a las 20:00, con su voto) |
 | `carlos@test.com` | `password123` | Único miembro de «Amigos de la Uni»: prueba «Unirme» con el código `HUECKO123` |
 
 ### 3. App móvil (en otra terminal)
