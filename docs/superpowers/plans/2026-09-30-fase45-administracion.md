@@ -8,6 +8,8 @@
 
 **Tech Stack:** Express 5, TypeScript 7, zod 4.6, `node:sqlite` (JSON1), Vitest + Supertest · Expo SDK 57 (`expo` ~57.0.26, RN 0.86), React Navigation 7 (`drawer`, `material-top-tabs`, `native-stack`), `react-native-gifted-charts` 1.4.78 + `react-native-svg` 15.15.4 + `expo-linear-gradient` ~57.0.2, `expo-print` ~57.0.2, `expo-sharing` ~57.0.22, `expo-file-system` ~57.0.7, jest-expo + @testing-library/react-native 14.
 
+> **Estado tras la implementación (ronda final de correcciones):** los bloques de código de los Tasks son el borrador original. Donde difieren de lo implementado mandan el código, `shared/index.d.ts` y `docs/api.md`: periodos como días `YYYY-MM-DD` (ruling A1, Tasks 5–7), `groups.created_at` con `deps.now()` (A2), rol refrescado al volver a primer plano y con `403 NOT_ADMIN` (A3 y M3), motivo de moderación obligatorio de 3 a 200 caracteres (A5), `TZ` fijada por la configuración de los tests (I1), PDF con el nombre del periodo y la etiqueta «Planes con fecha en el periodo» (M2).
+
 **Spec:** no hay spec aparte: los requisitos son las decisiones del encargo de la Fase 4.5 (resumidas en «Decisiones»). Contrato: `docs/api.md` y `shared/index.d.ts`. Contexto: `CLAUDE.md`, `README.md` y los planes anteriores `docs/superpowers/plans/2026-09-30-correcciones-pendientes.md` y `docs/superpowers/plans/2026-09-29-fase4-ia.md`.
 
 ## Global Constraints
@@ -24,7 +26,7 @@
 - Mobile: navegación **solo con React Navigation** (nada de Expo Router). Paquetes nativos con `npx expo install <paquete>` **dentro de `mobile/`**. Mocks de módulos nativos nuevos en `mobile/jest.setup.ts`. No se tocan `android/`/`ios/`.
 - Comentarios del código y todo texto visible en **español con tildes correctas**.
 - Tests de mobile: RNTL v14 es **asíncrono** (`await render`, `await fireEvent.press`, `await act(async () => …)`). En fábricas de `jest.mock` solo variables con prefijo `mock` (o definidas dentro de la fábrica). Una guarda se prueba con **control positivo** en el mismo test.
-- Verificación antes de cada commit, desde la raíz: `npm run typecheck` y `TZ=America/Lima npm test` en verde (en PowerShell: `$env:TZ='America/Lima'; npm test`).
+- Verificación antes de cada commit, desde la raíz: `npm run typecheck` y `npm test` en verde. Los tests fijan ellos mismos `TZ=America/Lima` (`backend/vitest.config.mts` y `mobile/jest.globalSetup.js`), así que pasan igual en cualquier PC, CI o terminal (también PowerShell), sin prefijos.
 - Commits convencionales en español. Identidad (no hay `user.name` configurado) y trailer = **la línea de atribución del modelo que implementa el task** (la suya propia):
   ```bash
   GIT_AUTHOR_NAME="Aless Bustamante" GIT_AUTHOR_EMAIL="fabrizio.bs9012@gmail.com" \
@@ -32,7 +34,7 @@
   git commit -m "<tipo>(<área>): <mensaje>" -m "Co-Authored-By: <modelo que implementa> <noreply@anthropic.com>"
   ```
 - `git add` siempre con rutas explícitas. **Nunca** se añaden `.claude/` ni `.superpowers/` (nada de `git add -A` ni `git add .`).
-- Fuera de alcance (YAGNI): borrar usuarios, editar datos de otros usuarios, auditar acciones de usuarios normales, avisar al suspendido, filtros por estado en las listas, búsqueda sin distinguir tildes, datos de IA de ejemplo en la semilla, refrescar el rol sin volver a abrir la app, renombrar el PDF generado.
+- Fuera de alcance (YAGNI): borrar usuarios, editar datos de otros usuarios, auditar acciones de usuarios normales, avisar al suspendido, filtros por estado en las listas, búsqueda sin distinguir tildes, datos de IA de ejemplo en la semilla.
 
 ### Decisiones tomadas en este plan
 
@@ -42,16 +44,16 @@
 | D2 | **`requireAuth(db, secret)`** verifica el JWT y lee `role, status` de `users` en cada petición: sin fila → `401 UNAUTHORIZED` (cuenta borrada); `SUSPENDED` → `403 ACCOUNT_SUSPENDED` «Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.». Deja `res.locals.userId` y `res.locals.role`. `requireAdmin` → `403 NOT_ADMIN` «Solo la administración de HueckoApp puede hacer esto.». En el login, la suspensión solo se revela **tras** comprobar la contraseña (con una incorrecta sigue siendo `401 INVALID_CREDENTIALS`). | Task 1 |
 | D3 | **Primer admin por consola:** `npm run make-admin -w backend -- <correo>` / `-- <correo> --revoke`, con la misma guarda `LAST_ADMIN`. Queda en la auditoría con `admin: null` («Consola del servidor»). La semilla crea `admin@test.com` / `password123` con rol `ADMIN` (y lo deja `ADMIN` y `ACTIVE` en cada ejecución). | Task 3 |
 | D4 | **Guardas** en `adminUsers(db)` (las usan la API y la consola): cambiar al mismo valor no hace nada (200, sin auditoría); uno mismo no puede suspenderse ni quitarse el rol → `409 CANNOT_CHANGE_SELF`; el último `ADMIN` `ACTIVE` no puede suspenderse ni perder el rol → `409 LAST_ADMIN`. Por la API, `LAST_ADMIN` es defensa en profundidad (quien actúa ya es otro admin activo); por la consola (`--revoke`) sí se alcanza. | Task 3 |
-| D5 | **Auditoría:** `admin_audit_log(id, admin_id NULL = consola, action, target_type, target_id, details JSON, created_at)`. Acciones: `USER_SUSPENDED`, `USER_REACTIVATED`, `USER_PROMOTED`, `USER_DEMOTED`, `GROUP_DELETED`, `PROPOSAL_CANCELLED`. `details`: solo nombres/títulos, `from`/`to`, contadores, `via` y el motivo opcional; nunca correos, hashes ni tokens. Si falla la auditoría, la acción se deshace (misma transacción; hay test). | Tasks 3–4 |
+| D5 | **Auditoría:** `admin_audit_log(id, admin_id NULL = consola, action, target_type, target_id, details JSON, created_at)`. Acciones: `USER_SUSPENDED`, `USER_REACTIVATED`, `USER_PROMOTED`, `USER_DEMOTED`, `GROUP_DELETED`, `PROPOSAL_CANCELLED`. `details`: solo nombres/títulos, `from`/`to`, contadores y el motivo obligatorio de la moderación (3–200 caracteres, A5); nunca correos, hashes ni tokens. Si falla la auditoría, la acción se deshace (misma transacción; hay test). | Tasks 3–4 |
 | D6 | **`ai_calls`:** `askAi(ai, request, schema, record)` recibe un `record` obligatorio y lo llama una vez por petición al proveedor: `ok = true` solo con respuesta validada; `503`/`502` → `ok = false`. `durationMs` con `performance.now()`; `created_at` = `deps.now()` al empezar. Si registrar falla, se escribe en el log y la respuesta sigue igual. Lo que no llega a la IA (`429`, `400` de subida, `403`/`404`/`409`) no se registra. | Task 2 |
 | D7 | **Moderación con endpoint propio `POST /admin/proposals/:id/cancel`** (no ampliando `canManageProposal`). Motivos: (1) `canManage` es «quién organiza el plan» *dentro del grupo* y lo consume la app de miembros; un admin que no es miembro ni siquiera pasa `loadForMember` (403), así que habría que saltarse la membresía en todas las rutas de propuestas; (2) la moderación tiene que quedar auditada y con motivo, cosa que no hacen las rutas de miembros; (3) todo lo de administración queda detrás de `requireAdmin` en un solo router. Reutiliza la regla `canCancel(state)` (se extrae a `rules.ts`) y `proposalsRepository.setState`. | Task 4 |
 | D8 | **Zona horaria sin SQLite:** el modificador `'localtime'` de SQLite usa la zona del **sistema operativo**, no `process.env.TZ` (comprobado en este PC con Windows: con `process.env.TZ='Asia/Tokyo'`, `new Date('2026-09-29T15:00:00.000Z').getHours()` da `0` y `datetime(…,'localtime')` sigue dando `10:00`, la hora de Lima del sistema). Por eso SQLite solo filtra `created_at >= from AND created_at < to` (los ISO con `Z` y milisegundos se ordenan igual como texto y como fecha; hay índices) y el agrupado por día/semana y la hora del plan se hacen en JS con `getFullYear/getMonth/getDate/getDay/getHours`, que siguen `TZ`. Los tramos se generan con `new Date(año, mes, día)` (sin sumar milisegundos), así un cambio de horario no los descuadra. | Task 5 |
-| D9 | **Rangos (ruling A1):** `from`/`to` son días de calendario `YYYY-MM-DD`, **ambos incluidos** (`from ≤ to`, máximo **366 días**, fecha inexistente o con otro formato → `400 VALIDATION_ERROR`); el servidor los convierte en `[00:00 de from, 00:00 del día siguiente a to)` con las medianoches de **su** zona, así que la zona del teléfono no desplaza el periodo. `timeseries`: `bucket` `day`\|`week` (por defecto `week`), incluye tramos vacíos. `reports`: `bucket` automático (`day` si el rango dura ≤ 31 días; si no, `week`) y `period.fromDate`/`toDate` (los días pedidos; `period.from`/`to` = el intervalo ISO calculado). `timeseries`/`popular-hours` devuelven en `from`/`to` los días pedidos. «Planes confirmados» = estado `CONFIRMADO` o `EN_RECOORDINACION`; en un periodo cuentan por `scheduled_at` (no se guarda cuándo se confirmó). `popular-hours`: hora de inicio (`scheduled_at` en la zona del servidor) de esos planes; `from`/`to` opcionales (juntos). | Task 5 |
-| D10 | **Listas:** `page` desde 1, 20 por página fijos, `search` ≤ 100 caracteres con `LIKE … ESCAPE '\'` (se escapan `%`, `_` y `\`). SQLite compara sin mayúsculas solo en ASCII: «pérez» no encuentra «PÉREZ» (aceptado). Usuarios: por nombre o correo; grupos: por nombre o código. Orden: más recientes primero (`created_at DESC, rowid DESC`). | Tasks 3–4 |
+| D9 | **Rangos (ruling A1):** `from`/`to` son días de calendario `YYYY-MM-DD`, **ambos incluidos** (`from ≤ to`, máximo **366 días**, años 2000–9999; fecha inexistente, fuera de esos años o con otro formato → `400 VALIDATION_ERROR`); el servidor los convierte en `[00:00 de from, 00:00 del día siguiente a to)` con las medianoches de **su** zona, así que la zona del teléfono no desplaza el periodo. `timeseries`: `bucket` `day`\|`week` (por defecto `week`), incluye tramos vacíos. `reports`: `bucket` automático (`day` si el rango dura ≤ 31 días; si no, `week`) y `period.fromDate`/`toDate` (los días pedidos; `period.from`/`to` = el intervalo ISO calculado). `timeseries`/`popular-hours` devuelven en `from`/`to` los días pedidos. «Planes confirmados» = estado `CONFIRMADO` o `EN_RECOORDINACION`; en un periodo cuentan por `scheduled_at` (no se guarda cuándo se confirmó). `popular-hours`: hora de inicio (`scheduled_at` en la zona del servidor) de esos planes; `from`/`to` opcionales (juntos). | Task 5 |
+| D10 | **Listas:** `page` desde 1 (vacío = 1), 20 por página fijos, `search` ≤ 100 caracteres con `LIKE … ESCAPE '\'` (se escapan `%`, `_` y `\`). SQLite compara sin mayúsculas solo en ASCII: «pérez» no encuentra «PÉREZ» (aceptado). Usuarios: por nombre o correo; grupos: por nombre o código. Orden: más recientes primero (`created_at DESC, rowid DESC`). | Tasks 3–4 |
 | D11 | **Gráficos: `react-native-gifted-charts`** (1.4.78, JS puro sobre `react-native-svg`; su README para Expo: `npx expo install react-native-gifted-charts expo-linear-gradient react-native-svg`). `react-native-svg` está «Included in Expo Go» en SDK 57 (https://docs.expo.dev/versions/v57.0.0/sdk/svg/) y `bundledNativeModules.json` de SDK 57 fija `react-native-svg` 15.15.4 y `expo-linear-gradient` ~57.0.2; los peers de la librería son `*` (`expo-linear-gradient` y `react-native-linear-gradient` opcionales). Descartadas: `victory-native` 42 (exige `@shopify/react-native-skia` 2.6 + reanimated + gesture-handler: demasiado para unas barras y líneas) y `react-native-chart-kit` 7.0.4 (menos tipos de gráfico y opciones de ejes). Todos los gráficos pasan por un solo componente propio (`ChartCard`): la librería se mockea en un sitio y se podría cambiar sin tocar pantallas. | Task 7 |
 | D12 | **Navegación:** ítem «Administración» del drawer (icono `admin-panel-settings`) solo si `user.role === 'ADMIN'`; dentro, `material-top-tabs` desplazables con 5 pestañas: Estadísticas, Informes, Usuarios, Grupos, Registro (como el detalle de grupo). Los detalles (`AdminUserDetail`, `AdminGroupDetail`) se apilan en el `AppStack`. | Tasks 7–8 |
-| D13 | **Exportar:** PDF = HTML propio (tablas y barras con CSS, sin imágenes) → `Print.printToFileAsync({ html })` → `Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' })`. CSV = `;` como separador (Excel en español), BOM UTF-8, `\r\n`, comillas cuando hace falta y apóstrofo delante de celdas que empiezan con `= + - @` (los nombres de grupo los escriben usuarios: evita fórmulas). Se escribe con `new File(Paths.cache, nombre)` + `create({ overwrite: true })` + `write(csv)` y se comparte con `mimeType: 'text/csv'`. Sin `Sharing.isAvailableAsync()` → error visible. Todo en Expo Go (docs de SDK 57 de print, sharing y filesystem: «Included in Expo Go»). | Task 7 |
-| D14 | **Fin de sesión en la app:** el interceptor llama al manejador con el motivo (`'UNAUTHORIZED'` o `'ACCOUNT_SUSPENDED'`) solo si la petición salió con el token vigente; con `ACCOUNT_SUSPENDED`, `AuthContext` muestra el mensaje del servidor en un toast y cierra sesión. Un `403` de otro código (p. ej. `NOT_A_MEMBER`) no cierra sesión. El rol nuevo se ve al volver a abrir la app o iniciar sesión (`/auth/me` al arrancar). | Task 6 |
+| D13 | **Exportar:** PDF = HTML propio (tablas y barras con CSS, sin imágenes) → `Print.printToFileAsync({ html })` → `Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' })`. CSV = `;` como separador (Excel en español), BOM UTF-8, `\r\n`, comillas cuando hace falta y apóstrofo delante de celdas que empiezan con `= + - @` (los nombres de grupo los escriben usuarios: evita fórmulas). Se escribe con `new File(Paths.cache, nombre)` + `create({ overwrite: true })` + `write(csv)` y se comparte con `mimeType: 'text/csv'`. `Sharing.isAvailableAsync()` se comprueba **antes** de generar nada (si no hay, error visible y no se imprime ni escribe). El PDF impreso se mueve a la caché con el nombre del periodo (`reportFileName`, igual que el CSV). Mientras se exporta, los dos botones están desactivados y el error mostrado es siempre el de la última exportación. Todo en Expo Go (docs de SDK 57 de print, sharing y filesystem: «Included in Expo Go»). | Task 7 |
+| D14 | **Fin de sesión en la app:** el interceptor llama al manejador con el motivo (`'UNAUTHORIZED'` o `'ACCOUNT_SUSPENDED'`) solo si la petición salió con el token vigente; con `ACCOUNT_SUSPENDED`, `AuthContext` muestra el mensaje del servidor en un toast y cierra sesión. Un `403` de otro código (p. ej. `NOT_A_MEMBER`) no cierra sesión. El rol nuevo se ve al volver a la app (primer plano), al reabrirla o al iniciar sesión: `AuthContext` pide `/auth/me` al arrancar y al volver a primer plano (A3), y también cuando una petición con el token vigente responde `403 NOT_ADMIN` (M3); los detalles de administración del `AppStack` solo se registran para `ADMIN`. | Task 6 |
 
 ## Mapa de archivos
 
@@ -306,7 +308,7 @@ Ajustes de tests existentes (el usuario de `/auth` ahora lleva `role`):
 
 - [ ] **Step 2: Ejecutar y ver que fallan**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/account-status.test.ts test/database.test.ts`
+Run: `cd backend && npx vitest run test/account-status.test.ts test/database.test.ts`
 Expected: FAIL — `no such column: role` / `no such table: ai_calls`, y `requireAuth(db, …)` con la firma vieja.
 
 - [ ] **Step 3: Migración 4** — en `backend/src/db/migrations.ts`, añadir este elemento al final del array (después de la migración 3):
@@ -557,9 +559,9 @@ Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`).
 
 - [ ] **Step 11: Verificar**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/account-status.test.ts test/database.test.ts test/auth.test.ts test/users.repository.test.ts`
+Run: `cd backend && npx vitest run test/account-status.test.ts test/database.test.ts test/auth.test.ts test/users.repository.test.ts`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test`
+Run (raíz): `npm run typecheck` y `npm test`
 Expected: todo en verde (los tests existentes no cambian de comportamiento; `registerUser` sigue devolviendo `User`).
 
 - [ ] **Step 12: Commit**
@@ -692,7 +694,7 @@ Ajustes de tests existentes (`askAi` recibe ahora el `record` obligatorio):
 
 - [ ] **Step 2: Ejecutar y ver que fallan**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/ai-calls.test.ts`
+Run: `cd backend && npx vitest run test/ai-calls.test.ts`
 Expected: FAIL — `outcomes` vacío y ninguna fila en `ai_calls`.
 
 - [ ] **Step 3: Tipo compartido** — en `shared/index.d.ts`, debajo de `export type AiStatus = { provider: AiProvider };`, añadir:
@@ -970,9 +972,9 @@ export function proposalAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
 
 - [ ] **Step 9: Verificar**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/ai-calls.test.ts test/ai-core.test.ts test/gemini-client.test.ts`
+Run: `cd backend && npx vitest run test/ai-calls.test.ts test/ai-core.test.ts test/gemini-client.test.ts`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde.
+Run (raíz): `npm run typecheck` y `npm test` → verde.
 
 - [ ] **Step 10: Commit**
 
@@ -1362,7 +1364,7 @@ En `backend/test/seed.test.ts`:
 
 - [ ] **Step 3: Ejecutar y ver que fallan**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/admin-users.test.ts test/make-admin.test.ts test/seed.test.ts`
+Run: `cd backend && npx vitest run test/admin-users.test.ts test/make-admin.test.ts test/seed.test.ts`
 Expected: FAIL — no existen `src/admin/*` y `/api/admin/users` responde 404 `NOT_FOUND`.
 
 - [ ] **Step 4: Tipos compartidos** — al final de `shared/index.d.ts`, añadir:
@@ -1899,9 +1901,9 @@ Usa la base de `DATABASE_PATH` (`backend/.env`), no deja la app sin ningún admi
 
 - [ ] **Step 13: Verificar**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/admin-users.test.ts test/make-admin.test.ts test/seed.test.ts`
+Run: `cd backend && npx vitest run test/admin-users.test.ts test/make-admin.test.ts test/seed.test.ts`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde.
+Run (raíz): `npm run typecheck` y `npm test` → verde.
 Prueba manual rápida: `npm run seed -w backend` y `npm run make-admin -w backend -- ana@test.com` → «Ana <ana@test.com> ahora es administrador…»; repetirlo → «…ya era administrador: no se cambió nada.»; `npm run make-admin -w backend -- ana@test.com --revoke` → «…ya no es administrador.».
 
 - [ ] **Step 14: Commit**
@@ -2149,7 +2151,7 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
 
 - [ ] **Step 3: Ejecutar y ver que fallan**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/admin-groups.test.ts`
+Run: `cd backend && npx vitest run test/admin-groups.test.ts`
 Expected: FAIL — `/api/admin/groups` y `/api/admin/proposals/:id/cancel` responden 404 `NOT_FOUND`.
 
 - [ ] **Step 4: Tipos compartidos** — al final de `shared/index.d.ts`, añadir:
@@ -2374,7 +2376,8 @@ Al final de `backend/src/admin/admin.schemas.ts`:
 
 ```ts
 
-// POST /admin/proposals/:id/cancel: motivo opcional para el registro de acciones.
+// POST /admin/proposals/:id/cancel: motivo OBLIGATORIO (3-200 caracteres tras el trim, A5); queda en el registro de acciones.
+// (Borrador original: el código implementado usa .min(3) y no es .optional(); ver admin.schemas.ts.)
 export const cancelProposalSchema = z.object({
   reason: z.string({ error: 'El motivo debe ser un texto.' }).trim().max(200, 'El motivo admite hasta 200 caracteres.').optional(),
 });
@@ -2428,9 +2431,9 @@ Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni qu
 
 - [ ] **Step 9: Verificar**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/admin-groups.test.ts test/proposals-lifecycle.test.ts test/proposals.test.ts`
+Run: `cd backend && npx vitest run test/admin-groups.test.ts test/proposals-lifecycle.test.ts test/proposals.test.ts`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde.
+Run (raíz): `npm run typecheck` y `npm test` → verde.
 
 - [ ] **Step 10: Commit**
 
@@ -2489,7 +2492,7 @@ import { openDatabase } from '../src/db/database';
 import { insertAiCall, insertGroup, insertProposal, insertUser, registerAdmin } from './admin-fixtures';
 import { bearer, makeTestApp, NOW, registerUser } from './helpers';
 
-// Estos tests suponen TZ=America/Lima (UTC−5 todo el año), como `TZ=America/Lima npm test` (Global Constraints).
+// Estos tests suponen TZ=America/Lima (UTC−5 todo el año); vitest.config.mts la fija para todo `npm test`.
 const lima = (y: number, m: number, d: number, h = 0) => new Date(y, m - 1, d, h);
 const empty = { groupsCreated: 0, proposalsCreated: 0, aiCalls: 0 };
 
@@ -2701,7 +2704,7 @@ describe('GET /api/admin/reports', () => {
 
 - [ ] **Step 3: Ejecutar y ver que fallan**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/admin-stats.test.ts`
+Run: `cd backend && npx vitest run test/admin-stats.test.ts`
 Expected: FAIL — no existe `src/admin/stats.ts`.
 
 - [ ] **Step 4: Tipos compartidos** — al final de `shared/index.d.ts`, añadir:
@@ -3064,9 +3067,9 @@ Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantal
 
 - [ ] **Step 9: Verificar**
 
-Run: `cd backend && TZ=America/Lima npx vitest run test/admin-stats.test.ts`
+Run: `cd backend && npx vitest run test/admin-stats.test.ts`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde.
+Run (raíz): `npm run typecheck` y `npm test` → verde.
 
 - [ ] **Step 10: Commit**
 
@@ -3932,7 +3935,7 @@ export function useAdminGroup(groupId: string) {
 
 Run: `cd mobile && npx jest src/api src/context src/utils/__tests__/admin.test.ts src/hooks/__tests__/useAdmin.test.ts`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde (los tests de `client.test.ts` que esperaban `toHaveBeenCalledTimes(1)` siguen pasando).
+Run (raíz): `npm run typecheck` y `npm test` → verde (los tests de `client.test.ts` que esperaban `toHaveBeenCalledTimes(1)` siguen pasando).
 
 - [ ] **Step 10: Commit**
 
@@ -4974,7 +4977,7 @@ En `mobile/src/navigation/AppDrawer.tsx`:
 
 Run: `cd mobile && npx jest src/utils/__tests__/reportExport.test.ts src/utils/__tests__/shareReport.test.ts src/screens/admin`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde.
+Run (raíz): `npm run typecheck` y `npm test` → verde.
 Prueba manual en Expo Go (backend con `npm run seed -w backend`): entrar con `admin@test.com` → el drawer muestra «Administración»; «Estadísticas» dibuja barras y líneas; «Informes» → «Exportar PDF» abre la hoja de compartir con un PDF legible (tildes bien) y «Exportar CSV» con un `.csv` que Excel abre en columnas. Con `test@test.com` el ítem no aparece.
 
 - [ ] **Step 11: Commit**
@@ -5786,7 +5789,8 @@ type Props = {
   onDismiss: () => void;
 };
 
-// Moderación (D7): cancelar una propuesta de cualquier grupo, con un motivo opcional que queda en el registro.
+// Moderación (D7, A5): cancelar una propuesta de cualquier grupo exige un motivo (3-200 caracteres) que queda en el registro.
+// (Borrador original: el componente implementado desactiva «Sí, cancelar» hasta que el motivo es válido.)
 export function CancelProposalDialog({ proposal, loading, error, onConfirm, onDismiss }: Props) {
   const [reason, setReason] = useState('');
   return (
@@ -6033,7 +6037,7 @@ En `mobile/src/navigation/RootNavigator.tsx`:
 
 Run: `cd mobile && npx jest src/screens/admin`
 Expected: PASS.
-Run (raíz): `npm run typecheck` y `TZ=America/Lima npm test` → verde.
+Run (raíz): `npm run typecheck` y `npm test` → verde.
 Run: `cd mobile && npx expo-doctor` → sin avisos.
 Prueba manual en Expo Go con la semilla: `admin@test.com` → «Usuarios»: buscar «ana», abrir, «Suspender cuenta» → en otro teléfono/emulador con `ana@test.com` la siguiente acción cierra la sesión con el aviso «Tu cuenta está suspendida…»; «Reactivar cuenta». «Grupos» → «Proyecto Integrador» → «Cancelar propuesta» con motivo → el grupo lo ve «Cancelado»; «Registro» muestra ambas acciones. En la propia cuenta del admin no hay botones.
 
@@ -6076,8 +6080,8 @@ Comprobaciones hechas al escribir el plan: sin marcadores pendientes; nombres co
 
 ## Riesgos conocidos
 
-- **`groups.created_at` sigue usando el reloj de SQLite** (no `deps.now()`), a diferencia de `users` (Task 1), `proposals`, `incidences` y `ai_calls`. En producción da igual (ambos son la hora real); en los tests de estadísticas los grupos se crean con `insertGroup` y fecha explícita.
-- **`requireAuth` hace una consulta por petición** (y hasta 3 en `/api/groups/:id/ai/*`, que atraviesa tres routers montados en `/groups`). Es una lectura por clave primaria en SQLite: despreciable a esta escala.
+- **`requireAuth` hace una consulta por petición.** Es idempotente dentro de una misma petición (`/api/groups/:id/ai/*` atraviesa tres routers montados en `/groups` y solo lee la cuenta una vez). Es una lectura por clave primaria en SQLite: despreciable a esta escala.
 - **Etiquetas de los gráficos:** con 24 barras o 12 semanas en pantallas estrechas pueden solaparse; por eso `chartData.ts` deja etiqueta cada 3 horas y como mucho ~7 en las series. Revisar en un teléfono pequeño en la prueba manual.
 - **`react-native-gifted-charts` no está en `bundledNativeModules.json`** (es JS puro): `npx expo install` instala la última (1.4.78). Sus dependencias nativas (`react-native-svg`, `expo-linear-gradient`) sí están fijadas por el SDK 57 y vienen en Expo Go.
-- **El rol nuevo se ve al reabrir la app**: el drawer usa el `role` de `/auth/me` al arrancar o del login; si se quita el rol con la app abierta, el ítem sigue visible pero cada petición responde `403 NOT_ADMIN` (la pantalla lo muestra con «Reintentar»).
+- **El rol nuevo se ve al volver a la app, al reabrirla o al iniciar sesión.** Si se quita el rol con la app abierta en «Administración», la siguiente petición responde `403 NOT_ADMIN` y la app vuelve a pedir `/auth/me`: desaparecen el ítem del menú y los detalles de administración. El servidor lo protege siempre, pase lo que pase en la app.
+- **Prueba en un dispositivo pendiente:** gráficos, `expo-print`, `expo-sharing` y `expo-file-system` solo se prueban con mocks en Jest. Antes de `release/2.0.0` hay que pasar la lista de comprobación manual del README («Prueba manual en un celular»).

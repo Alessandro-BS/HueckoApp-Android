@@ -108,7 +108,7 @@ Sin autenticación. Responde `200 { "status": "ok" }`.
 El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe. `403 ACCOUNT_SUSPENDED` («Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.») solo sale si la contraseña es correcta; con una incorrecta la respuesta es el mismo `401`.
 
 ### `GET /auth/me`
-`200 CurrentUser` (`{ id, name, email, role }`). La app lo usa al abrir para comprobar si el token guardado sigue siendo válido y para saber si mostrar «Administración».
+`200 CurrentUser` (`{ id, name, email, role }`). La app lo usa al abrir para comprobar si el token guardado sigue siendo válido y para saber si mostrar «Administración». También lo vuelve a pedir **al volver a primer plano** y cuando una petición responde `403 NOT_ADMIN` (le quitaron el rol): así un cambio de rol se ve sin reabrir la app.
 
 ### Rol y estado de la cuenta
 Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`). El JWT solo identifica a la persona (`sub`): **en cada petición con token el servidor lee el rol y el estado de la base**, así que un cambio surte efecto al instante, sin esperar a que caduque el token (un `role` metido en el JWT no cuenta).
@@ -353,17 +353,18 @@ Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recom
 
 ## Administración
 
-Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: si no, `403 NOT_ADMIN`. Reglas comunes:
+Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: sin token (o con uno inválido) → `401 UNAUTHORIZED`; cuenta suspendida → `403 ACCOUNT_SUSPENDED`; si no es `ADMIN` → `403 NOT_ADMIN`. Reglas comunes:
 - **Primer administrador:** solo desde la consola del servidor: `npm run make-admin -w backend -- <correo>` (`--revoke` para quitarlo). No hay endpoint para hacerse administrador.
-- **Listas paginadas:** `?page=` (desde 1; por defecto 1) y, donde se indica, `?search=` (≤ 100 caracteres; busca el texto tal cual, sin distinguir mayúsculas en letras sin tilde; `%` y `_` son literales). 20 por página. Responden `Page<T>`: `{ "items": [...], "page": 1, "pageSize": 20, "total": 57 }`. Parámetros inválidos → `400 VALIDATION_ERROR`.
+- **Listas paginadas:** `?page=` (desde 1; por defecto 1, también si llega vacío: `?page=`) y, donde se indica, `?search=` (≤ 100 caracteres; busca el texto tal cual, sin distinguir mayúsculas en letras sin tilde; `%` y `_` son literales). 20 por página. Responden `Page<T>`: `{ "items": [...], "page": 1, "pageSize": 20, "total": 57 }`. Parámetros inválidos → `400 VALIDATION_ERROR`.
 - **Registro de acciones:** toda escritura de esta sección se anota en el registro (`GET /admin/audit`) en la misma transacción: si no se puede anotar, la acción no se hace.
 - Fechas de las respuestas en ISO 8601 UTC. Los periodos de estadísticas e informes se piden como días `YYYY-MM-DD` (ver abajo).
 
 ### Estadísticas e informes: fechas y zona horaria
-- Los periodos van en `?from=&to=` como **días de calendario** `YYYY-MM-DD`, **ambos incluidos** (`?from=2026-09-01&to=2026-09-30`). `from = to` es un periodo de un día. `to` no puede ser anterior a `from` y el periodo dura como mucho **366 días**. Una fecha con otro formato (también un instante ISO) o que no existe (`2026-02-30`) → `400 VALIDATION_ERROR` con el campo en `details`.
+- Los periodos van en `?from=&to=` como **días de calendario** `YYYY-MM-DD`, **ambos incluidos** (`?from=2026-09-01&to=2026-09-30`). `from = to` es un periodo de un día. `to` no puede ser anterior a `from` y el periodo dura como mucho **366 días**. Una fecha con otro formato (también un instante ISO), que no existe (`2026-02-30`) o con un año fuera de **2000–9999** («El año debe estar entre 2000 y 9999.») → `400 VALIDATION_ERROR` con el campo en `details`.
 - El servidor convierte esos días en las medianoches de **su** zona (`TZ`, `America/Lima`): el periodo es `[00:00 de from, 00:00 del día siguiente a to)`. La zona del teléfono no influye.
 - Los tramos por **día** o **semana (lunes a domingo)** y las **horas** también se calculan en la zona del servidor. `start` es la fecha `YYYY-MM-DD` del día o del lunes en esa zona. SQLite solo filtra por rango; el agrupado se hace en el servidor con la zona de `TZ` porque el `localtime` de SQLite usa la zona del sistema operativo y no la de `TZ`.
-- «Planes confirmados» = propuestas `CONFIRMADO` o `EN_RECOORDINACION`; en un periodo cuentan por su fecha (`scheduledAt`), porque no se guarda cuándo se confirmaron.
+- «Planes confirmados» (`confirmedPlans`) = propuestas `CONFIRMADO` o `EN_RECOORDINACION`; en un periodo cuentan por su fecha (`scheduledAt`), porque no se guarda cuándo se confirmaron. Por eso la app lo llama **«Planes con fecha en el periodo»** en «Informes», el PDF y el CSV: no es lo mismo que los «Confirmado» de `proposalsByState`, que cuenta las propuestas **creadas** en el periodo según su estado actual.
+- Por semanas, cada tramo es la semana entera que empieza ese lunes, pero solo cuenta lo que cae dentro del periodo: la primera y la última semana pueden ser parciales (el PDF y el CSV lo avisan y titulan la columna «Semana del»).
 
 ### `GET /admin/stats`
 `200 AdminStats`, totales de ahora mismo:
@@ -387,7 +388,7 @@ Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantal
 - `period`: `{ from, to, fromDate, toDate }`: `fromDate`/`toDate` son los días pedidos (primero y último incluidos) y `from`/`to` el intervalo en ISO que calculó el servidor (p. ej. `?from=2026-09-29&to=2026-09-30` → `from: "2026-09-29T05:00:00.000Z"`, `to: "2026-10-01T05:00:00.000Z"`); `generatedAt`.
 - `bucket`: `day` si el periodo dura 31 días o menos; si no, `week`.
 - `summary`: `{ newUsers, newGroups, newProposals, confirmedPlans, incidences, aiCalls }` del periodo.
-- `proposalsByState` (de las propuestas creadas en el periodo), `ai` (como en `/admin/stats`, del periodo), `timeseries` (como `/admin/stats/timeseries` con ese `bucket`), `popularHours` (24 horas, planes con fecha en el periodo) y `topGroups` (hasta 5 `{ id, name, proposals }`, por propuestas creadas en el periodo; a igual número, por nombre).
+- `proposalsByState` (de las propuestas creadas en el periodo), `ai` (como en `/admin/stats`, del periodo), `timeseries` (como `/admin/stats/timeseries` con ese `bucket`), `popularHours` (24 horas, planes con fecha en el periodo) y `topGroups` (hasta 5 `{ id, name, proposals }`, por propuestas creadas en el periodo; a igual número, por nombre y después por `id`, para que el orden sea siempre el mismo).
 
 ### `GET /admin/users?search=&page=`
 `200 Page<AdminUserSummary>`: `{ id, name, email, role, status, createdAt, groupCount }`, las cuentas más nuevas primero. `search` busca en nombre y correo.
@@ -402,7 +403,7 @@ Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantal
 - `409 CANNOT_CHANGE_SELF` «No puedes suspender tu propia cuenta ni quitarte el rol de administrador.» · `409 LAST_ADMIN` «Tiene que quedar al menos un administrador activo.» · `404 USER_NOT_FOUND` · `400 VALIDATION_ERROR` (el cuerpo se valida antes de buscar la cuenta).
 
 ### `PATCH /admin/users/:id/role`
-`{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a abrirse.
+`{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a primer plano, al reabrirse o al iniciar sesión (y, si pierde el rol mientras está en esas pantallas, en cuanto una petición responde `403 NOT_ADMIN`).
 
 ### `GET /admin/groups?search=&page=`
 `200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, owner, createdAt }`, los más nuevos primero. `owner` es el `OWNER` actual (`User`) o `null` si no quedan miembros. `search` busca en el nombre y el código de invitación.

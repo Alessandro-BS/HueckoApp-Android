@@ -69,12 +69,19 @@ Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral: estad
 npm run make-admin -w backend -- ana@test.com            # dar el rol
 npm run make-admin -w backend -- ana@test.com --revoke   # quitarlo
 ```
-Usa la base de `DATABASE_PATH` (`backend/.env`), no deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve el menú al volver a abrir la app o iniciar sesión. Con la semilla (paso 2b) ya existe `admin@test.com`.
+Usa la base de `DATABASE_PATH` (`backend/.env`) y solo abre una que ya exista (si la ruta está mal, lo dice en vez de crear una vacía). No deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve (o deja de ver) el menú **al volver a la app (primer plano), al reabrirla o al iniciar sesión**; si pierde el rol mientras usa «Administración», la app lo detecta en la siguiente petición y sale de esas pantallas. Con la semilla (paso 2b) ya existe `admin@test.com`.
+
+#### Prueba manual en un celular (pendiente antes de `release/2.0.0`)
+Los gráficos, el PDF, el CSV y el menú compartir solo se prueban con mocks en Jest. Antes de publicar, con Expo Go:
+- [ ] Entrar como `admin@test.com` y abrir las 5 pestañas de «Administración» (etiquetas de los gráficos legibles).
+- [ ] En «Informes», exportar PDF y CSV y abrir los dos (nombre `informe-hueckoapp_<desde>_<hasta>`, tildes bien en Excel).
+- [ ] Suspender a `ana@test.com`: su sesión se cierra con el aviso.
+- [ ] Quitar y dar el rol a alguien: el menú cambia al volver a la app.
 
 ### Comandos útiles
 | Dónde | Comando | Para qué |
 |---|---|---|
-| raíz | `npm test` | Tests del backend (Vitest + Supertest) |
+| raíz | `npm test` | Tests del backend (Vitest + Supertest) y de mobile (Jest). Fijan ellos mismos `TZ=America/Lima` (`backend/vitest.config.mts` y `mobile/jest.globalSetup.js`): pasan igual en cualquier PC o CI, sin prefijos en la terminal |
 | raíz | `npm run typecheck` | Revisar tipos de backend y mobile |
 | `mobile/` | `npx expo install <paquete>` | Instalar paquetes (elige la versión compatible con el SDK; **no uses `npm install`** para librerías nativas) |
 | `mobile/` | `npx expo-doctor` | Diagnosticar dependencias |
