@@ -198,3 +198,49 @@ export type PlanSuggestions = { suggestions: PlanSuggestion[] };
 export type SummaryRecommendation = 'CONFIRMAR' | 'REPROGRAMAR' | 'CANCELAR';
 
 export type VotingSummary = { summary: string; recommendation: SummaryRecommendation; reason: string };
+
+// ---- Administración (docs/api.md, «Administración») ----
+
+// Lista paginada: 20 por página, `page` desde 1.
+export type Page<T> = { items: T[]; page: number; pageSize: number; total: number };
+
+export type AdminUserSummary = User & { role: UserRole; status: UserStatus; createdAt: string; groupCount: number };
+
+export type AdminUserGroup = { id: string; name: string; role: GroupMember['role'] };
+
+export type AdminUserActivity = {
+  proposalsCreated: number;
+  votes: number;
+  incidences: number;
+  timeBlocks: number;
+  aiCalls: number;
+};
+
+export type AdminUserDetail = AdminUserSummary & { groups: AdminUserGroup[]; activity: AdminUserActivity };
+
+// Cuerpos de PATCH /admin/users/:id/status y /admin/users/:id/role.
+export type UserStatusInput = { status: UserStatus };
+export type UserRoleInput = { role: UserRole };
+
+export type AuditAction =
+  | 'USER_SUSPENDED'
+  | 'USER_REACTIVATED'
+  | 'USER_PROMOTED'
+  | 'USER_DEMOTED'
+  | 'GROUP_DELETED'
+  | 'PROPOSAL_CANCELLED';
+
+export type AuditTargetType = 'USER' | 'GROUP' | 'PROPOSAL';
+
+// Lo justo para entender la acción aunque el objetivo ya no exista; nunca correos, contraseñas ni tokens.
+export type AuditDetails = Record<string, string | number | boolean | null>;
+
+export type AuditEntry = {
+  id: string;
+  action: AuditAction;
+  admin: User | null;              // null = consola del servidor (npm run make-admin)
+  targetType: AuditTargetType;
+  targetId: string;
+  details: AuditDetails;
+  createdAt: string;
+};

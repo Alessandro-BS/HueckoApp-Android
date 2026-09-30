@@ -34,7 +34,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
 | 500 | Error inesperado del servidor |
@@ -76,6 +76,9 @@ Resumen de las entidades:
 | `ScheduleOcrResult` | Bloques leídos de una foto, sin guardar |
 | `ProposalDraft` / `PlanSuggestion` / `PlanCategory` | Borrador e ideas de plan de la IA (sin guardar) |
 | `VotingSummary` | Resumen de una votación con una recomendación de la IA |
+| `Page<T>` | Lista paginada de administración (`items`, `page`, `pageSize`, `total`) |
+| `AdminUserSummary` / `AdminUserDetail` | Cuenta vista por la administración (rol, estado, grupos, actividad) |
+| `AuditEntry` | Una acción del registro de administración |
 
 ---
 
@@ -345,6 +348,40 @@ Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recom
 `recommendation` ∈ `CONFIRMAR | REPROGRAMAR | CANCELAR` (`SummaryRecommendation`; otra → `502`). `summary` ≤ 600 y `reason` ≤ 300 caracteres. A la IA solo van nombres de los miembros y datos de votos e imprevistos, nunca correos ni fotos.
 
 `200` · `403` · `404` · `409` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+## Administración
+
+Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: si no, `403 NOT_ADMIN`. Reglas comunes:
+- **Primer administrador:** solo desde la consola del servidor: `npm run make-admin -w backend -- <correo>` (`--revoke` para quitarlo). No hay endpoint para hacerse administrador.
+- **Listas paginadas:** `?page=` (desde 1; por defecto 1) y, donde se indica, `?search=` (≤ 100 caracteres; busca el texto tal cual, sin distinguir mayúsculas en letras sin tilde; `%` y `_` son literales). 20 por página. Responden `Page<T>`: `{ "items": [...], "page": 1, "pageSize": 20, "total": 57 }`. Parámetros inválidos → `400 VALIDATION_ERROR`.
+- **Registro de acciones:** toda escritura de esta sección se anota en el registro (`GET /admin/audit`) en la misma transacción: si no se puede anotar, la acción no se hace.
+- Fechas en ISO 8601 UTC.
+
+### `GET /admin/users?search=&page=`
+`200 Page<AdminUserSummary>`: `{ id, name, email, role, status, createdAt, groupCount }`, las cuentas más nuevas primero. `search` busca en nombre y correo.
+
+### `GET /admin/users/:id`
+`200 AdminUserDetail` = `AdminUserSummary` + `groups` (`{ id, name, role }` en el orden en que se unió) + `activity` (`{ proposalsCreated, votes, incidences, timeBlocks, aiCalls }`). `404 USER_NOT_FOUND`.
+
+### `PATCH /admin/users/:id/status`
+`{ "status": "SUSPENDED" }` o `{ "status": "ACTIVE" }` (`UserStatusInput`) → `200 AdminUserDetail`.
+- Suspender surte efecto al instante: su login y sus peticiones con token responden `403 ACCOUNT_SUSPENDED`. Sus grupos, planes y votos no se tocan.
+- Si ya tenía ese estado → `200` sin cambios ni anotación.
+- `409 CANNOT_CHANGE_SELF` «No puedes suspender tu propia cuenta ni quitarte el rol de administrador.» · `409 LAST_ADMIN` «Tiene que quedar al menos un administrador activo.» · `404 USER_NOT_FOUND` · `400 VALIDATION_ERROR` (el cuerpo se valida antes de buscar la cuenta).
+
+### `PATCH /admin/users/:id/role`
+`{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a abrirse.
+
+### `GET /admin/audit?page=`
+`200 Page<AuditEntry>`, lo más reciente primero:
+```json
+{ "id": "…", "action": "USER_SUSPENDED", "admin": { "id": "…", "name": "Admin", "email": "admin@test.com" },
+  "targetType": "USER", "targetId": "…", "details": { "name": "Ana", "from": "ACTIVE", "to": "SUSPENDED" },
+  "createdAt": "2026-09-29T15:00:00.000Z" }
+```
+- `action` ∈ `USER_SUSPENDED | USER_REACTIVATED | USER_PROMOTED | USER_DEMOTED | GROUP_DELETED | PROPOSAL_CANCELLED`; `targetType` ∈ `USER | GROUP | PROPOSAL`.
+- `admin: null` = cambio hecho desde la consola (`npm run make-admin`).
+- `details` guarda lo necesario para entender la acción aunque el objetivo ya no exista (nombre, título, estado anterior y nuevo, contadores, motivo); nunca correos, contraseñas ni tokens.
 
 ---
 

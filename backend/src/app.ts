@@ -2,12 +2,13 @@ import cors from 'cors';
 import express, { type RequestHandler } from 'express';
 import helmet from 'helmet';
 
+import { adminRouter } from './admin/admin.routes';
 import type { AiClient } from './ai/ai-client';
 import { AI_RATE_LIMIT_DEFAULT, aiRateLimiter } from './ai/ai-limiter';
 import { aiRouter, groupAiRouter, proposalAiRouter } from './ai/ai.routes';
 import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
-import { requireAuth } from './auth/require-auth';
+import { requireAdmin, requireAuth } from './auth/require-auth';
 import type { TrustProxy } from './config/trust-proxy';
 import type { Db } from './db/database';
 import { groupsRouter } from './groups/groups.routes';
@@ -72,6 +73,8 @@ export function createApp(appDeps: AppDeps) {
   api.use('/proposals', auth, proposalsRouter(deps));
   api.use('/proposals', auth, proposalAiRouter(deps));
   api.use('/ai', auth, aiRouter(deps));
+  // Administración de la app (Fase 4.5): además del token, rol ADMIN leído de la base (D2).
+  api.use('/admin', auth, requireAdmin, adminRouter(deps));
 
   app.use('/api', api);
   app.use(notFound);

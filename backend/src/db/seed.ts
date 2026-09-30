@@ -18,7 +18,7 @@ async function main() {
     console.log(
       `Semilla aplicada en ${env.DATABASE_PATH}: ${created.users} usuarios, ${created.groups} grupos y ${created.blocks} bloques nuevos; ${created.proposals} planes de ejemplo renovados con fechas de hoy.`,
     );
-    console.log(`Cuentas demo: test@test.com, ana@test.com y carlos@test.com — contraseña «${DEMO_PASSWORD}».`);
+    console.log(`Cuentas demo: test@test.com, ana@test.com, carlos@test.com y admin@test.com (administración) — contraseña «${DEMO_PASSWORD}».`);
   } finally {
     db.close();
   }

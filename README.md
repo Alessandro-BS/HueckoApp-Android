@@ -51,6 +51,7 @@ npm run seed -w backend   # usuarios, grupos, horarios y dos planes con fechas d
 | `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) junto con Ana. Clases el lunes 08–10 y el miércoles 14–16. Creó «Reunión de avance del proyecto» (confirmada para dentro de 2 días a las 11:00, con un imprevisto de Ana: sale el aviso en Inicio) |
 | `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Bloques el lunes, el miércoles y el viernes. Propuso «Repaso antes de la entrega» (en votación hasta mañana a las 20:00, con su voto) |
 | `carlos@test.com` | `password123` | Único miembro de «Amigos de la Uni»: prueba «Unirme» con el código `HUECKO123` |
+| `admin@test.com` | `password123` | Administración de la app (rol `ADMIN`): ve «Administración» en el menú. No pertenece a ningún grupo |
 
 ### 3. App móvil (en otra terminal)
 ```bash
@@ -62,6 +63,14 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 
 > **Importante:** en el emulador de Android, `localhost` es el propio emulador. Para llegar al backend de tu PC se usa `10.0.2.2`. En un celular físico, usa la IP de tu PC en la red Wi-Fi (y que ambos estén en la misma red).
 
+### Administración de la app
+Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral: estadísticas, informes (PDF y CSV), usuarios, grupos y el registro de acciones. Nadie se hace administrador al registrarse ni desde la API: el rol se da (o se quita) **desde la consola del servidor**:
+```bash
+npm run make-admin -w backend -- ana@test.com            # dar el rol
+npm run make-admin -w backend -- ana@test.com --revoke   # quitarlo
+```
+Usa la base de `DATABASE_PATH` (`backend/.env`), no deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve el menú al volver a abrir la app o iniciar sesión. Con la semilla (paso 2b) ya existe `admin@test.com`.
+
 ### Comandos útiles
 | Dónde | Comando | Para qué |
 |---|---|---|
@@ -69,6 +78,7 @@ npm run mobile                         # escanea el QR con Expo Go, o presiona "
 | raíz | `npm run typecheck` | Revisar tipos de backend y mobile |
 | `mobile/` | `npx expo install <paquete>` | Instalar paquetes (elige la versión compatible con el SDK; **no uses `npm install`** para librerías nativas) |
 | `mobile/` | `npx expo-doctor` | Diagnosticar dependencias |
+| raíz | `npm run make-admin -w backend -- <correo> [--revoke]` | Dar o quitar el rol de administrador |
 
 ## Temas del curso y dónde se aplican
 

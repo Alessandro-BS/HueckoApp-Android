@@ -15,10 +15,14 @@ export const DEMO_PROPOSAL_TITLES = ['Reunión de avance del proyecto', 'Repaso 
 
 export type SeedCounts = { users: number; groups: number; blocks: number; proposals: number };
 
+export const DEMO_ADMIN_EMAIL = 'admin@test.com';
+
 const USERS = [
-  { key: 'test', name: 'Usuario de Prueba', email: 'test@test.com' },
-  { key: 'ana', name: 'Ana', email: 'ana@test.com' },
-  { key: 'carlos', name: 'Carlos', email: 'carlos@test.com' },
+  { key: 'test', name: 'Usuario de Prueba', email: 'test@test.com', role: 'USER' },
+  { key: 'ana', name: 'Ana', email: 'ana@test.com', role: 'USER' },
+  { key: 'carlos', name: 'Carlos', email: 'carlos@test.com', role: 'USER' },
+  // Administración de la app (D3): no pertenece a ningún grupo.
+  { key: 'admin', name: 'Administración HueckoApp', email: DEMO_ADMIN_EMAIL, role: 'ADMIN' },
 ] as const;
 type UserKey = (typeof USERS)[number]['key'];
 
@@ -120,16 +124,21 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): SeedCount
         continue;
       }
       ids[u.key] = randomUUID();
-      db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(ids[u.key], u.name, u.email, passwordHash);
+      // created_at del reloj inyectado (ISO), como el registro por la API: las estadísticas comparan rangos ISO.
+      db.prepare('INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+        ids[u.key], u.name, u.email, passwordHash, u.role, now.toISOString(),
+      );
       created.users++;
     }
+    // La cuenta demo de administración sigue siéndolo aunque se haya cambiado desde la app o la consola.
+    db.prepare("UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE email = ?").run(DEMO_ADMIN_EMAIL);
 
     for (const g of GROUPS) {
       let group = db.prepare('SELECT id FROM groups WHERE invite_code = ?').get(g.inviteCode) as { id: string } | undefined;
       if (!group) {
         group = { id: randomUUID() };
-        db.prepare("INSERT INTO groups (id, name, description, invite_code, availability_threshold) VALUES (?, ?, '', ?, 80)").run(
-          group.id, g.name, g.inviteCode,
+        db.prepare("INSERT INTO groups (id, name, description, invite_code, availability_threshold, created_at) VALUES (?, ?, '', ?, 80, ?)").run(
+          group.id, g.name, g.inviteCode, now.toISOString(),
         );
         created.groups++;
       }
