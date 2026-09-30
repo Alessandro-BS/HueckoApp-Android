@@ -1,11 +1,16 @@
+import type { PopularHours, Timeseries } from '@hueckoapp/shared';
 import { Router, type Response } from 'express';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { adminGroups } from './admin-groups';
 import { adminUsers, type AdminActor } from './admin-users';
-import { cancelProposalSchema, listQuerySchema, pageQuerySchema, userRoleSchema, userStatusSchema } from './admin.schemas';
+import {
+  cancelProposalSchema, listQuerySchema, optionalRangeQuerySchema, pageQuerySchema, rangeQuerySchema, timeseriesQuerySchema,
+  userRoleSchema, userStatusSchema,
+} from './admin.schemas';
 import { auditRepository } from './audit.repository';
+import { adminReport, adminStats, popularHours, timeseries } from './stats';
 
 // Montado en /api/admin detrás de requireAuth y requireAdmin: todo lo de aquí es solo para ADMIN.
 export function adminRouter({ db, now }: ResolvedDeps) {
@@ -14,6 +19,31 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   const audit = auditRepository(db);
   const groups = adminGroups(db);
   const actor = (res: Response): AdminActor => ({ adminId: getUserId(res), now: now() });
+
+  // Estadísticas e informes: todo se calcula aquí, en la zona del servidor; la app solo lo muestra y lo exporta.
+  router.get('/stats', (_req, res) => {
+    res.json(adminStats(db));
+  });
+
+  router.get('/stats/timeseries', (req, res) => {
+    const { range, fromDate, toDate, bucket } = timeseriesQuerySchema.parse(req.query);
+    const body: Timeseries = { from: fromDate, to: toDate, bucket, points: timeseries(db, range, bucket) };
+    res.json(body);
+  });
+
+  router.get('/stats/popular-hours', (req, res) => {
+    const period = optionalRangeQuerySchema.parse(req.query);
+    const body: PopularHours = {
+      from: period?.fromDate ?? null,
+      to: period?.toDate ?? null,
+      hours: popularHours(db, period?.range ?? null),
+    };
+    res.json(body);
+  });
+
+  router.get('/reports', (req, res) => {
+    res.json(adminReport(db, rangeQuerySchema.parse(req.query).range, now()));
+  });
 
   router.get('/users', (req, res) => {
     const { search, page } = listQuerySchema.parse(req.query);

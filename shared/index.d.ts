@@ -277,3 +277,71 @@ export type AdminGroupDetail = AdminGroupSummary & {
 
 // Cuerpo (opcional) de POST /admin/proposals/:id/cancel.
 export type AdminCancelProposalInput = { reason?: string };
+
+// ---- Estadísticas e informes (calculados solo en el servidor; la app los muestra y exporta) ----
+
+export type ProposalCounts = Record<ProposalState, number>;
+
+export type AiTaskStats = {
+  task: AiTask;
+  calls: number;
+  ok: number;
+  successRate: number | null;      // % entero de llamadas con respuesta válida; null si no hubo llamadas
+  avgDurationMs: number | null;
+};
+
+export type AiUsage = { calls: number; ok: number; successRate: number | null; byTask: AiTaskStats[] };
+
+export type AdminStats = {
+  users: { total: number; active: number; suspended: number; admins: number };
+  groups: number;
+  proposals: ProposalCounts;
+  confirmedPlans: number;          // CONFIRMADO o EN_RECOORDINACION
+  incidences: number;
+  ai: AiUsage;
+};
+
+export type StatsBucket = 'day' | 'week';
+
+export type TimeseriesPoint = {
+  start: string;                   // "YYYY-MM-DD": inicio del día o del lunes, en la zona del servidor
+  registrations: number;
+  groupsCreated: number;
+  proposalsCreated: number;
+  aiCalls: number;
+};
+
+// from/to: los días pedidos ("YYYY-MM-DD", ambos incluidos), tal cual llegaron.
+export type Timeseries = { from: string; to: string; bucket: StatsBucket; points: TimeseriesPoint[] };
+
+export type HourCount = { hour: number; count: number };  // hour 0–23 en la zona del servidor
+
+// from/to: los días pedidos ("YYYY-MM-DD", ambos incluidos), o null si no se pidió periodo.
+export type PopularHours = { from: string | null; to: string | null; hours: HourCount[] };
+
+// fromDate/toDate = primer y último día incluidos (los pedidos); from/to = el intervalo [from, to) en ISO
+// que el servidor calculó con las medianoches de su zona (00:00 de fromDate y del día siguiente a toDate).
+export type ReportPeriod = { from: string; to: string; fromDate: string; toDate: string };
+
+export type ReportSummary = {
+  newUsers: number;
+  newGroups: number;
+  newProposals: number;
+  confirmedPlans: number;          // planes en pie cuya fecha (scheduledAt) cae en el periodo
+  incidences: number;
+  aiCalls: number;
+};
+
+export type TopGroup = { id: string; name: string; proposals: number };
+
+export type AdminReport = {
+  period: ReportPeriod;
+  generatedAt: string;
+  bucket: StatsBucket;             // day si el periodo dura ≤ 31 días; si no, week
+  summary: ReportSummary;
+  proposalsByState: ProposalCounts; // de las propuestas creadas en el periodo
+  ai: AiUsage;
+  timeseries: TimeseriesPoint[];
+  popularHours: HourCount[];
+  topGroups: TopGroup[];           // hasta 5, por propuestas creadas en el periodo
+};

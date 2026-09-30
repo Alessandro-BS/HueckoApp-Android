@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type { ProposalState, User, UserRole, UserStatus } from '@hueckoapp/shared';
+import type { AiTask, ProposalState, User, UserRole, UserStatus } from '@hueckoapp/shared';
 import type { Express } from 'express';
 
 import type { Db } from '../src/db/database';
-import { registerUser } from './helpers';
+import { NOW, registerUser } from './helpers';
 
 // Cuenta registrada por la API y promovida en la base, como haría `npm run make-admin`.
 export async function registerAdmin(
@@ -70,4 +70,18 @@ export function insertProposal(
     scheduledAt, scheduledAt ? scheduledAt.slice(0, 10) : null, over.createdAt ?? new Date().toISOString(),
   );
   return id;
+}
+
+// Llamada a la IA anotada a mano (por defecto: voting-summary correcta de 1 s en NOW).
+export function insertAiCall(
+  db: Db,
+  over: Partial<{ userId: string | null; task: AiTask; ok: boolean; durationMs: number; createdAt: string }> = {},
+): void {
+  db.prepare('INSERT INTO ai_calls (user_id, task, ok, duration_ms, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    over.userId ?? null,
+    over.task ?? 'voting-summary',
+    over.ok === false ? 0 : 1,
+    over.durationMs ?? 1000,
+    over.createdAt ?? NOW.toISOString(),
+  );
 }

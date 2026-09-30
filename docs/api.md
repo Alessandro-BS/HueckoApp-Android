@@ -80,6 +80,7 @@ Resumen de las entidades:
 | `AdminUserSummary` / `AdminUserDetail` | Cuenta vista por la administración (rol, estado, grupos, actividad) |
 | `AdminGroupSummary` / `AdminGroupDetail` / `AdminProposalSummary` | Grupo y propuestas vistos por la administración |
 | `AuditEntry` | Una acción del registro de administración |
+| `AdminStats` / `Timeseries` / `PopularHours` / `AdminReport` | Estadísticas e informe de un periodo (calculados en el servidor) |
 
 ---
 
@@ -356,7 +357,37 @@ Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Toda
 - **Primer administrador:** solo desde la consola del servidor: `npm run make-admin -w backend -- <correo>` (`--revoke` para quitarlo). No hay endpoint para hacerse administrador.
 - **Listas paginadas:** `?page=` (desde 1; por defecto 1) y, donde se indica, `?search=` (≤ 100 caracteres; busca el texto tal cual, sin distinguir mayúsculas en letras sin tilde; `%` y `_` son literales). 20 por página. Responden `Page<T>`: `{ "items": [...], "page": 1, "pageSize": 20, "total": 57 }`. Parámetros inválidos → `400 VALIDATION_ERROR`.
 - **Registro de acciones:** toda escritura de esta sección se anota en el registro (`GET /admin/audit`) en la misma transacción: si no se puede anotar, la acción no se hace.
-- Fechas en ISO 8601 UTC.
+- Fechas de las respuestas en ISO 8601 UTC. Los periodos de estadísticas e informes se piden como días `YYYY-MM-DD` (ver abajo).
+
+### Estadísticas e informes: fechas y zona horaria
+- Los periodos van en `?from=&to=` como **días de calendario** `YYYY-MM-DD`, **ambos incluidos** (`?from=2026-09-01&to=2026-09-30`). `from = to` es un periodo de un día. `to` no puede ser anterior a `from` y el periodo dura como mucho **366 días**. Una fecha con otro formato (también un instante ISO) o que no existe (`2026-02-30`) → `400 VALIDATION_ERROR` con el campo en `details`.
+- El servidor convierte esos días en las medianoches de **su** zona (`TZ`, `America/Lima`): el periodo es `[00:00 de from, 00:00 del día siguiente a to)`. La zona del teléfono no influye.
+- Los tramos por **día** o **semana (lunes a domingo)** y las **horas** también se calculan en la zona del servidor. `start` es la fecha `YYYY-MM-DD` del día o del lunes en esa zona. SQLite solo filtra por rango; el agrupado se hace en el servidor con la zona de `TZ` porque el `localtime` de SQLite usa la zona del sistema operativo y no la de `TZ`.
+- «Planes confirmados» = propuestas `CONFIRMADO` o `EN_RECOORDINACION`; en un periodo cuentan por su fecha (`scheduledAt`), porque no se guarda cuándo se confirmaron.
+
+### `GET /admin/stats`
+`200 AdminStats`, totales de ahora mismo:
+```json
+{ "users": { "total": 57, "active": 55, "suspended": 2, "admins": 1 }, "groups": 12,
+  "proposals": { "PROPUESTO": 4, "CONFIRMADO": 9, "EN_RECOORDINACION": 1, "CANCELADO": 3 },
+  "confirmedPlans": 10, "incidences": 6,
+  "ai": { "calls": 40, "ok": 37, "successRate": 93,
+          "byTask": [ { "task": "schedule-ocr", "calls": 20, "ok": 18, "successRate": 90, "avgDurationMs": 2400 }, … ] } }
+```
+`admins` cuenta todas las cuentas `ADMIN` (también suspendidas). `successRate` = % entero de llamadas con respuesta válida, `null` sin llamadas. `byTask` trae siempre las 4 funciones, en el orden de `AiTask`.
+
+### `GET /admin/stats/timeseries?from=&to=&bucket=week`
+`bucket` ∈ `day | week` (por defecto `week`). `200 Timeseries`: `{ from, to, bucket, points: [ { start, registrations, groupsCreated, proposalsCreated, aiCalls } ] }`, con `from`/`to` = los días pedidos y un punto por tramo que toca el periodo, **también los vacíos** (el primero puede empezar antes de `from`, en su lunes).
+
+### `GET /admin/stats/popular-hours?from=&to=`
+Histograma de la hora de inicio (zona del servidor) de los planes confirmados. `from`/`to` opcionales pero **juntos** («Envía «from» y «to» juntos, o ninguno.»); sin ellos, todos. `200 PopularHours`: `{ from, to, hours: [ { hour: 0, count: 0 }, …, { hour: 23, count: 1 } ] }` (siempre 24; `from`/`to` = los días pedidos, o `null`).
+
+### `GET /admin/reports?from=&to=`
+Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantalla «Informes», el PDF y el CSV salen de estos mismos datos.
+- `period`: `{ from, to, fromDate, toDate }`: `fromDate`/`toDate` son los días pedidos (primero y último incluidos) y `from`/`to` el intervalo en ISO que calculó el servidor (p. ej. `?from=2026-09-29&to=2026-09-30` → `from: "2026-09-29T05:00:00.000Z"`, `to: "2026-10-01T05:00:00.000Z"`); `generatedAt`.
+- `bucket`: `day` si el periodo dura 31 días o menos; si no, `week`.
+- `summary`: `{ newUsers, newGroups, newProposals, confirmedPlans, incidences, aiCalls }` del periodo.
+- `proposalsByState` (de las propuestas creadas en el periodo), `ai` (como en `/admin/stats`, del periodo), `timeseries` (como `/admin/stats/timeseries` con ese `bucket`), `popularHours` (24 horas, planes con fecha en el periodo) y `topGroups` (hasta 5 `{ id, name, proposals }`, por propuestas creadas en el periodo; a igual número, por nombre).
 
 ### `GET /admin/users?search=&page=`
 `200 Page<AdminUserSummary>`: `{ id, name, email, role, status, createdAt, groupCount }`, las cuentas más nuevas primero. `search` busca en nombre y correo.
