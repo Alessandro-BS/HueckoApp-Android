@@ -35,7 +35,6 @@ it.each<[string, string, () => Promise<unknown>, unknown, unknown]>([
   ['GET', '/admin/groups', () => admin.listAdminGroups('', 1), { search: '', page: 1 }, undefined],
   ['GET', '/admin/groups/g1', () => admin.getAdminGroup('g1'), undefined, undefined],
   ['DELETE', '/admin/groups/g1', () => admin.deleteAdminGroup('g1'), undefined, undefined],
-  ['POST', '/admin/proposals/p1/cancel', () => admin.cancelProposalAsAdmin('p1'), undefined, {}],
   ['POST', '/admin/proposals/p1/cancel', () => admin.cancelProposalAsAdmin('p1', 'Spam'), undefined, { reason: 'Spam' }],
   ['GET', '/admin/audit', () => admin.listAudit(3), { page: 3 }, undefined],
 ])('%s %s', async (method, url, call, params, body) => {

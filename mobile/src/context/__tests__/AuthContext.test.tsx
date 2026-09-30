@@ -103,6 +103,7 @@ it('si el servidor responde ACCOUNT_SUSPENDED en plena sesión: avisa con su men
     api.defaults.adapter = original;
   }
   await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  expect(showToast).toHaveBeenCalledTimes(1);
   expect(showToast).toHaveBeenCalledWith('Tu cuenta está suspendida.');
   expect(await SecureStore.getItemAsync('hueckoapp.token')).toBeNull();
 });
@@ -136,6 +137,8 @@ describe('al volver la app a primer plano (A3)', () => {
   it('sin sesión no pide nada', async () => {
     const { result } = await renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    expect(listener).toBeUndefined(); // sin sesión ni siquiera se suscribe a los cambios de estado de la app
+    expect(AppState.addEventListener).not.toHaveBeenCalled();
     await act(async () => listener?.('active'));
     expect(mocked.meRequest).not.toHaveBeenCalled();
   });

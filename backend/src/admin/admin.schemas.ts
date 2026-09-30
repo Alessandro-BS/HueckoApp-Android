@@ -27,9 +27,13 @@ export const userRoleSchema = z.object({
   role: z.enum(['USER', 'ADMIN'], { error: 'El rol debe ser USER o ADMIN.' }),
 });
 
-// POST /admin/proposals/:id/cancel: motivo opcional para el registro de acciones.
+// POST /admin/proposals/:id/cancel: el motivo es obligatorio (3-200 caracteres tras el trim) y queda en el registro.
 export const cancelProposalSchema = z.object({
-  reason: z.string({ error: 'El motivo debe ser un texto.' }).trim().max(200, 'El motivo admite hasta 200 caracteres.').optional(),
+  reason: z
+    .string({ error: 'Indica el motivo de la cancelación.' })
+    .trim()
+    .min(3, 'El motivo necesita al menos 3 caracteres.')
+    .max(200, 'El motivo admite hasta 200 caracteres.'),
 });
 
 // ---- Periodos de estadísticas e informes (D9, A1): días de calendario «YYYY-MM-DD», ambos incluidos ----

@@ -414,7 +414,7 @@ Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantal
 Borra el grupo con sus miembros, propuestas, franjas, votos e incidencias. `204` · `404 GROUP_NOT_FOUND`. Se anota como `GROUP_DELETED` con `{ name, members, proposals }`.
 
 ### `POST /admin/proposals/:id/cancel`
-Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni quien la organiza. Cuerpo opcional `AdminCancelProposalInput`: `{ "reason": "Contenido inapropiado" }` (≤ 200 caracteres tras `trim`; se guarda en el registro). Misma regla de estado que `POST /proposals/:id/cancel` (desde cualquier estado salvo `CANCELADO`). `200 AdminProposalSummary` · `409 INVALID_STATE` «La propuesta ya está cancelada.» · `404 PROPOSAL_NOT_FOUND` · `400 VALIDATION_ERROR`. Se anota como `PROPOSAL_CANCELLED` con `{ title, groupId, from, reason }`. Quien organiza el plan sigue usando `POST /proposals/:id/cancel`; esta ruta es solo para `ADMIN`.
+Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni quien la organiza. Cuerpo obligatorio `AdminCancelProposalInput`: `{ "reason": "Contenido inapropiado" }` (**obligatorio**, de 3 a 200 caracteres tras `trim`; sin él, en blanco o fuera de ese rango → `400 VALIDATION_ERROR`; se guarda en el registro). Misma regla de estado que `POST /proposals/:id/cancel` (desde cualquier estado salvo `CANCELADO`). `200 AdminProposalSummary` · `409 INVALID_STATE` «La propuesta ya está cancelada.» · `404 PROPOSAL_NOT_FOUND` · `400 VALIDATION_ERROR`. Se anota como `PROPOSAL_CANCELLED` con `{ title, groupId, from, reason }`. Quien organiza el plan sigue usando `POST /proposals/:id/cancel`; esta ruta es solo para `ADMIN`.
 
 ### `GET /admin/audit?page=`
 `200 Page<AuditEntry>`, lo más reciente primero:

@@ -1,5 +1,5 @@
 import type { UserRole, UserStatus } from '@hueckoapp/shared';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 import { getAdminUser, setUserRole, setUserStatus } from '../api/admin';
 import { useAction } from './useAction';
@@ -21,6 +21,18 @@ export function useAdminUser(userId: string) {
     return updated;
   });
 
+  // El mensaje mostrado es siempre el de la acción más reciente: cada una limpia su propio error al empezar,
+  // así que basta con saber cuál se lanzó última (una que sale bien deja el mensaje vacío).
+  const [last, setLast] = useState<'status' | 'role'>('status');
+  const runStatus = useCallback((next: UserStatus) => {
+    setLast('status');
+    return status.run(next);
+  }, [status.run]);
+  const runRole = useCallback((next: UserRole) => {
+    setLast('role');
+    return role.run(next);
+  }, [role.run]);
+
   const { clearError: clearStatusError } = status;
   const { clearError: clearRoleError } = role;
   const clearActionError = useCallback(() => {
@@ -30,10 +42,10 @@ export function useAdminUser(userId: string) {
 
   return {
     user: data, loading, refreshing, error, reload,
-    setStatus: status.run,
-    setRole: role.run,
+    setStatus: runStatus,
+    setRole: runRole,
     saving: status.loading || role.loading,
-    actionError: status.error ?? role.error,
+    actionError: last === 'status' ? status.error : role.error,
     clearActionError,
   };
 }

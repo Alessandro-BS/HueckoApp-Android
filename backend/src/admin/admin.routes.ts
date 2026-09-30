@@ -81,10 +81,10 @@ export function adminRouter({ db, now }: ResolvedDeps) {
     res.status(204).end();
   });
 
-  // Moderación: cancelar la propuesta de cualquier grupo (D7). Sin cuerpo o con { reason }.
+  // Moderación: cancelar la propuesta de cualquier grupo (D7). Cuerpo { reason } obligatorio (3-200 caracteres).
   router.post('/proposals/:id/cancel', (req, res) => {
     const { reason } = cancelProposalSchema.parse(req.body ?? {});
-    res.json(groups.cancelProposal(actor(res), req.params.id, reason || null));
+    res.json(groups.cancelProposal(actor(res), req.params.id, reason));
   });
 
   router.get('/audit', (req, res) => {

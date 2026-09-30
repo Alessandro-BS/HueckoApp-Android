@@ -138,7 +138,7 @@ export function adminGroups(db: Db) {
     },
 
     // Moderación (D7): cualquier propuesta que no esté cancelada, sea de quien sea y sin ser miembro.
-    cancelProposal(actor: AdminActor, id: string, reason: string | null): AdminProposalSummary {
+    cancelProposal(actor: AdminActor, id: string, reason: string): AdminProposalSummary {
       return withTransaction(db, () => {
         const row = findProposal(id);
         if (!row) throw proposalNotFound();

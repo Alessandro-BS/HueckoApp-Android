@@ -135,35 +135,62 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
     });
   });
 
-  it('sin cuerpo también vale (motivo null); otra vez → 409 INVALID_STATE', async () => {
+  it('otra vez → 409 INVALID_STATE y no se anota dos veces', async () => {
     const { app, admin, yo, group } = await setupGroups();
     const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
-    expect((await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token))).status).toBe(200);
-    const again = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token));
+    const send = () => request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
+    expect((await send()).status).toBe(200);
+    const again = await send();
     expect(again.status).toBe(409);
     expect(again.body.error).toMatchObject({ code: 'INVALID_STATE', message: 'La propuesta ya está cancelada.' });
     const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
     expect(audit.body.total).toBe(1);
-    expect(audit.body.items[0].details.reason).toBeNull();
+    expect(audit.body.items[0].details.reason).toBe('Spam');
   });
 
   it('quien organiza el plan no puede usar la ruta de moderación (403 NOT_ADMIN), pero su /cancel de siempre sigue igual', async () => {
     const { app, yo, group } = await setupGroups();
     const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
-    const denied = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(yo.token));
+    const denied = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(yo.token)).send({ reason: 'Spam' });
     expect(denied.status).toBe(403);
     expect(denied.body.error.code).toBe('NOT_ADMIN');
     expect((await request(app).post(`/api/proposals/${plan.id}/cancel`).set(bearer(yo.token))).status).toBe(200); // control positivo
   });
 
-  it('404 PROPOSAL_NOT_FOUND y 400 con un motivo de más de 200 caracteres', async () => {
-    const { app, admin, yo, group } = await setupGroups();
-    const missing = await request(app).post('/api/admin/proposals/no-existe/cancel').set(bearer(admin.token));
+  it('404 PROPOSAL_NOT_FOUND con un motivo válido', async () => {
+    const { app, admin } = await setupGroups();
+    const missing = await request(app).post('/api/admin/proposals/no-existe/cancel').set(bearer(admin.token)).send({ reason: 'Spam' });
     expect(missing.status).toBe(404);
     expect(missing.body.error.code).toBe('PROPOSAL_NOT_FOUND');
+  });
+
+  it.each([
+    ['sin cuerpo', undefined],
+    ['sin motivo', {}],
+    ['motivo en blanco', { reason: '   ' }],
+    ['motivo de 2 caracteres tras el trim', { reason: '  ab ' }],
+    ['motivo de más de 200 caracteres', { reason: 'x'.repeat(201) }],
+    ['motivo que no es texto', { reason: 42 }],
+  ])('400 VALIDATION_ERROR: %s, y la propuesta no cambia ni se anota', async (_name, body) => {
+    const { app, admin, yo, group } = await setupGroups();
+    const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
+    const req = request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token));
+    const res = await (body === undefined ? req : req.send(body));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect((await request(app).get(`/api/proposals/${plan.id}`).set(bearer(yo.token))).body.state).toBe('PROPUESTO');
+    expect((await request(app).get('/api/admin/audit').set(bearer(admin.token))).body.total).toBe(0);
+    // Control positivo: con un motivo de 3 caracteres (límite) sí se cancela.
+    const ok = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: ' abc ' });
+    expect(ok.status).toBe(200);
+  });
+
+  it('el motivo de 200 caracteres exactos vale; el de 201 no', async () => {
+    const { app, admin, yo, group } = await setupGroups();
     const plan = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
     const long = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'x'.repeat(201) });
     expect(long.status).toBe(400);
     expect(long.body.error.details).toContainEqual(expect.objectContaining({ message: 'El motivo admite hasta 200 caracteres.' }));
+    expect((await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'x'.repeat(200) })).status).toBe(200);
   });
 });

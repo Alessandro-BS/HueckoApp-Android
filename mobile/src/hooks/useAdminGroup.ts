@@ -10,7 +10,7 @@ export function useAdminGroup(groupId: string) {
   const { data, loading, refreshing, error, reload, mutate } = useResource(load);
 
   const removeAction = useAction(() => deleteAdminGroup(groupId));
-  const cancelAction = useAction(async (proposalId: string, reason?: string) => {
+  const cancelAction = useAction(async (proposalId: string, reason: string) => {
     const updated = await cancelProposalAsAdmin(proposalId, reason);
     mutate((prev) => prev && { ...prev, proposals: prev.proposals.map((p) => (p.id === updated.id ? updated : p)) });
     return updated;

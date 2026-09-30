@@ -275,8 +275,8 @@ export type AdminGroupDetail = AdminGroupSummary & {
   proposals: AdminProposalSummary[]; // las más recientes primero
 };
 
-// Cuerpo (opcional) de POST /admin/proposals/:id/cancel.
-export type AdminCancelProposalInput = { reason?: string };
+// Cuerpo de POST /admin/proposals/:id/cancel: el motivo es obligatorio (3-200 caracteres tras el trim).
+export type AdminCancelProposalInput = { reason: string };
 
 // ---- Estadísticas e informes (calculados solo en el servidor; la app los muestra y exporta) ----
 

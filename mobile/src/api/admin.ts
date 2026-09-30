@@ -42,8 +42,8 @@ export const deleteAdminGroup = async (id: string): Promise<void> => {
   await api.delete(groupPath(id));
 };
 
-// Moderación: el motivo (opcional) queda en el registro de acciones.
-export const cancelProposalAsAdmin = async (id: string, reason?: string) =>
-  (await api.post<AdminProposalSummary>(`/admin/proposals/${encodeURIComponent(id)}/cancel`, reason ? { reason } : {})).data;
+// Moderación: el motivo es obligatorio (3-200 caracteres, el servidor lo exige) y queda en el registro de acciones.
+export const cancelProposalAsAdmin = async (id: string, reason: string) =>
+  (await api.post<AdminProposalSummary>(`/admin/proposals/${encodeURIComponent(id)}/cancel`, { reason })).data;
 
 export const listAudit = async (page: number) => (await api.get<Page<AuditEntry>>('/admin/audit', { params: { page } })).data;

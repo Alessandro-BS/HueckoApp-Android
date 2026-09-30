@@ -25,13 +25,16 @@ export type AppStackParamList = {
   CreateProposal: { groupId: string; groupName: string; prefill?: ProposalPrefill };
   Voting: { proposalId: string };
   PlanDetail: { proposalId: string };
+  // Administración (solo rol ADMIN): detalles que se abren desde las pestañas Usuarios y Grupos.
+  AdminUserDetail: { userId: string; name: string };
+  AdminGroupDetail: { groupId: string; name: string };
 };
 
 // Pestañas del detalle de grupo.
 export type GroupTabsParamList = { Plans: undefined; Availability: undefined; Members: undefined };
 
 // Pestañas del panel de administración (solo rol ADMIN).
-export type AdminTabsParamList = { Stats: undefined; Reports: undefined };
+export type AdminTabsParamList = { Stats: undefined; Reports: undefined; Users: undefined; Groups: undefined; Audit: undefined };
 
 export type AppStackScreen<K extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, K>;
 

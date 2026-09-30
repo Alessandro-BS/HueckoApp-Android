@@ -119,7 +119,18 @@ describe('fin de sesión por suspensión (D14)', () => {
     expect(handler).not.toHaveBeenCalled();
     api.defaults.adapter = failWith(403, { error: { code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' } });
     await expect(api.get('/groups')).rejects.toMatchObject({ status: 403, code: 'ACCOUNT_SUSPENDED' });
+    expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith('ACCOUNT_SUSPENDED', 'Tu cuenta está suspendida.');
+  });
+
+  it('403 ACCOUNT_SUSPENDED de una petición enviada con un token viejo se ignora', async () => {
+    setAuthToken('viejo');
+    api.defaults.adapter = (config) => {
+      setAuthToken('nuevo'); // la sesión cambia mientras la petición está en vuelo
+      return failWith(403, { error: { code: 'ACCOUNT_SUSPENDED', message: 'Tu cuenta está suspendida.' } })(config);
+    };
+    await expect(api.get('/groups')).rejects.toMatchObject({ status: 403, code: 'ACCOUNT_SUSPENDED' });
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it('403 ACCOUNT_SUSPENDED sin sesión (el login) no llama al manejador', async () => {

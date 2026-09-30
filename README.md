@@ -84,13 +84,14 @@ Usa la base de `DATABASE_PATH` (`backend/.env`), no deja la app sin ningún admi
 
 | Tema | Dónde |
 |---|---|
-| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`, `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus`) |
-| **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend |
+| **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`, `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus`, `useAdminStats`, `useAdminReport`, `useAdminUsers`, `useAdminGroups`, `useAdminAudit`, `useAdminUser`, `useAdminGroup`) |
+| **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend. **Autorización por roles** (`USER`/`ADMIN`): el servidor lee rol y estado de la base en cada petición (`requireAuth` y `requireAdmin` en `backend/src/auth/require-auth.ts`), nadie se hace administrador por la API (solo `npm run make-admin`), una cuenta suspendida queda fuera al instante y cada acción de administración queda en un registro |
 | **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto del permiso en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
-| **Navegación** | `native-stack` (flujos), `drawer` (menú principal) y `material-top-tabs` (pestañas del grupo) |
+| **Navegación** | `native-stack` (flujos), `drawer` (menú principal; «Administración» solo aparece con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
 | **Cámara y galería** | `expo-image-picker` en `mobile/src/utils/scheduleImage.ts`: permiso de cámara en tiempo de ejecución (textos en el plugin de `app.json`), selector de fotos del sistema y validación de tipo y tamaño antes de subir |
 | **Inteligencia artificial** | Google Gemini **solo desde el backend** (`backend/src/ai/`, SDK `@google/genai`): OCR de horarios, borrador de propuesta a partir de una frase, ideas de plan para los huecos del grupo y resumen de votación. Respuestas validadas con zod, límite por usuario y modo demostración sin clave |
+| **Gráficos e informes** | Panel «Administración» (`mobile/src/screens/admin/`): gráficos con `react-native-gifted-charts` (sobre `react-native-svg`), informe en PDF generado en el teléfono con `expo-print` y CSV escrito con `expo-file-system`, ambos compartidos con `expo-sharing`. Los números los calcula el servidor (`backend/src/admin/stats.ts`), en su zona horaria |
 
 ## Hoja de ruta
 
@@ -99,6 +100,7 @@ Usa la base de `DATABASE_PATH` (`backend/.env`), no deja la app sin ningún admi
 - [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
 - [x] **Fase 3** — Propuestas, votación y ubicación
 - [x] **Fase 4** — IA: OCR de horarios y ayuda en votaciones
+- [x] **Fase 4.5** — Administración: roles, estadísticas, informes (PDF y CSV), usuarios, grupos, moderación y registro de acciones
 - [ ] **Fase 5** — Tests, despliegue del backend (con `TZ` fijada, ver «Zona horaria») y APK con EAS Build
 
 ## Flujo de trabajo (git flow)

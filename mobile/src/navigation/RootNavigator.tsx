@@ -1,6 +1,8 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { useAuth } from '../context/AuthContext';
+import { AdminGroupDetailScreen } from '../screens/admin/AdminGroupDetailScreen';
+import { AdminUserDetailScreen } from '../screens/admin/AdminUserDetailScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
@@ -47,6 +49,8 @@ export function RootNavigator() {
       <AppStack.Screen name="CreateProposal" component={CreateProposalScreen} options={{ title: 'Nueva propuesta' }} />
       <AppStack.Screen name="Voting" component={VotingScreen} options={{ title: 'Votar' }} />
       <AppStack.Screen name="PlanDetail" component={PlanDetailScreen} options={{ title: 'Detalle del plan' }} />
+      <AppStack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+      <AppStack.Screen name="AdminGroupDetail" component={AdminGroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
     </AppStack.Navigator>
   );
 }

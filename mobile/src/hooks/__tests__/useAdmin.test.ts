@@ -105,6 +105,42 @@ describe('useAdminUser', () => {
   });
 });
 
+describe('useAdminUser: actionError es siempre el de la acción más reciente', () => {
+  it('dos acciones distintas que fallan seguidas muestran el mensaje de la segunda; un éxito posterior lo borra', async () => {
+    admin.getAdminUser.mockResolvedValue(makeUserDetail());
+    admin.setUserRole.mockRejectedValue(new ApiError(409, 'LAST_ADMIN', 'Tiene que quedar al menos un administrador activo.'));
+    admin.setUserStatus.mockRejectedValueOnce(new ApiError(409, 'CANNOT_CHANGE_SELF', 'No puedes cambiar tu propia cuenta.'));
+    const { result } = await renderHook(() => useAdminUser('u2'));
+    await waitFor(() => expect(result.current.user).toBeDefined());
+
+    await act(async () => {
+      await result.current.setRole('ADMIN');
+    });
+    expect(result.current.actionError).toBe('Tiene que quedar al menos un administrador activo.');
+    await act(async () => {
+      await result.current.setStatus('SUSPENDED');
+    });
+    expect(result.current.actionError).toBe('No puedes cambiar tu propia cuenta.'); // no el del rol, que sigue guardado
+
+    // Y al revés: ahora falla primero el estado y después el rol.
+    admin.setUserStatus.mockRejectedValueOnce(new ApiError(409, 'CANNOT_CHANGE_SELF', 'No puedes cambiar tu propia cuenta.'));
+    await act(async () => {
+      await result.current.setStatus('SUSPENDED');
+    });
+    await act(async () => {
+      await result.current.setRole('ADMIN');
+    });
+    expect(result.current.actionError).toBe('Tiene que quedar al menos un administrador activo.');
+
+    // Una acción que sale bien después limpia el mensaje, aunque la otra acción tuviera uno guardado.
+    admin.setUserStatus.mockResolvedValueOnce(makeUserDetail({ status: 'SUSPENDED' }));
+    await act(async () => {
+      await result.current.setStatus('SUSPENDED');
+    });
+    expect(result.current.actionError).toBeNull();
+  });
+});
+
 describe('useAdminGroup', () => {
   it('cancelar una propuesta la actualiza en el detalle; borrar llama al endpoint', async () => {
     admin.getAdminGroup.mockResolvedValue(makeGroupDetail());
