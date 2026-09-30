@@ -7,16 +7,20 @@ const asset = (over: Record<string, unknown> = {}) => ({
   uri: 'file:///horario.jpg', mimeType: 'image/jpeg', fileName: 'horario.jpg', fileSize: 1_000_000, width: 1200, height: 900, ...over,
 });
 const picked = (over: Record<string, unknown> = {}) => ({ canceled: false, assets: [asset(over)] }) as any;
+const OPTIONS = {
+  mediaTypes: ['images'], quality: 0.7,
+  preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+};
 
 beforeEach(() => jest.clearAllMocks());
 
-it('galería: sin pedir permiso (selector del sistema), solo imágenes y comprimidas', async () => {
+it('galería: sin pedir permiso (selector del sistema), solo imágenes, comprimidas y en JPEG si eran HEIC', async () => {
   picker.launchImageLibraryAsync.mockResolvedValue(picked());
   await expect(pickScheduleImage('gallery')).resolves.toEqual({
     kind: 'picked', image: { uri: 'file:///horario.jpg', mimeType: 'image/jpeg', fileName: 'horario.jpg' },
   });
   expect(picker.requestCameraPermissionsAsync).not.toHaveBeenCalled();
-  expect(picker.launchImageLibraryAsync).toHaveBeenCalledWith({ mediaTypes: ['images'], quality: 0.7 });
+  expect(picker.launchImageLibraryAsync).toHaveBeenCalledWith(OPTIONS);
 });
 
 it('cámara: pide permiso y abre la cámara', async () => {
@@ -25,6 +29,7 @@ it('cámara: pide permiso y abre la cámara', async () => {
   await expect(pickScheduleImage('camera')).resolves.toEqual({
     kind: 'picked', image: { uri: 'file:///foto.png', mimeType: 'image/png', fileName: 'horario.png' },
   });
+  expect(picker.launchCameraAsync).toHaveBeenCalledWith(OPTIONS);
 });
 
 it.each([
@@ -42,7 +47,8 @@ it('cancelar el selector no es un error', async () => {
 });
 
 it.each([
-  [{ mimeType: 'image/heic' }, IMAGE_MESSAGES.unsupported],
+  // El sistema no pudo convertirla (el archivo sigue siendo .heic): se rechaza antes de subir.
+  [{ mimeType: 'image/heic', fileName: 'IMG_0001.HEIC', uri: 'file:///cache/IMG_0001.heic' }, IMAGE_MESSAGES.unsupported],
   [{ fileSize: 5 * 1024 * 1024 + 1 }, IMAGE_MESSAGES.tooLarge],
 ])('rechaza antes de subir: %j', async (over, message) => {
   picker.launchImageLibraryAsync.mockResolvedValue(picked(over));
@@ -71,5 +77,15 @@ it('sin fileSize (el sistema no lo informó) la foto se acepta', async () => {
   picker.launchImageLibraryAsync.mockResolvedValue(picked({ fileSize: undefined }));
   await expect(pickScheduleImage('gallery')).resolves.toEqual({
     kind: 'picked', image: { uri: 'file:///horario.jpg', mimeType: 'image/jpeg', fileName: 'horario.jpg' },
+  });
+});
+
+it.each([
+  ['Android: recomprimida a .jpeg aunque mimeType diga heic', { mimeType: 'image/heic', fileName: 'IMG_0001.HEIC', uri: 'file:///data/cache/ImagePicker/1b2c.jpeg' }],
+  ['iOS: la galería la entrega en JPG con el nombre original', { mimeType: 'image/jpeg', fileName: 'IMG_0001.HEIC', uri: 'file:///tmp/ImagePicker/abc.jpg' }],
+])('foto HEIC convertida (%s) → se sube como JPG con nombre .jpg', async (_caso, over) => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked(over));
+  await expect(pickScheduleImage('gallery')).resolves.toEqual({
+    kind: 'picked', image: { uri: over.uri, mimeType: 'image/jpeg', fileName: 'horario.jpg' },
   });
 });

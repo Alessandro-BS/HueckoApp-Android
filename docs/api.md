@@ -298,6 +298,7 @@ Reglas:
 - Si la foto no parece un horario o no se lee ningún bloque válido: `200 { "blocks": [] }` (no hay error `422`). Si la IA responde algo que no es JSON con esa forma: `502`; si el proveedor falla: `503`.
 - El tipo declarado debe ser `image/jpeg`, `image/png` o `image/webp`, pero manda el de los **primeros bytes** del archivo: si son de un JPG, PNG o WEBP real se acepta aunque el tipo declarado no coincida (p. ej. una PNG enviada como `image/jpeg`) y a la IA se le envía el tipo real; si no son de ninguno → `400 INVALID_IMAGE`.
 - La petición solo puede llevar la parte `image`: cualquier campo de texto de más → `400 INVALID_UPLOAD`.
+- La app pide al selector de fotos la versión JPG de las fotos HEIC del iPhone y comprueba tipo y tamaño antes de subir: el servidor nunca recibe HEIC (si llegara, `400 INVALID_IMAGE`).
 
 `200` · `400 IMAGE_REQUIRED` (falta el archivo) · `400 INVALID_IMAGE` (no es JPG/PNG/WEBP) · `400 INVALID_UPLOAD` (otro campo, más de un archivo o un multipart roto o cortado) · `413 PAYLOAD_TOO_LARGE` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 

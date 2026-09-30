@@ -33,4 +33,6 @@ jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: jest.fn(),
   launchCameraAsync: jest.fn(),
   launchImageLibraryAsync: jest.fn(),
+  // Enum real del módulo (ImagePicker.types.d.ts): lo usa scheduleImage.ts para pedir JPEG en vez de HEIC.
+  UIImagePickerPreferredAssetRepresentationMode: { Automatic: 'automatic', Compatible: 'compatible', Current: 'current' },
 }));
