@@ -19,6 +19,7 @@ El **contrato de la API** ([`docs/api.md`](docs/api.md)) es el acuerdo entre la 
 ## Requisitos
 
 - [Node.js](https://nodejs.org/) 22.13 o superior y npm
+- Nada para la base de datos: en desarrollo el backend usa [PGlite](https://pglite.dev) (PostgreSQL dentro del propio proceso, sin instalar Postgres ni Docker); en producción, [Neon](https://neon.com) (ver «Base de datos en producción»)
 - Git
 - **Expo Go** en tu celular, o un emulador de Android Studio
 
@@ -35,11 +36,21 @@ cp backend/.env.example backend/.env   # completa JWT_SECRET (el archivo explica
 npm run backend                        # http://localhost:3000/api/health
 ```
 
+> **Base de datos local:** con `DATABASE_URL` vacía (lo normal en desarrollo), el backend guarda todo en PostgreSQL con PGlite, en `backend/data/pglite` (se crea sola al arrancar, con todas las tablas). Para empezar de cero, detén el servidor y borra esa carpeta. PGlite admite **un solo proceso**: detén el servidor antes de `npm run seed -w backend` o `npm run make-admin -w backend` (si no, lo avisan: «La base local … está abierta por otro proceso»). El archivo `backend/data/hueckoapp.db` de la versión con SQLite ya no se usa y se puede borrar (sus datos no se copian: la semilla vuelve a crear los de ejemplo).
+
 > **Zona horaria:** `TZ` en `backend/.env` (por defecto `America/Lima`) es la zona en la que el servidor calcula la fecha y hora de los planes confirmados (`scheduledAt` y `scheduledDate`). En el despliegue hay que fijarla siempre: sin ella el servidor usa la suya (normalmente UTC) y los planes caerían en otra fecha u hora.
 
 > **Despliegue detrás de un proxy:** en Render, Railway o detrás de nginx pon `TRUST_PROXY=1` (el número de proxies) en el `.env` del servidor; si no, todas las peticiones parecen venir de la misma IP y el límite de intentos de login (`LOGIN_RATE_LIMIT`) y de registro (`REGISTER_RATE_LIMIT`) bloquearía a todos a la vez.
 
 > **Huecko IA (opcional):** pon tu clave de Gemini en `GEMINI_API_KEY` de `backend/.env` (se consigue en https://aistudio.google.com/apikey). El modelo se cambia con `GEMINI_MODEL` (por defecto `gemini-3.5-flash-lite`, que responde en pocos segundos); si está saturado, sin cuota, no existe o tarda demasiado, el servidor reintenta una vez con `GEMINI_FALLBACK_MODEL` (por defecto `gemini-3.5-flash`). `GEMINI_THINKING_LEVEL` (por defecto `low`) limita el razonamiento del modelo para que responda más rápido. Estos valores caben en el plan gratuito de Gemini (`gemini-3.8-flash` solo permite 20 peticiones al día y suele estar saturado). Sin clave, la IA responde con datos de ejemplo y la app muestra «Modo demostración». La clave nunca va en la app.
+
+### Base de datos en producción (Neon)
+1. Crea un proyecto en [Neon](https://console.neon.tech) con **Postgres 18** (la versión por defecto; hace falta 16 o posterior).
+2. En **Connect**, copia la cadena de conexión (la *pooled* sirve) y cambia `sslmode=require` por `sslmode=verify-full` (mismo cifrado, sin el aviso de seguridad de `pg`).
+3. Ponla en `DATABASE_URL` del entorno del servidor (nunca en el repo ni en la app). Con `NODE_ENV=production` el servidor no arranca sin ella.
+4. Al arrancar, el servidor crea o actualiza las tablas (migraciones en `backend/src/db/migrations.ts`, anotadas en `schema_migrations`).
+5. Primer administrador: `npm run make-admin -w backend -- <correo>` con esa misma `DATABASE_URL` en tu `backend/.env` (la consola solo abre una base que ya tenga el esquema). La semilla (`npm run seed -w backend`) es solo para desarrollo: no la ejecutes contra la base de producción.
+6. Antes de desplegar en Render, arranca el servidor una vez contra un proyecto Neon de pruebas (con su `DATABASE_URL` real) y comprueba salud, inicio de sesión, Inicio y `make-admin`: los tests no usan red, así que Neon no se prueba automáticamente.
 
 ### 2b. Datos de ejemplo (opcional)
 ```bash
@@ -69,7 +80,7 @@ Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral: estad
 npm run make-admin -w backend -- ana@test.com            # dar el rol
 npm run make-admin -w backend -- ana@test.com --revoke   # quitarlo
 ```
-Usa la base de `DATABASE_PATH` (`backend/.env`) y solo abre una que ya exista (si la ruta está mal, lo dice en vez de crear una vacía). No deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve (o deja de ver) el menú **al volver a la app (primer plano), al reabrirla o al iniciar sesión**; si pierde el rol mientras usa «Administración», la app lo detecta en la siguiente petición y sale de esas pantallas. Con la semilla (paso 2b) ya existe `admin@test.com`.
+Usa la base de `backend/.env` (`DATABASE_URL` o, si está vacía, PGlite en `PGLITE_DATA_DIR`) y solo abre una que ya exista con el esquema de HueckoApp (si la carpeta o la URL están mal, lo dice en vez de crear una vacía). Con la base local, detén antes el servidor: PGlite admite un solo proceso. No deja la app sin ningún administrador activo y queda en el registro de acciones como «Consola del servidor». La persona ve (o deja de ver) el menú **al volver a la app (primer plano), al reabrirla o al iniciar sesión**; si pierde el rol mientras usa «Administración», la app lo detecta en la siguiente petición y sale de esas pantallas. Con la semilla (paso 2b) ya existe `admin@test.com`.
 
 #### Prueba manual en un celular (pendiente antes de `release/2.0.0`)
 Los gráficos, el PDF, el CSV y el menú compartir solo se prueban con mocks en Jest. Antes de publicar, con Expo Go:
@@ -81,11 +92,12 @@ Los gráficos, el PDF, el CSV y el menú compartir solo se prueban con mocks en 
 ### Comandos útiles
 | Dónde | Comando | Para qué |
 |---|---|---|
-| raíz | `npm test` | Tests del backend (Vitest + Supertest) y de mobile (Jest). Fijan ellos mismos `TZ=America/Lima` (`backend/vitest.config.mts` y `mobile/jest.globalSetup.js`): pasan igual en cualquier PC o CI, sin prefijos en la terminal |
+| raíz | `npm test` | Tests del backend (Vitest + Supertest, cada test con su base PGlite en memoria: sin red ni Postgres instalado) y de mobile (Jest). Fijan ellos mismos `TZ=America/Lima` (`backend/vitest.config.mts` y `mobile/jest.globalSetup.js`): pasan igual en cualquier PC o CI, sin prefijos en la terminal |
 | raíz | `npm run typecheck` | Revisar tipos de backend y mobile |
 | `mobile/` | `npx expo install <paquete>` | Instalar paquetes (elige la versión compatible con el SDK; **no uses `npm install`** para librerías nativas) |
 | `mobile/` | `npx expo-doctor` | Diagnosticar dependencias |
 | raíz | `npm run make-admin -w backend -- <correo> [--revoke]` | Dar o quitar el rol de administrador |
+| raíz | `npm run seed -w backend` | Datos de ejemplo en la base local (con el servidor detenido) |
 
 ## Temas del curso y dónde se aplican
 
@@ -95,6 +107,7 @@ Los gráficos, el PDF, el CSV y el menú compartir solo se prueban con mocks en 
 | **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend. **Autorización por roles** (`USER`/`ADMIN`): el servidor lee rol y estado de la base en cada petición (`requireAuth` y `requireAdmin` en `backend/src/auth/require-auth.ts`), nadie se hace administrador por la API (solo `npm run make-admin`), una cuenta suspendida queda fuera al instante y cada acción de administración queda en un registro |
 | **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto del permiso en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
+| **Base de datos** | PostgreSQL: Neon en producción (driver `pg` con un pool de conexiones) y PGlite en desarrollo y en los tests, detrás de una misma interfaz (`backend/src/db/db.ts`) con consultas parametrizadas, transacciones reales y migraciones versionadas (`schema_migrations`) |
 | **Navegación** | `native-stack` (flujos), `drawer` (menú principal; «Administración» solo aparece con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
 | **Cámara y galería** | `expo-image-picker` en `mobile/src/utils/scheduleImage.ts`: permiso de cámara en tiempo de ejecución (textos en el plugin de `app.json`), selector de fotos del sistema y validación de tipo y tamaño antes de subir |
 | **Inteligencia artificial** | Google Gemini **solo desde el backend** (`backend/src/ai/`, SDK `@google/genai`): OCR de horarios, borrador de propuesta a partir de una frase, ideas de plan para los huecos del grupo y resumen de votación. Respuestas validadas con zod, límite por usuario y modo demostración sin clave |
