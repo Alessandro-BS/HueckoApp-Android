@@ -21,75 +21,75 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   const actor = (res: Response): AdminActor => ({ adminId: getUserId(res), now: now() });
 
   // Estadísticas e informes: todo se calcula aquí, en la zona del servidor; la app solo lo muestra y lo exporta.
-  router.get('/stats', (_req, res) => {
-    res.json(adminStats(db));
+  router.get('/stats', async (_req, res) => {
+    res.json(await adminStats(db));
   });
 
-  router.get('/stats/timeseries', (req, res) => {
+  router.get('/stats/timeseries', async (req, res) => {
     const { range, fromDate, toDate, bucket } = timeseriesQuerySchema.parse(req.query);
-    const body: Timeseries = { from: fromDate, to: toDate, bucket, points: timeseries(db, range, bucket) };
+    const body: Timeseries = { from: fromDate, to: toDate, bucket, points: await timeseries(db, range, bucket) };
     res.json(body);
   });
 
-  router.get('/stats/popular-hours', (req, res) => {
+  router.get('/stats/popular-hours', async (req, res) => {
     const period = optionalRangeQuerySchema.parse(req.query);
     const body: PopularHours = {
       from: period?.fromDate ?? null,
       to: period?.toDate ?? null,
-      hours: popularHours(db, period?.range ?? null),
+      hours: await popularHours(db, period?.range ?? null),
     };
     res.json(body);
   });
 
-  router.get('/reports', (req, res) => {
-    res.json(adminReport(db, rangeQuerySchema.parse(req.query).range, now()));
+  router.get('/reports', async (req, res) => {
+    res.json(await adminReport(db, rangeQuerySchema.parse(req.query).range, now()));
   });
 
-  router.get('/users', (req, res) => {
+  router.get('/users', async (req, res) => {
     const { search, page } = listQuerySchema.parse(req.query);
-    res.json(users.list(search, page));
+    res.json(await users.list(search, page));
   });
 
-  router.get('/users/:id', (req, res) => {
-    res.json(users.detail(req.params.id));
+  router.get('/users/:id', async (req, res) => {
+    res.json(await users.detail(req.params.id));
   });
 
   // Validación antes que existencia: un cuerpo inválido es 400 aunque la cuenta no exista.
-  router.patch('/users/:id/status', (req, res) => {
+  router.patch('/users/:id/status', async (req, res) => {
     const { status } = userStatusSchema.parse(req.body);
-    users.setStatus(actor(res), req.params.id, status);
-    res.json(users.detail(req.params.id));
+    await users.setStatus(actor(res), req.params.id, status);
+    res.json(await users.detail(req.params.id));
   });
 
-  router.patch('/users/:id/role', (req, res) => {
+  router.patch('/users/:id/role', async (req, res) => {
     const { role } = userRoleSchema.parse(req.body);
-    users.setRole(actor(res), req.params.id, role);
-    res.json(users.detail(req.params.id));
+    await users.setRole(actor(res), req.params.id, role);
+    res.json(await users.detail(req.params.id));
   });
 
-  router.get('/groups', (req, res) => {
+  router.get('/groups', async (req, res) => {
     const { search, page } = listQuerySchema.parse(req.query);
-    res.json(groups.list(search, page));
+    res.json(await groups.list(search, page));
   });
 
-  router.get('/groups/:id', (req, res) => {
-    res.json(groups.detail(req.params.id));
+  router.get('/groups/:id', async (req, res) => {
+    res.json(await groups.detail(req.params.id));
   });
 
-  router.delete('/groups/:id', (req, res) => {
-    groups.remove(actor(res), req.params.id);
+  router.delete('/groups/:id', async (req, res) => {
+    await groups.remove(actor(res), req.params.id);
     res.status(204).end();
   });
 
   // Moderación: cancelar la propuesta de cualquier grupo (D7). Cuerpo { reason } obligatorio (3-200 caracteres).
-  router.post('/proposals/:id/cancel', (req, res) => {
+  router.post('/proposals/:id/cancel', async (req, res) => {
     const { reason } = cancelProposalSchema.parse(req.body ?? {});
-    res.json(groups.cancelProposal(actor(res), req.params.id, reason));
+    res.json(await groups.cancelProposal(actor(res), req.params.id, reason));
   });
 
-  router.get('/audit', (req, res) => {
+  router.get('/audit', async (req, res) => {
     const { page } = pageQuerySchema.parse(req.query);
-    res.json(audit.list(page));
+    res.json(await audit.list(page));
   });
 
   return router;

@@ -1,7 +1,7 @@
 import type { AdminGroupDetail, AdminGroupSummary, AdminProposalSummary, Page, ProposalState } from '@hueckoapp/shared';
 
-import type { Db } from '../db/database';
-import { withTransaction } from '../db/transaction';
+import type { SqlParam } from '../db/db';
+import type { BridgeDb } from '../db/sqlite-bridge';
 import { groupsRepository, MEMBER_ORDER } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { proposalsRepository } from '../proposals/proposals.repository';
@@ -84,34 +84,37 @@ const toProposal = (r: ProposalRow): AdminProposalSummary => ({
 const groupNotFound = () => new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
 const proposalNotFound = () => new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
 
-export function adminGroups(db: Db) {
+// TEMPORAL: BridgeDb mientras auditRepository y proposalsRepository sigan síncronos (Tasks 3–4); Db desde el Task 5.
+export function adminGroups(db: BridgeDb) {
   const audit = auditRepository(db);
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);
 
-  const loadGroup = (id: string): GroupRow => {
-    const row = db.prepare(`${GROUP_SELECT} WHERE g.id = ?`).get(id) as GroupRow | undefined;
+  const loadGroup = async (id: string): Promise<GroupRow> => {
+    const row = await db.one<GroupRow>(`${GROUP_SELECT} WHERE g.id = $1`, [id]);
     if (!row) throw groupNotFound();
     return row;
   };
-  const findProposal = (id: string) => db.prepare(`${PROPOSAL_SELECT} WHERE p.id = ?`).get(id) as ProposalRow | undefined;
+  const findProposal = (id: string) => db.one<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.id = $1`, [id]);
 
   return {
-    list(search: string, page: number): Page<AdminGroupSummary> {
-      const where = search ? `WHERE g.name LIKE ? ESCAPE '\\' OR g.invite_code LIKE ? ESCAPE '\\'` : '';
-      const params = search ? [likePattern(search), likePattern(search)] : [];
-      const { total } = db.prepare(`SELECT COUNT(*) AS total FROM groups g ${where}`).get(...params) as { total: number };
-      const rows = db
-        .prepare(`${GROUP_SELECT} ${where} ORDER BY g.created_at DESC, g.rowid DESC LIMIT ? OFFSET ?`)
-        .all(...params, ADMIN_PAGE_SIZE, offsetOf(page)) as GroupRow[];
+    async list(search: string, page: number): Promise<Page<AdminGroupSummary>> {
+      const filter: SqlParam[] = search ? [likePattern(search)] : [];
+      const where = search ? `WHERE g.name LIKE $1 ESCAPE '\\' OR g.invite_code LIKE $1 ESCAPE '\\'` : '';
+      const { total } = (await db.one<{ total: number }>(`SELECT COUNT(*) AS total FROM groups g ${where}`, filter))!;
+      const n = filter.length;
+      const rows = await db.many<GroupRow>(
+        `${GROUP_SELECT} ${where} ORDER BY g.created_at DESC, g.rowid DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
+        [...filter, ADMIN_PAGE_SIZE, offsetOf(page)],
+      );
       return toPage(rows.map(toGroup), page, total);
     },
 
-    detail(id: string): AdminGroupDetail {
-      const row = loadGroup(id);
-      const group = groups.findById(id);
+    async detail(id: string): Promise<AdminGroupDetail> {
+      const row = await loadGroup(id);
+      const group = await groups.findById(id);
       if (!group) throw groupNotFound();
-      const rows = db.prepare(`${PROPOSAL_SELECT} WHERE p.group_id = ? ORDER BY p.created_at DESC, p.rowid DESC`).all(id) as ProposalRow[];
+      const rows = await db.many<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.rowid DESC`, [id]);
       return {
         ...toGroup(row),
         inviteCode: group.inviteCode,
@@ -122,11 +125,11 @@ export function adminGroups(db: Db) {
     },
 
     // Borra el grupo con todo lo suyo: miembros, propuestas, franjas, votos e incidencias caen por ON DELETE CASCADE.
-    remove(actor: AdminActor, id: string): void {
-      withTransaction(db, () => {
-        const row = loadGroup(id);
-        db.prepare('DELETE FROM groups WHERE id = ?').run(id);
-        audit.record({
+    remove(actor: AdminActor, id: string): Promise<void> {
+      return db.transaction(async () => {
+        const row = await loadGroup(id);
+        await db.query('DELETE FROM groups WHERE id = $1', [id]);
+        await audit.record({
           adminId: actor.adminId,
           action: 'GROUP_DELETED',
           targetType: 'GROUP',
@@ -138,13 +141,13 @@ export function adminGroups(db: Db) {
     },
 
     // Moderación (D7): cualquier propuesta que no esté cancelada, sea de quien sea y sin ser miembro.
-    cancelProposal(actor: AdminActor, id: string, reason: string): AdminProposalSummary {
-      return withTransaction(db, () => {
-        const row = findProposal(id);
+    cancelProposal(actor: AdminActor, id: string, reason: string): Promise<AdminProposalSummary> {
+      return db.transaction(async () => {
+        const row = await findProposal(id);
         if (!row) throw proposalNotFound();
         if (!canCancel(row.state)) throw new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.');
-        proposals.setState(id, 'CANCELADO');
-        audit.record({
+        await proposals.setState(id, 'CANCELADO');
+        await audit.record({
           adminId: actor.adminId,
           action: 'PROPOSAL_CANCELLED',
           targetType: 'PROPOSAL',
@@ -152,7 +155,7 @@ export function adminGroups(db: Db) {
           details: { title: row.title, groupId: row.group_id, from: row.state, reason },
           createdAt: actor.now.toISOString(),
         });
-        return toProposal(findProposal(id)!);
+        return toProposal((await findProposal(id))!);
       });
     },
   };

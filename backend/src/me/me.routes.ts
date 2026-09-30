@@ -14,20 +14,27 @@ export function meRouter({ db, now }: ResolvedDeps) {
   const proposals = proposalsRepository(db);
   const blocks = timeBlocksRepository(db);
 
-  router.get('/upcoming-plans', (_req, res) => {
+  router.get('/upcoming-plans', async (_req, res) => {
     const userId = getUserId(res);
-    res.json(upcomingPlans(proposals.listForUser(userId), now()));
+    res.json(upcomingPlans(await proposals.listForUser(userId), now()));
   });
 
-  router.get('/dashboard', (_req, res) => {
+  router.get('/dashboard', async (_req, res) => {
     const userId = getUserId(res);
+    const at = now();
+    const myGroups = await groups.listForUser(userId);
+    const myProposals = await proposals.listForUser(userId);
+    const totalBlocks = (await blocks.listByUser(userId)).length;
+    // buildDashboard es puro (síncrono): los miembros del próximo plan se leen antes, en una consulta.
+    const next = upcomingPlans(myProposals, at)[0];
+    const nextMembers = next ? ((await groups.findById(next.groupId))?.members ?? []) : [];
     res.json(
       buildDashboard({
-        now: now(),
-        groups: groups.listForUser(userId),
-        proposals: proposals.listForUser(userId),
-        totalBlocks: blocks.listByUser(userId).length,
-        membersOf: (groupId) => groups.findById(groupId)?.members ?? [],
+        now: at,
+        groups: myGroups,
+        proposals: myProposals,
+        totalBlocks,
+        membersOf: (groupId) => (groupId === next?.groupId ? nextMembers : []),
       }),
     );
   });

@@ -19,17 +19,20 @@ function proposalsContext({ db, now }: ResolvedDeps) {
   const blocks = timeBlocksRepository(db);
 
   // 404 si la propuesta no existe; 403 si no soy miembro de su grupo.
-  const loadForMember = (proposalId: string, userId: string) => {
-    const proposal = proposals.findById(proposalId, userId);
+  const loadForMember = async (proposalId: string, userId: string) => {
+    const proposal = await proposals.findById(proposalId, userId);
     if (!proposal) throw new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
-    const { group, me } = loadGroupForMember(groups, proposal.groupId, userId);
+    const { group, me } = await loadGroupForMember(groups, proposal.groupId, userId);
     return { proposal, group, me };
   };
 
   // Datos del cruce del grupo con sus horarios actuales.
-  const matcherInput = (group: Group) => {
+  const matcherInput = async (group: Group) => {
     const memberIds = group.members.map((m) => m.id);
-    return { matcherGroup: { memberIds, availabilityThreshold: group.availabilityThreshold }, groupBlocks: blocks.listRecurringByUsers(memberIds) };
+    return {
+      matcherGroup: { memberIds, availabilityThreshold: group.availabilityThreshold },
+      groupBlocks: await blocks.listRecurringByUsers(memberIds),
+    };
   };
 
   const assertVotingOpen = (proposal: Proposal) => {
@@ -44,18 +47,18 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
   const router = Router();
   const ctx = proposalsContext(deps);
 
-  router.get('/:id/proposals', (req, res) => {
+  router.get('/:id/proposals', async (req, res) => {
     const userId = getUserId(res);
-    const { group } = loadGroupForMember(ctx.groups, req.params.id, userId);
-    res.json(ctx.proposals.listByGroup(group.id, userId));
+    const { group } = await loadGroupForMember(ctx.groups, req.params.id, userId);
+    res.json(await ctx.proposals.listByGroup(group.id, userId));
   });
 
-  router.post('/:id/proposals', (req, res) => {
+  router.post('/:id/proposals', async (req, res) => {
     const userId = getUserId(res);
-    const { group } = loadGroupForMember(ctx.groups, req.params.id, userId);
+    const { group } = await loadGroupForMember(ctx.groups, req.params.id, userId);
     const now = ctx.now();
     const input = createProposalSchema(now).parse(req.body);
-    const { matcherGroup, groupBlocks } = ctx.matcherInput(group);
+    const { matcherGroup, groupBlocks } = await ctx.matcherInput(group);
     // Con franjas: el % lo calcula el servidor (G2). Sin franjas: las 3 mejores del cruce del grupo (C5).
     const windows =
       input.windows.length > 0
@@ -67,7 +70,7 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
     if (windows.length === 0) {
       throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.');
     }
-    const id = ctx.proposals.create({
+    const id = await ctx.proposals.create({
       groupId: group.id,
       createdBy: userId,
       title: input.title,
@@ -76,7 +79,7 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
       windows,
       createdAt: now.toISOString(),
     });
-    res.status(201).json(ctx.proposals.findById(id, userId));
+    res.status(201).json(await ctx.proposals.findById(id, userId));
   });
 
   return router;
@@ -87,47 +90,47 @@ export function proposalsRouter(deps: ResolvedDeps) {
   const router = Router();
   const ctx = proposalsContext(deps);
 
-  router.get('/:id', (req, res) => {
-    res.json(ctx.loadForMember(req.params.id, getUserId(res)).proposal);
+  router.get('/:id', async (req, res) => {
+    res.json((await ctx.loadForMember(req.params.id, getUserId(res))).proposal);
   });
 
-  router.put('/:id/vote', (req, res) => {
+  router.put('/:id/vote', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = ctx.loadForMember(req.params.id, userId);
+    const { proposal } = await ctx.loadForMember(req.params.id, userId);
     const { windowId } = voteSchema.parse(req.body);
     ctx.assertVotingOpen(proposal);
     if (!proposal.windows.some((w) => w.id === windowId)) {
       throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
     }
-    ctx.proposals.vote(proposal.id, userId, windowId, ctx.now().toISOString());
-    res.json(ctx.proposals.findById(proposal.id, userId));
+    await ctx.proposals.vote(proposal.id, userId, windowId, ctx.now().toISOString());
+    res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  router.delete('/:id/vote', (req, res) => {
+  router.delete('/:id/vote', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = ctx.loadForMember(req.params.id, userId);
+    const { proposal } = await ctx.loadForMember(req.params.id, userId);
     ctx.assertVotingOpen(proposal);
-    ctx.proposals.unvote(proposal.id, userId);
-    res.json(ctx.proposals.findById(proposal.id, userId));
+    await ctx.proposals.unvote(proposal.id, userId);
+    res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  router.post('/:id/windows', (req, res) => {
+  router.post('/:id/windows', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal, group } = ctx.loadForMember(req.params.id, userId);
+    const { proposal, group } = await ctx.loadForMember(req.params.id, userId);
     const input: TimeWindowInput = timeWindowInputSchema.parse(req.body);
     ctx.assertVotingOpen(proposal);
     const exists = proposal.windows.some(
       (w) => w.dayOfWeek === input.dayOfWeek && w.startTime === input.startTime && w.endTime === input.endTime,
     );
     if (exists) throw new ApiError(409, 'WINDOW_EXISTS', 'Esa franja ya está propuesta.');
-    const { matcherGroup, groupBlocks } = ctx.matcherInput(group);
-    ctx.proposals.addWindow(proposal.id, { ...input, availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, input) });
-    res.status(201).json(ctx.proposals.findById(proposal.id, userId));
+    const { matcherGroup, groupBlocks } = await ctx.matcherInput(group);
+    await ctx.proposals.addWindow(proposal.id, { ...input, availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, input) });
+    res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });
 
   // Solo quien gestiona la propuesta decide sobre ella (canManageProposal: su creador; si se fue, el OWNER; si no, el más antiguo).
-  const loadForManager = (proposalId: string, userId: string) => {
-    const loaded = ctx.loadForMember(proposalId, userId);
+  const loadForManager = async (proposalId: string, userId: string) => {
+    const loaded = await ctx.loadForMember(proposalId, userId);
     if (!loaded.proposal.canManage) {
       throw new ApiError(403, 'NOT_MANAGER', 'Solo quien organiza el plan puede hacer esto.');
     }
@@ -136,51 +139,51 @@ export function proposalsRouter(deps: ResolvedDeps) {
   const invalidState = () => new ApiError(409, 'INVALID_STATE', 'El plan no admite esta acción en su estado actual.');
   const isActivePlan = (p: Proposal) => p.state === 'CONFIRMADO' || p.state === 'EN_RECOORDINACION';
 
-  router.post('/:id/confirm', (req, res) => {
+  router.post('/:id/confirm', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = loadForManager(req.params.id, userId);
+    const { proposal } = await loadForManager(req.params.id, userId);
     const { windowId } = confirmSchema.parse(req.body ?? {});
     if (proposal.state !== 'PROPUESTO') throw invalidState();
     const chosen = windowId !== undefined ? proposal.windows.find((w) => w.id === windowId) : pickWinner(proposal.windows);
     if (!chosen && windowId !== undefined) throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
     if (!chosen) throw new ApiError(409, 'NO_VOTES', 'Nadie ha votado todavía: elige la franja para confirmar.');
     const { scheduledAt, scheduledDate } = scheduleFor(chosen.dayOfWeek, chosen.startTime, ctx.now());
-    ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate);
-    res.json(ctx.proposals.findById(proposal.id, userId));
+    await ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate);
+    res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  router.post('/:id/cancel', (req, res) => {
+  router.post('/:id/cancel', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = loadForManager(req.params.id, userId);
+    const { proposal } = await loadForManager(req.params.id, userId);
     if (!canCancel(proposal.state)) throw invalidState();
-    ctx.proposals.setState(proposal.id, 'CANCELADO');
-    res.json(ctx.proposals.findById(proposal.id, userId));
+    await ctx.proposals.setState(proposal.id, 'CANCELADO');
+    res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  router.post('/:id/incidences', (req, res) => {
+  router.post('/:id/incidences', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal, me } = ctx.loadForMember(req.params.id, userId);
+    const { proposal, me } = await ctx.loadForMember(req.params.id, userId);
     const input = incidenceInputSchema.parse(req.body);
     if (!isActivePlan(proposal)) {
       throw new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
     }
     // Contrato + G5: si falta un imprescindible, el plan confirmado pasa a re-coordinarse.
     const escalate = input.type === 'FALTA' && me.isEssential && proposal.state === 'CONFIRMADO';
-    ctx.proposals.reportIncidence(
+    await ctx.proposals.reportIncidence(
       proposal.id,
       { userId, ...input, criticality: criticalityFor(input.type, me.isEssential, input.delayMinutes), createdAt: ctx.now().toISOString() },
       escalate,
     );
-    res.status(201).json(ctx.proposals.findById(proposal.id, userId));
+    res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  router.post('/:id/incidences/resolve', (req, res) => {
+  router.post('/:id/incidences/resolve', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = loadForManager(req.params.id, userId);
+    const { proposal } = await loadForManager(req.params.id, userId);
     const input = resolveIncidencesSchema(ctx.now()).parse(req.body);
     if (!isActivePlan(proposal)) throw invalidState();
-    ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline);
-    res.json(ctx.proposals.findById(proposal.id, userId));
+    await ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline);
+    res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
   return router;
