@@ -59,7 +59,7 @@ export type TimeWindow = {
   startTime: string;
   endTime: string;
   availabilityPercentage: number;
-  voteCount: number;
+  voteCount: number;               // solo votos de quienes siguen en el grupo (los de quien salió se conservan, pero no cuentan)
 };
 
 export type IncidenceType = 'FALTA' | 'TARDANZA' | 'IMPREVISTO';

@@ -51,8 +51,9 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
       { user: test, isEssential: false, status: 'PUNTUAL', delayMinutes: null },
       { user: ana, isEssential: false, status: 'NO_ASISTE', delayMinutes: null },
     ]);
+    // D6: el grupo muestra su propuesta más reciente (prop_2, creada después), no la más antigua.
     expect(d.groups).toEqual([
-      { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
+      { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
     ]);
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2']);
     expect(d.expressAlert).toEqual({
@@ -75,7 +76,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2', 'prop_1']);
   });
 
-  it('tras CANCELAR: sin próximo plan ni alerta; el grupo pasa a w_21; las horas bajan a 4 (las canceladas no cuentan)', () => {
+  it('tras CANCELAR: sin próximo plan ni alerta; el grupo sigue en w_21 (la más reciente); las horas bajan a 4 (las canceladas no cuentan)', () => {
     const d = build([prop1({ state: 'CANCELADO', incidences: [incidence({ resolved: true })] }), prop2()]);
     expect(d.nextPlan).toBeNull();
     expect(d.expressAlert).toBeNull();
@@ -136,5 +137,27 @@ describe('matchingHours y upcomingPlans', () => {
     const cercano = prop1({ id: 'cercano', scheduledAt: new Date(2026, 8, 29, 16, 0).toISOString() });
     const pasado = prop1({ id: 'pasado', scheduledAt: new Date(2026, 8, 29, 9, 0).toISOString() });
     expect(upcomingPlans([lejano, pasado, prop2(), cercano], NOW).map((p) => p.id)).toEqual(['cercano', 'lejano']);
+  });
+});
+
+describe('resumen por grupo (D6: la propuesta más reciente)', () => {
+  it('si la más reciente está cancelada, usa la anterior', () => {
+    const d = build([prop1(), prop2({ state: 'CANCELADO' })]);
+    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 });
+  });
+
+  it('de la más reciente toma la franja elegida si está confirmada', () => {
+    const newer = prop1({
+      id: 'prop_9',
+      createdAt: new Date(2026, 8, 29, 9, 30).toISOString(),
+      windows: [win('w_91', 1, '12:00', '14:00', 100, 0), win('w_92', 4, '10:00', '12:00', 80, 2)],
+      chosenWindowId: 'w_92',
+    });
+    const d = build([prop1(), prop2(), newer]);
+    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 80 });
+  });
+
+  it('sin propuestas con franjas, nextWindow es null', () => {
+    expect(build([prop2({ windows: [] })]).groups[0].nextWindow).toBeNull();
   });
 });

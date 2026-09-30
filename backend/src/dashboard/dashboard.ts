@@ -55,10 +55,14 @@ export function upcomingPlans<P extends Proposal>(proposals: readonly P[], now: 
     .sort((a, b) => a.scheduledAt!.localeCompare(b.scheduledAt!));
 }
 
-/** Resumen por grupo: la franja elegida (o la primera) de su propuesta no cancelada más antigua que tenga franjas. */
+/**
+ * Resumen por grupo (D6): la franja elegida (o la primera) de su propuesta MÁS RECIENTE que no esté cancelada y tenga
+ * franjas. «Más reciente» = mayor createdAt y, a igual createdAt, la insertada después: el orden de GET /groups/:id/proposals.
+ * `proposals` llega de listForUser, de la más antigua a la más reciente (created_at, rowid): basta buscar desde el final.
+ */
 export function groupSummaries(groups: readonly GroupSummary[], proposals: readonly ProposalWithGroup[]): DashboardGroup[] {
   return groups.map((g) => {
-    const p = proposals.find((x) => x.groupId === g.id && x.state !== 'CANCELADO' && x.windows.length > 0);
+    const p = proposals.findLast((x) => x.groupId === g.id && x.state !== 'CANCELADO' && x.windows.length > 0);
     const w = p ? (p.windows.find((x) => x.id === p.chosenWindowId) ?? p.windows[0]) : undefined;
     return {
       id: g.id,

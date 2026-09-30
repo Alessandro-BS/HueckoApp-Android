@@ -51,6 +51,16 @@ async function seedProposals() {
 }
 
 describe('GET /api/me/dashboard', () => {
+  it('el resumen del grupo sigue a la propuesta más reciente; si se cancela, vuelve a la anterior', async () => {
+    const { prop2 } = await seedProposals();
+    expect(((await get('dashboard', yo.token)).body as Dashboard).groups[0].nextWindow).toMatchObject({ dayOfWeek: 2, startTime: '16:00' });
+    expect((await request(app).post(`/api/proposals/${prop2.id}/cancel`).set(bearer(ana.token))).status).toBe(200);
+    // prop1 está confirmada: se muestra su franja elegida (miércoles 11–13).
+    expect(((await get('dashboard', yo.token)).body as Dashboard).groups[0].nextWindow).toEqual({
+      dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100,
+    });
+  });
+
   it('sin grupos: todo a cero', async () => {
     const nueva = await registerUser(app);
     const res = await get('dashboard', nueva.token);
@@ -84,8 +94,9 @@ describe('GET /api/me/dashboard', () => {
       ['Usuario de Prueba', 'PUNTUAL'],
       ['Ana', 'NO_ASISTE'],
     ]);
+    // D6: la propuesta más reciente del grupo es prop2 (martes 16–18, 100 %).
     expect(d.groups).toEqual([
-      { id: group.id, name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
+      { id: group.id, name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
     ]);
     expect(d.pendingVotes).toEqual([expect.objectContaining({ id: prop2.id, groupName: 'Proyecto Integrador', myVoteWindowId: null })]);
     expect(d.expressAlert).toMatchObject({ proposalId: prop1.id, kind: 'AVISO', who: 'Ana', canResolve: true });

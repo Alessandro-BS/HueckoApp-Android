@@ -138,7 +138,7 @@ Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`.
 - `metrics.matchingHours`: suma, sobre las franjas de las propuestas de mis grupos **que no están `CANCELADO`** (cualquier otro estado cuenta, también `EN_RECOORDINACION`) con `availabilityPercentage ≥ 80` (fijo, no el umbral del grupo), de `hora(endTime) − hora(startTime)` en horas enteras (se truncan los minutos), sin deduplicar solapes. Es la fórmula de la app Kotlin salvo que aquí las canceladas no cuentan.
 - `metrics.totalBlocks`: mis bloques de horario (recurrentes y puntuales).
 - `nextPlan`: el primero de `/me/upcoming-plans` con `attendees`, uno por miembro del grupo; su estado sale de su primera incidencia sin resolver: `TARDANZA` → `RETRASADO`, `FALTA`/`IMPREVISTO` → `NO_ASISTE`, ninguna → `PUNTUAL`. `null` si no hay.
-- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` = la franja elegida (o la primera) de su propuesta no cancelada más antigua que tenga franjas; `null` si no hay.
+- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` = la franja elegida (o, si no hay, la primera) de su propuesta **más reciente** que no esté `CANCELADO` y tenga franjas. «Más reciente» = mayor `createdAt`; a igual `createdAt`, la creada después (el orden de `GET /groups/:id/proposals`). `null` si no hay ninguna.
 - `pendingVotes`: propuestas `PROPUESTO` de mis grupos con `groupName`, las que cierran antes primero.
 - `expressAlert`: de los planes que aún no ocurrieron, el primero `EN_RECOORDINACION` (`kind: "RECOORDINACION"`) o, si no hay, el primero `CONFIRMADO` con incidencias sin resolver (`kind: "AVISO"`). `who` y `reason` salen de su incidencia sin resolver más crítica (`ALTA` primero; si no, la más antigua). `canResolve` es `true` si soy quien creó el plan. `null` si no hay.
 
@@ -171,7 +171,7 @@ Solo el `OWNER` (`403 NOT_OWNER`). Campos opcionales con las mismas reglas que a
 Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. El `OWNER` puede marcarse a sí mismo.
 
 ### `DELETE /groups/:id/members/me`
-Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra.
+Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`).
 
 ### `GET /groups/:id/availability`
 Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`).
@@ -213,6 +213,8 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 ### `GET /proposals/:id`
 `200 Proposal`. `windows` van por día y hora; `myVoteWindowId` es la franja que votó quien pregunta.
 `404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
+
+**Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.
 
 ### `PUT /proposals/:id/vote`
 `{ "windowId": "..." }`. Un voto por persona y propuesta: votar otra franja **mueve** el voto; votar la misma otra vez **no cambia nada** (idempotente). El «tocar otra vez retira el voto» de la app Kotlin se hace desde la app con `DELETE`.

@@ -120,13 +120,17 @@ export function proposalsRepository(db: Db) {
   const hydrate = (rows: readonly ProposalRow[], viewerId: string): Proposal[] => {
     if (rows.length === 0) return [];
     const ids = JSON.stringify(rows.map((r) => r.id));
+    // voteCount solo cuenta a quienes SIGUEN en el grupo de la propuesta (D5): el voto de quien sale no se borra,
+    // pero no suma; si vuelve a unirse, cuenta otra vez. De aquí salen pickWinner, Inicio y el resumen con IA.
     const windows = groupBy(
       db
         .prepare(
           `SELECT w.id, w.proposal_id, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
-                  COUNT(v.user_id) AS vote_count
+                  COUNT(m.user_id) AS vote_count
            FROM proposal_windows w
+           JOIN proposals p ON p.id = w.proposal_id
            LEFT JOIN votes v ON v.window_id = w.id
+           LEFT JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
            WHERE w.proposal_id ${IN_PROPOSAL_IDS}
            GROUP BY w.id
            ORDER BY w.day_of_week, w.start_time, w.end_time`,
