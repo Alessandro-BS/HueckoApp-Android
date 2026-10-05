@@ -27,7 +27,7 @@ const at = (month: number, day: number, hour: number) => new Date(2026, month, d
 let app: Express;
 
 async function setup(ai?: AiClient, aiRateLimit?: number) {
-  ({ app } = makeTestApp({ now: () => NOW, ai, aiRateLimit }));
+  ({ app } = await makeTestApp({ now: () => NOW, ai, aiRateLimit }));
   return setupSeedGroup(app);
 }
 

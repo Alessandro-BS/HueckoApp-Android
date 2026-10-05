@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { bearer, createGroup, joinGroup, makeTestApp, registerUser } from './helpers';
 
 let app: Express;
-beforeEach(() => {
-  ({ app } = makeTestApp());
+beforeEach(async () => {
+  ({ app } = await makeTestApp());
 });
 
 async function addBlock(token: string, block: Partial<TimeBlockInput>) {

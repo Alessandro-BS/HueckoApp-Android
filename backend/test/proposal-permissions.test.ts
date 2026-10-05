@@ -3,7 +3,7 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { Db } from '../src/db/database';
+import type { Db } from '../src/db/db';
 import { canManageProposal, proposalManagerId } from '../src/proposals/permissions';
 import { bearer, createGroup, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, voteFor, windowOf } from './helpers';
 
@@ -41,7 +41,7 @@ describe('canManage en la API', () => {
   let group: Group;
 
   beforeEach(async () => {
-    ({ app, db } = makeTestApp({ now: () => NOW }));
+    ({ app, db } = await makeTestApp({ now: () => NOW }));
     yo = await registerUser(app, { name: 'Usuario de Prueba' });
     ana = await registerUser(app, { name: 'Ana' });
     carlos = await registerUser(app, { name: 'Carlos' });
@@ -90,7 +90,7 @@ describe('canManage en la API', () => {
     await joinGroup(app, dani.token, group.inviteCode);
     const p = await planBy(ana.token);
     // Dani figura como más antiguo que Carlos aunque se unió después: manda joined_at (D3).
-    db.prepare('UPDATE group_members SET joined_at = ? WHERE user_id = ?').run('2000-01-01T00:00:00.000Z', dani.user.id);
+    await db.query('UPDATE group_members SET joined_at = $1 WHERE user_id = $2', ['2000-01-01T00:00:00.000Z', dani.user.id]);
     await leave(ana.token);
     await leave(yo.token); // C6: el rol OWNER pasa a Dani
     expect([await canManage(p.id, dani.token), await canManage(p.id, carlos.token)]).toEqual([true, false]);
@@ -100,7 +100,7 @@ describe('canManage en la API', () => {
   it('sin OWNER en la base (dato roto), gestiona el miembro más antiguo', async () => {
     const p = await planBy(ana.token);
     await leave(ana.token);
-    db.prepare("UPDATE group_members SET role = 'MEMBER' WHERE group_id = ?").run(group.id);
+    await db.query("UPDATE group_members SET role = 'MEMBER' WHERE group_id = $1", [group.id]);
     // yo entró primero (creó el grupo); Carlos, después.
     expect([await canManage(p.id, yo.token), await canManage(p.id, carlos.token)]).toEqual([true, false]);
   });

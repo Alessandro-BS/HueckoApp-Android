@@ -1,11 +1,13 @@
 import type { CurrentUser, Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
+import { vi } from 'vitest';
 
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
 import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
-import { openDatabase, type Db } from '../src/db/database';
+import type { Db, SqlParam } from '../src/db/db';
+import { openTestDatabase } from './db';
 
 export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
 
@@ -18,15 +20,18 @@ export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
 // Un minuto después del plazo: la votación ya cerró.
 export const AFTER_DEADLINE = new Date(2026, 9, 3, 20, 1);
 
-export function makeTestApp(options?: {
+// Base PGlite nueva y migrada para un test (se cierra sola al terminar: test/setup.ts).
+export const makeTestDb = (): Promise<Db> => openTestDatabase();
+
+export async function makeTestApp(options?: {
   loginRateLimit?: number;
   registerRateLimit?: number;
   trustProxy?: TrustProxy;
   now?: () => Date;
   ai?: AiClient;
   aiRateLimit?: number;
-}): { app: Express; db: Db } {
-  const db = openDatabase(':memory:');
+}): Promise<{ app: Express; db: Db }> {
+  const db = await makeTestDb();
   const app = createApp({
     db,
     jwtSecret: TEST_SECRET,
@@ -40,6 +45,41 @@ export function makeTestApp(options?: {
     aiRateLimit: options?.aiRateLimit ?? 10_000,
   });
   return { app, db };
+}
+
+/**
+ * Simula otra petición que se cuela entre la comprobación y la escritura (lo que en Neon pasa con dos conexiones y
+ * PGlite, con una sola, no puede reproducir): justo antes de la primera consulta cuyo SQL cumpla `before`, ejecuta `sql`.
+ */
+export function interleave(db: Db, before: RegExp, sql: string, params: readonly SqlParam[] = []): void {
+  const original = db.query.bind(db);
+  let done = false;
+  vi.spyOn(db, 'query').mockImplementation((async (text: string, values?: readonly SqlParam[]) => {
+    if (!done && before.test(text)) {
+      done = true;
+      await original(sql, params);
+    }
+    return original(text, values);
+  }) as Db['query']);
+}
+
+/**
+ * Anota cada consulta hecha con `db` (query, many, one y exec), en orden y con si iba dentro de una transacción. Para
+ * comprobar que una defensa contra carreras (candado, FOR UPDATE) es lo primero de su transacción.
+ */
+export function recordQueries(db: Db): { sql: string; params: readonly SqlParam[]; inTransaction: boolean }[] {
+  const calls: { sql: string; params: readonly SqlParam[]; inTransaction: boolean }[] = [];
+  const query = db.query.bind(db);
+  const exec = db.exec.bind(db);
+  vi.spyOn(db, 'query').mockImplementation((async (sql: string, params: readonly SqlParam[] = []) => {
+    calls.push({ sql, params, inTransaction: db.inTransaction });
+    return query(sql, params);
+  }) as Db['query']);
+  vi.spyOn(db, 'exec').mockImplementation(async (sql: string) => {
+    calls.push({ sql, params: [], inTransaction: db.inTransaction });
+    return exec(sql);
+  });
+  return calls;
 }
 
 // IA falsa, sin red: responde `reply` (texto, o una función de la petición) y guarda cada petición en `calls`.

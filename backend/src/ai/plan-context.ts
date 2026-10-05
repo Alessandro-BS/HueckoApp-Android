@@ -14,8 +14,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export const MAX_AI_WINDOWS = 30;
 
 /** Huecos en común reales del grupo (los mismos que GET /groups/:id/availability), limitados para el prompt. */
-export function commonWindows(group: Group, blocks: TimeBlocksRepository): MatchWindow[] {
-  return groupWindows(group, blocks).slice(0, MAX_AI_WINDOWS);
+export async function commonWindows(group: Group, blocks: TimeBlocksRepository): Promise<MatchWindow[]> {
+  return (await groupWindows(group, blocks)).slice(0, MAX_AI_WINDOWS);
 }
 
 /** Lista numerada desde 1 para el prompt: la IA responde con el número (windowIndex), nunca con horas (D5). */

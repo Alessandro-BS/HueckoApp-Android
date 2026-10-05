@@ -1,10 +1,15 @@
+import type { Express } from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { makeTestApp } from './helpers';
 
+let app: Express;
+beforeEach(async () => {
+  ({ app } = await makeTestApp());
+});
+
 describe('API base', () => {
-  const { app } = makeTestApp();
 
   it('GET /api/health responde ok', async () => {
     const res = await request(app).get('/api/health');
@@ -20,7 +25,6 @@ describe('API base', () => {
 });
 
 describe('errores del cuerpo de la petición', () => {
-  const { app } = makeTestApp();
 
   it('JSON malformado devuelve 400 INVALID_JSON', async () => {
     const res = await request(app)

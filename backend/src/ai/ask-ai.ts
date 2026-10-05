@@ -19,7 +19,7 @@ export const stripFences = (text: string) =>
 
 // Resultado de una llamada, para ai_calls (D6): nunca lleva el prompt, la imagen ni la respuesta.
 export type AiCallOutcome = { task: AiTask; ok: boolean; durationMs: number };
-export type AiCallRecorder = (outcome: AiCallOutcome) => void;
+export type AiCallRecorder = (outcome: AiCallOutcome) => void | Promise<void>;
 
 /**
  * Llama a la IA y valida su respuesta con zod. Nunca devuelve datos sin validar ni inventados:
@@ -34,9 +34,9 @@ export async function askAi<S extends z.ZodType>(
   record: AiCallRecorder,
 ): Promise<z.output<S>> {
   const startedAt = performance.now();
-  const finish = (ok: boolean) => {
+  const finish = async (ok: boolean) => {
     try {
-      record({ task: request.task, ok, durationMs: performance.now() - startedAt });
+      await record({ task: request.task, ok, durationMs: performance.now() - startedAt });
     } catch (error) {
       if (process.env.NODE_ENV !== 'test') console.error(`[ia] ${request.task}: no se pudo registrar la llamada`, error);
     }
@@ -46,7 +46,7 @@ export async function askAi<S extends z.ZodType>(
     text = await ai.generateJson(request);
   } catch (error) {
     if (process.env.NODE_ENV !== 'test') console.error(`[ia] ${request.task}: el proveedor falló`, error);
-    finish(false);
+    await finish(false);
     throw aiUnavailable();
   }
   // Un 502 deja rastro para poder diagnosticarlo, pero solo la tarea y las rutas de los errores:
@@ -59,7 +59,7 @@ export async function askAi<S extends z.ZodType>(
     json = JSON.parse(stripFences(text));
   } catch {
     logInvalid(`[ia] ${request.task}: la respuesta no es JSON`);
-    finish(false);
+    await finish(false);
     throw aiBadResponse();
   }
   const parsed = schema.safeParse(json);
@@ -68,9 +68,9 @@ export async function askAi<S extends z.ZodType>(
       `[ia] ${request.task}: respuesta no válida`,
       parsed.error.issues.map((issue) => issue.path.join('.')),
     );
-    finish(false);
+    await finish(false);
     throw aiBadResponse();
   }
-  finish(true);
+  await finish(true);
   return parsed.data;
 }

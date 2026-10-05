@@ -3,13 +3,12 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { adminUsers } from '../src/admin/admin-users';
-import type { Db } from '../src/db/database';
+import type { Db } from '../src/db/db';
 import { insertUser, registerAdmin } from './admin-fixtures';
-import { bearer, createGroup, makeTestApp, NOW, registerUser } from './helpers';
+import { bearer, createGroup, makeTestApp, NOW, recordQueries, registerUser } from './helpers';
 
 type AuditRow = { action: string; admin_id: string | null; target_id: string; details: string };
-const auditRows = (db: Db) =>
-  (db.prepare('SELECT action, admin_id, target_id, details FROM admin_audit_log ORDER BY rowid').all() as AuditRow[]).map((r) => ({ ...r }));
+const auditRows = (db: Db) => db.many<AuditRow>('SELECT action, admin_id, target_id, details FROM admin_audit_log ORDER BY seq');
 
 const patchStatus = (app: Express, token: string, id: string, status: string) =>
   request(app).patch(`/api/admin/users/${id}/status`).set(bearer(token)).send({ status });
@@ -17,7 +16,7 @@ const patchRole = (app: Express, token: string, id: string, role: string) =>
   request(app).patch(`/api/admin/users/${id}/role`).set(bearer(token)).send({ role });
 
 async function setup() {
-  const { app, db } = makeTestApp({ now: () => NOW });
+  const { app, db } = await makeTestApp({ now: () => NOW });
   const admin = await registerAdmin(app, db, { name: 'Admin', email: 'admin@correo.com' });
   const ana = await registerUser(app, { name: 'Ana', email: 'ana@correo.com' });
   return { app, db, admin, ana };
@@ -38,7 +37,7 @@ describe('GET /api/admin/users', () => {
   it('20 por página, las cuentas más nuevas primero, con el total', async () => {
     const { app, db, admin } = await setup();
     for (let i = 0; i < 25; i++) {
-      insertUser(db, { name: `Persona ${String(i).padStart(2, '0')}`, createdAt: new Date(NOW.getTime() + (i + 1) * 60_000).toISOString() });
+      await insertUser(db, { name: `Persona ${String(i).padStart(2, '0')}`, createdAt: new Date(NOW.getTime() + (i + 1) * 60_000).toISOString() });
     }
     const first = await request(app).get('/api/admin/users').set(bearer(admin.token));
     expect(first.body).toMatchObject({ page: 1, pageSize: 20, total: 27 });
@@ -53,8 +52,8 @@ describe('GET /api/admin/users', () => {
 
   it('busca en nombre y correo, sin distinguir mayúsculas y con % y _ literales', async () => {
     const { app, db, admin } = await setup();
-    insertUser(db, { name: 'Carla 100%', email: 'carla@uni.edu' });
-    insertUser(db, { name: 'Carlos', email: 'carlos_p@uni.edu' });
+    await insertUser(db, { name: 'Carla 100%', email: 'carla@uni.edu' });
+    await insertUser(db, { name: 'Carlos', email: 'carlos_p@uni.edu' });
     const search = async (q: string) =>
       (await request(app).get('/api/admin/users').query({ search: q }).set(bearer(admin.token))).body.items.map((u: { name: string }) => u.name);
     expect(await search('ANA@correo')).toEqual(['Ana']);
@@ -122,22 +121,22 @@ describe('PATCH /api/admin/users/:id/status', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ id: ana.user.id, status: 'SUSPENDED', activity: expect.any(Object) });
     expect((await request(app).get('/api/groups').set(bearer(ana.token))).body.error.code).toBe('ACCOUNT_SUSPENDED');
-    expect(auditRows(db)).toEqual([
+    expect(await auditRows(db)).toEqual([
       { action: 'USER_SUSPENDED', admin_id: admin.user.id, target_id: ana.user.id, details: JSON.stringify({ name: 'Ana', from: 'ACTIVE', to: 'SUSPENDED' }) },
     ]);
     expect((await patchStatus(app, admin.token, ana.user.id, 'ACTIVE')).body.status).toBe('ACTIVE');
     expect((await request(app).get('/api/groups').set(bearer(ana.token))).status).toBe(200);
-    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_SUSPENDED', 'USER_REACTIVATED']);
+    expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_SUSPENDED', 'USER_REACTIVATED']);
   });
 
   it('repetir el mismo estado responde 200 sin cambiar ni anotar nada', async () => {
     const { app, db, admin, ana } = await setup();
     const res = await patchStatus(app, admin.token, ana.user.id, 'ACTIVE');
     expect(res.status).toBe(200);
-    expect(auditRows(db)).toEqual([]);
+    expect(await auditRows(db)).toEqual([]);
     // Control positivo: un cambio real sí se anota.
     expect((await patchStatus(app, admin.token, ana.user.id, 'SUSPENDED')).status).toBe(200);
-    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_SUSPENDED']);
+    expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_SUSPENDED']);
   });
 
   it('nadie puede suspenderse a sí mismo (409 CANNOT_CHANGE_SELF); a otra admin, sí', async () => {
@@ -148,7 +147,7 @@ describe('PATCH /api/admin/users/:id/status', () => {
       code: 'CANNOT_CHANGE_SELF',
       message: 'No puedes suspender tu propia cuenta ni quitarte el rol de administrador.',
     });
-    expect(auditRows(db)).toEqual([]);
+    expect(await auditRows(db)).toEqual([]);
     const other = await registerAdmin(app, db, { name: 'Otra admin' });
     expect((await patchStatus(app, admin.token, other.user.id, 'SUSPENDED')).status).toBe(200); // control positivo
   });
@@ -168,25 +167,24 @@ describe('PATCH /api/admin/users/:id/status', () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {}); // el 500 se escribe en el log
     try {
       const { app, db, admin, ana } = await setup();
-      db.exec('DROP TABLE admin_audit_log');
+      await db.exec('DROP TABLE admin_audit_log');
       expect((await patchStatus(app, admin.token, ana.user.id, 'SUSPENDED')).status).toBe(500);
-      const row = db.prepare('SELECT status FROM users WHERE id = ?').get(ana.user.id) as { status: string };
-      expect(row.status).toBe('ACTIVE');
+      expect(await db.one('SELECT status FROM users WHERE id = $1', [ana.user.id])).toEqual({ status: 'ACTIVE' });
     } finally {
       quiet.mockRestore();
     }
   });
 
-  it('servicio: el último ADMIN activo no se puede suspender (409 LAST_ADMIN; defensa en profundidad)', () => {
+  it('servicio: el último ADMIN activo no se puede suspender (409 LAST_ADMIN; defensa en profundidad)', async () => {
     // Por la API no se alcanza (quien actúa ya es otro admin activo): se prueba el servicio con otra cuenta como actor.
-    const { db } = makeTestApp();
-    const actor = { adminId: insertUser(db), now: NOW };
-    const only = insertUser(db, { role: 'ADMIN' });
+    const { db } = await makeTestApp();
+    const actor = { adminId: await insertUser(db), now: NOW };
+    const only = await insertUser(db, { role: 'ADMIN' });
     const users = adminUsers(db);
-    expect(() => users.setStatus(actor, only, 'SUSPENDED')).toThrow('Tiene que quedar al menos un administrador activo.');
-    expect(auditRows(db)).toEqual([]); // un 409 no deja anotación
-    insertUser(db, { role: 'ADMIN' });
-    expect(users.setStatus(actor, only, 'SUSPENDED')).toBe(true); // control positivo
+    await expect(users.setStatus(actor, only, 'SUSPENDED')).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
+    expect(await auditRows(db)).toEqual([]); // un 409 no deja anotación
+    await insertUser(db, { role: 'ADMIN' });
+    expect(await users.setStatus(actor, only, 'SUSPENDED')).toBe(true); // control positivo
   });
 });
 
@@ -200,7 +198,7 @@ describe('PATCH /api/admin/users/:id/role', () => {
     expect((await request(app).get('/api/admin/users').set(bearer(ana.token))).status).toBe(200);
     expect((await patchRole(app, admin.token, ana.user.id, 'USER')).status).toBe(200);
     expect((await request(app).get('/api/admin/users').set(bearer(ana.token))).status).toBe(403);
-    expect(auditRows(db).map((r) => [r.action, r.details])).toEqual([
+    expect((await auditRows(db)).map((r) => [r.action, r.details])).toEqual([
       ['USER_PROMOTED', JSON.stringify({ name: 'Ana', from: 'USER', to: 'ADMIN' })],
       ['USER_DEMOTED', JSON.stringify({ name: 'Ana', from: 'ADMIN', to: 'USER' })],
     ]);
@@ -211,10 +209,10 @@ describe('PATCH /api/admin/users/:id/role', () => {
     const res = await patchRole(app, admin.token, admin.user.id, 'USER');
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CANNOT_CHANGE_SELF');
-    expect(auditRows(db)).toEqual([]);
+    expect(await auditRows(db)).toEqual([]);
     const other = await registerAdmin(app, db, { name: 'Otra admin' });
     expect((await patchRole(app, admin.token, other.user.id, 'USER')).status).toBe(200); // control positivo
-    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_DEMOTED']);
+    expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_DEMOTED']);
   });
 
   it('dar el rol que ya tiene responde 200 sin anotar nada', async () => {
@@ -222,20 +220,33 @@ describe('PATCH /api/admin/users/:id/role', () => {
     const res = await patchRole(app, admin.token, ana.user.id, 'USER');
     expect(res.status).toBe(200);
     expect(res.body.role).toBe('USER');
-    expect(auditRows(db)).toEqual([]);
+    expect(await auditRows(db)).toEqual([]);
     expect((await patchRole(app, admin.token, ana.user.id, 'ADMIN')).status).toBe(200); // control positivo
-    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_PROMOTED']);
+    expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_PROMOTED']);
   });
 
-  it('servicio: quitar el rol al último ADMIN activo → 409 LAST_ADMIN sin anotar nada', () => {
-    const { db } = makeTestApp();
-    const actor = { adminId: insertUser(db), now: NOW };
-    const only = insertUser(db, { role: 'ADMIN' });
-    expect(() => adminUsers(db).setRole(actor, only, 'USER')).toThrow('Tiene que quedar al menos un administrador activo.');
-    expect(auditRows(db)).toEqual([]);
-    insertUser(db, { role: 'ADMIN' });
-    expect(adminUsers(db).setRole(actor, only, 'USER')).toBe(true); // control positivo
-    expect(auditRows(db).map((r) => r.action)).toEqual(['USER_DEMOTED']);
+  it('servicio: quitar el rol al último ADMIN activo → 409 LAST_ADMIN sin anotar nada', async () => {
+    const { db } = await makeTestApp();
+    const actor = { adminId: await insertUser(db), now: NOW };
+    const only = await insertUser(db, { role: 'ADMIN' });
+    await expect(adminUsers(db).setRole(actor, only, 'USER')).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
+    expect(await auditRows(db)).toEqual([]);
+    await insertUser(db, { role: 'ADMIN' });
+    expect(await adminUsers(db).setRole(actor, only, 'USER')).toBe(true); // control positivo
+    expect((await auditRows(db)).map((r) => r.action)).toEqual(['USER_DEMOTED']);
+  });
+
+  it.each([
+    ['setStatus', (db: Db, actor: { adminId: string; now: Date }, id: string) => adminUsers(db).setStatus(actor, id, 'SUSPENDED')],
+    ['setRole', (db: Db, actor: { adminId: string; now: Date }, id: string) => adminUsers(db).setRole(actor, id, 'USER')],
+  ])('servicio: %s empieza su transacción con el candado de cambios de administración (D15)', async (_name, change) => {
+    // Sin el candado, dos admins que se quitan el rol a la vez en Neon podrían dejar la app sin ninguno (PGlite no lo reproduce).
+    const { db } = await makeTestApp();
+    const actor = { adminId: await insertUser(db, { role: 'ADMIN' }), now: NOW };
+    const target = await insertUser(db, { role: 'ADMIN' });
+    const calls = recordQueries(db);
+    expect(await change(db, actor, target)).toBe(true);
+    expect(calls[0]).toEqual({ sql: 'SELECT pg_advisory_xact_lock($1)', params: [72_616_002], inTransaction: true });
   });
 
   it('400 con un rol desconocido; con uno válido, 200', async () => {
@@ -250,10 +261,9 @@ describe('PATCH /api/admin/users/:id/role', () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {}); // el 500 se escribe en el log
     try {
       const { app, db, admin, ana } = await setup();
-      db.exec('DROP TABLE admin_audit_log');
+      await db.exec('DROP TABLE admin_audit_log');
       expect((await patchRole(app, admin.token, ana.user.id, 'ADMIN')).status).toBe(500);
-      const row = db.prepare('SELECT role FROM users WHERE id = ?').get(ana.user.id) as { role: string };
-      expect(row.role).toBe('USER');
+      expect(await db.one('SELECT role FROM users WHERE id = $1', [ana.user.id])).toEqual({ role: 'USER' });
     } finally {
       quiet.mockRestore();
     }

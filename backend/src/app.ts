@@ -10,7 +10,7 @@ import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
 import { requireAdmin, requireAuth } from './auth/require-auth';
 import type { TrustProxy } from './config/trust-proxy';
-import type { Db } from './db/database';
+import type { Db } from './db/db';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';

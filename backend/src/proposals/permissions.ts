@@ -1,7 +1,7 @@
 import type { GroupMember } from '@hueckoapp/shared';
 
 // Lo mínimo de un miembro para decidir quién gestiona. `members` va SIEMPRE en orden de llegada al grupo
-// (joined_at y, si empatan, rowid), como lo devuelven groupsRepository y proposalsRepository.
+// (joined_at y, si empatan, orden de inserción: `seq`), como lo devuelven groupsRepository y proposalsRepository.
 export type ManagerCandidate = Pick<GroupMember, 'id' | 'role'>;
 
 export type ManageCheck = { viewerId: string; creatorId: string; members: readonly ManagerCandidate[] };

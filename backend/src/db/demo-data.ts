@@ -7,8 +7,7 @@ import type { BlockType } from '@hueckoapp/shared';
 
 import { proposalsRepository } from '../proposals/proposals.repository';
 import { criticalityFor, scheduleFor } from '../proposals/rules';
-import type { Db } from './database';
-import { withTransaction } from './transaction';
+import type { Db } from './db';
 
 export const DEMO_PASSWORD = 'password123';
 export const DEMO_PROPOSAL_TITLES = ['Reunión de avance del proyecto', 'Repaso antes de la entrega'] as const;
@@ -51,22 +50,22 @@ const HOUR = 3_600_000;
 const isoDayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1;
 
 // Los porcentajes son los fijos de la semilla Kotlin (el viernes figura con 50 % aunque el cruce dé 100 %, B15).
-function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): number {
-  const { id: groupId } = db.prepare("SELECT id FROM groups WHERE invite_code = 'PROY2026'").get() as { id: string };
+async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): Promise<number> {
+  const { id: groupId } = (await db.one<{ id: string }>("SELECT id FROM groups WHERE invite_code = 'PROY2026'"))!;
   const proposals = proposalsRepository(db);
   const ago = (hours: number) => new Date(now.getTime() - hours * HOUR).toISOString();
   const [meetingTitle, reviewTitle] = DEMO_PROPOSAL_TITLES;
 
   // Se renuevan en cada ejecución: se borran las de la semilla anterior (sus franjas, votos e incidencias caen por
   // ON DELETE CASCADE) y se crean otra vez con fechas de hoy. Las propuestas creadas desde la app no se tocan.
-  const remove = db.prepare('DELETE FROM proposals WHERE group_id = ? AND title = ? AND created_by = ?');
-  remove.run(groupId, meetingTitle, ids.test);
-  remove.run(groupId, reviewTitle, ids.ana);
+  const remove = 'DELETE FROM proposals WHERE group_id = $1 AND title = $2 AND created_by = $3';
+  await db.query(remove, [groupId, meetingTitle, ids.test]);
+  await db.query(remove, [groupId, reviewTitle, ids.ana]);
 
   // «Reunión de avance del proyecto»: confirmada para dentro de 2 días a las 11:00, votada por los dos y con el
   // imprevisto de Ana sin resolver (aviso en Inicio).
   const inTwoDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
-  const meetingId = proposals.create({
+  const meetingId = await proposals.create({
     groupId,
     createdBy: ids.test,
     title: meetingTitle,
@@ -75,12 +74,12 @@ function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): number 
     windows: [{ dayOfWeek: isoDayOf(inTwoDays), startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
     createdAt: ago(48),
   });
-  const [meetingWindow] = proposals.findById(meetingId, ids.test)!.windows;
-  proposals.vote(meetingId, ids.test, meetingWindow.id, ago(30));
-  proposals.vote(meetingId, ids.ana, meetingWindow.id, ago(30));
+  const [meetingWindow] = (await proposals.findById(meetingId, ids.test))!.windows;
+  await proposals.vote(meetingId, ids.test, meetingWindow.id, ago(30));
+  await proposals.vote(meetingId, ids.ana, meetingWindow.id, ago(30));
   const { scheduledAt, scheduledDate } = scheduleFor(meetingWindow.dayOfWeek, meetingWindow.startTime, now);
-  proposals.confirm(meetingId, meetingWindow.id, scheduledAt, scheduledDate);
-  proposals.reportIncidence(
+  await proposals.confirm(meetingId, meetingWindow.id, scheduledAt, scheduledDate);
+  await proposals.reportIncidence(
     meetingId,
     {
       userId: ids.ana,
@@ -94,7 +93,7 @@ function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): number 
   );
 
   // «Repaso antes de la entrega»: en votación hasta mañana a las 20:00 (siempre en el futuro), con el voto de Ana.
-  const reviewId = proposals.create({
+  const reviewId = await proposals.create({
     groupId,
     createdBy: ids.ana,
     title: reviewTitle,
@@ -107,68 +106,73 @@ function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): number 
     ],
     createdAt: ago(1),
   });
-  const tuesday = proposals.findById(reviewId, ids.ana)!.windows.find((w) => w.dayOfWeek === 2)!;
-  proposals.vote(reviewId, ids.ana, tuesday.id, now.toISOString());
+  const tuesday = (await proposals.findById(reviewId, ids.ana))!.windows.find((w) => w.dayOfWeek === 2)!;
+  await proposals.vote(reviewId, ids.ana, tuesday.id, now.toISOString());
 
   return DEMO_PROPOSAL_TITLES.length;
 }
 
-export function seedDemoData(db: Db, passwordHash: string, now: Date): SeedCounts {
-  return withTransaction(db, () => {
+export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<SeedCounts> {
+  return db.transaction(async () => {
     const created: SeedCounts = { users: 0, groups: 0, blocks: 0, proposals: 0, adminReset: false };
     const ids = {} as Record<UserKey, string>;
 
     for (const u of USERS) {
-      const found = db.prepare('SELECT id FROM users WHERE email = ?').get(u.email) as { id: string } | undefined;
+      const found = await db.one<{ id: string }>('SELECT id FROM users WHERE email = $1', [u.email]);
       if (found) {
         ids[u.key] = found.id;
         continue;
       }
       ids[u.key] = randomUUID();
       // created_at del reloj inyectado (ISO), como el registro por la API: las estadísticas comparan rangos ISO.
-      db.prepare('INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      await db.query('INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
         ids[u.key], u.name, u.email, passwordHash, u.role, now.toISOString(),
-      );
+      ]);
       created.users++;
     }
     // La cuenta demo de administración sigue siéndolo aunque se haya cambiado desde la app o la consola.
     // No se anota en el registro de acciones (solo desarrollo; la semilla no corre en producción): se avisa por consola.
-    const reset = db
-      .prepare("UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE email = ? AND (role <> 'ADMIN' OR status <> 'ACTIVE')")
-      .run(DEMO_ADMIN_EMAIL);
-    created.adminReset = Number(reset.changes) > 0;
+    const reset = await db.query(
+      "UPDATE users SET role = 'ADMIN', status = 'ACTIVE' WHERE email = $1 AND (role <> 'ADMIN' OR status <> 'ACTIVE')",
+      [DEMO_ADMIN_EMAIL],
+    );
+    created.adminReset = reset.rowCount > 0;
 
     for (const g of GROUPS) {
-      let group = db.prepare('SELECT id FROM groups WHERE invite_code = ?').get(g.inviteCode) as { id: string } | undefined;
+      let group = await db.one<{ id: string }>('SELECT id FROM groups WHERE invite_code = $1', [g.inviteCode]);
       if (!group) {
         group = { id: randomUUID() };
-        db.prepare("INSERT INTO groups (id, name, description, invite_code, availability_threshold, created_at) VALUES (?, ?, '', ?, 80, ?)").run(
+        await db.query("INSERT INTO groups (id, name, description, invite_code, availability_threshold, created_at) VALUES ($1, $2, '', $3, 80, $4)", [
           group.id, g.name, g.inviteCode, now.toISOString(),
-        );
+        ]);
         created.groups++;
       }
       // Quien salió del grupo desde la app vuelve a entrar; como MEMBER si el grupo ya tiene OWNER (nunca dos).
       for (const m of g.members) {
-        db.prepare(
-          `INSERT OR IGNORE INTO group_members (group_id, user_id, role)
-           VALUES (?, ?, CASE WHEN EXISTS (SELECT 1 FROM group_members WHERE group_id = ? AND role = 'OWNER') THEN 'MEMBER' ELSE ? END)`,
-        ).run(group.id, ids[m.user], group.id, m.role);
+        await db.query(
+          `INSERT INTO group_members (group_id, user_id, role)
+           VALUES ($1, $2, CASE WHEN EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND role = 'OWNER') THEN 'MEMBER' ELSE $3 END)
+           ON CONFLICT (group_id, user_id) DO NOTHING`,
+          [group.id, ids[m.user], m.role],
+        );
       }
     }
 
     for (const b of BLOCKS) {
-      const exists = db
-        .prepare('SELECT 1 FROM time_blocks WHERE user_id = ? AND label = ? AND day_of_week = ? AND start_time = ?')
-        .get(ids[b.user], b.label, b.dayOfWeek, b.startTime);
+      const exists = await db.one(
+        'SELECT 1 AS found FROM time_blocks WHERE user_id = $1 AND label = $2 AND day_of_week = $3 AND start_time = $4',
+        [ids[b.user], b.label, b.dayOfWeek, b.startTime],
+      );
       if (exists) continue;
-      db.prepare(
+      await db.query(
         `INSERT INTO time_blocks (id, user_id, label, type, start_time, end_time, is_recurring, day_of_week, date)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL)`,
-      ).run(randomUUID(), ids[b.user], b.label, b.type, b.startTime, b.endTime, b.dayOfWeek);
+         VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, NULL)`,
+        [randomUUID(), ids[b.user], b.label, b.type, b.startTime, b.endTime, b.dayOfWeek],
+      );
       created.blocks++;
     }
 
-    created.proposals = seedProposals(db, ids, now);
+    created.proposals = await seedProposals(db, ids, now);
     return created;
   });
 }

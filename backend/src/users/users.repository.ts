@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type { CurrentUser, UserRole, UserStatus } from '@hueckoapp/shared';
 
-import type { Db } from '../db/database';
+import type { Db } from '../db/db';
+import { isUniqueViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
 
 type UserRow = { id: string; name: string; email: string; password_hash: string; role: UserRole; status: UserStatus };
@@ -19,27 +20,27 @@ export function usersRepository(db: Db) {
   return {
     // Siempre nace USER y ACTIVE (valores por defecto de la tabla): nadie se hace administrador al registrarse.
     // `createdAt` sale del reloj de la app, como el resto de fechas que cuentan las estadísticas.
-    create(input: { name: string; email: string; passwordHash: string; createdAt: string }): CurrentUser {
+    async create(input: { name: string; email: string; passwordHash: string; createdAt: string }): Promise<CurrentUser> {
       const id = randomUUID();
       try {
-        db.prepare('INSERT INTO users (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)').run(
+        await db.query('INSERT INTO users (id, name, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)', [
           id, input.name, input.email, input.passwordHash, input.createdAt,
-        );
+        ]);
       } catch (e) {
         // Dos registros simultáneos con el mismo correo pasan findByEmail; el UNIQUE los frena.
-        if (e instanceof Error && e.message.includes('UNIQUE constraint failed: users.email')) {
+        if (isUniqueViolation(e, 'users_email_key')) {
           throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
         }
         throw e;
       }
       return { id, name: input.name, email: input.email, role: 'USER' };
     },
-    findByEmail(email: string): (Account & { passwordHash: string }) | undefined {
-      const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
+    async findByEmail(email: string): Promise<(Account & { passwordHash: string }) | undefined> {
+      const row = await db.one<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
       return row && { ...toAccount(row), passwordHash: row.password_hash };
     },
-    findById(id: string): Account | undefined {
-      const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+    async findById(id: string): Promise<Account | undefined> {
+      const row = await db.one<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
       return row && toAccount(row);
     },
   };

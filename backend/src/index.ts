@@ -1,14 +1,11 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import type { Server } from 'node:http';
 
 import { createGeminiClient } from './ai/gemini-client';
 import { createMockAiClient } from './ai/mock-client';
 import { createApp } from './app';
 import { env } from './config/env';
-import { openDatabase } from './db/database';
-
-mkdirSync(dirname(env.DATABASE_PATH), { recursive: true });
-const db = openDatabase(env.DATABASE_PATH);
+import { databaseConfig, openDatabase } from './db/connect';
+import type { Db } from './db/db';
 
 // Sin clave, la IA responde con datos de demostración para que la app se pueda probar igual (D2).
 const ai = env.GEMINI_API_KEY
@@ -31,15 +28,70 @@ if (env.NODE_ENV === 'production' && !env.TRUST_PROXY) {
   );
 }
 
-createApp({
-  db,
-  jwtSecret: env.JWT_SECRET,
-  jwtExpiresIn: env.JWT_EXPIRES_IN,
-  trustProxy: env.TRUST_PROXY,
-  loginRateLimit: env.LOGIN_RATE_LIMIT,
-  registerRateLimit: env.REGISTER_RATE_LIMIT,
-  ai,
-  aiRateLimit: env.AI_RATE_LIMIT,
-}).listen(env.PORT, () => {
-  console.log(`HueckoApp API escuchando en http://localhost:${env.PORT}/api`);
+// Ctrl+C o el apagado de Render: deja de aceptar peticiones, termina las que están en curso y cierra la base
+// (PGlite suelta su carpeta y su candado; Postgres, sus conexiones). Si algo se cuelga, sale a los 10 s.
+// Los manejadores van antes de abrir la base: una señal durante las migraciones también la cierra bien.
+let db: Db | undefined;
+let server: Server | undefined;
+let stopping = false;
+
+// Cierra la base (si llegó a abrirse) y sale con `code`, o con 1 si cerrarla falla.
+function closeAndExit(code: number): void {
+  const closed = db
+    ? db.close().then(
+        () => code,
+        (error: unknown) => {
+          console.error('No se pudo cerrar la base de datos:', error instanceof Error ? error.message : error);
+          return 1;
+        },
+      )
+    : Promise.resolve(code);
+  void closed.then((exitCode) => process.exit(exitCode));
+}
+
+function shutdown(signal: NodeJS.Signals): void {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${signal}: cerrando el servidor…`);
+  setTimeout(() => process.exit(1), 10_000).unref();
+  if (server) server.close(() => closeAndExit(0));
+  else if (db) closeAndExit(0);
+  // Si la base aún se está abriendo, main la cierra en cuanto esté lista (stopping).
+}
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
+
+async function main() {
+  // Postgres (Neon) con DATABASE_URL; si no, PGlite en PGLITE_DATA_DIR. Crea las tablas que falten (migraciones).
+  db = await openDatabase(databaseConfig(env));
+  if (stopping) return closeAndExit(0);
+  console.log(`Base de datos: ${db.description}`);
+
+  server = createApp({
+    db,
+    jwtSecret: env.JWT_SECRET,
+    jwtExpiresIn: env.JWT_EXPIRES_IN,
+    trustProxy: env.TRUST_PROXY,
+    loginRateLimit: env.LOGIN_RATE_LIMIT,
+    registerRateLimit: env.REGISTER_RATE_LIMIT,
+    ai,
+    aiRateLimit: env.AI_RATE_LIMIT,
+  }).listen(env.PORT, (error?: NodeJS.ErrnoException) => {
+    // Express 5 llama a este callback también si no puede escuchar (p. ej. un puerto ocupado): sin tratarlo aquí,
+    // el servidor diría que escucha y la base quedaría sin cerrar.
+    if (error) {
+      console.error(
+        error.code === 'EADDRINUSE'
+          ? `El puerto ${env.PORT} ya está en uso: detén el otro proceso o cambia PORT en backend/.env.`
+          : `No se pudo abrir el servidor: ${error.message}`,
+      );
+      return closeAndExit(1);
+    }
+    console.log(`HueckoApp API escuchando en http://localhost:${env.PORT}/api`);
+  });
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error);
+  closeAndExit(1);
 });

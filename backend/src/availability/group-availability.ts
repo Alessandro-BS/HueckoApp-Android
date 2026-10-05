@@ -31,7 +31,7 @@ export function windowAvailability(group: MatcherGroup, blocks: readonly TimeBlo
 }
 
 /** Huecos en común de un grupo (lo que devuelve GET /groups/:id/availability), leyendo los bloques de sus miembros. */
-export function groupWindows(group: Group, blocks: ReturnType<typeof timeBlocksRepository>): MatchWindow[] {
+export async function groupWindows(group: Group, blocks: ReturnType<typeof timeBlocksRepository>): Promise<MatchWindow[]> {
   const memberIds = group.members.map((m) => m.id);
-  return groupAvailability({ memberIds, availabilityThreshold: group.availabilityThreshold }, blocks.listRecurringByUsers(memberIds));
+  return groupAvailability({ memberIds, availabilityThreshold: group.availabilityThreshold }, await blocks.listRecurringByUsers(memberIds));
 }

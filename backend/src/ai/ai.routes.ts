@@ -57,9 +57,9 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
 
   router.post('/:id/ai/proposal-draft', aiLimiter, async (req, res) => {
     const userId = getUserId(res);
-    const { group } = loadGroupForMember(groups, String(req.params.id), userId);
+    const { group } = await loadGroupForMember(groups, String(req.params.id), userId);
     const { text } = proposalDraftInputSchema.parse(req.body);
-    const windows = commonWindows(group, blocks);
+    const windows = await commonWindows(group, blocks);
     const at = now();
     const answer = await askAi(
       ai,
@@ -80,10 +80,10 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
 
   router.post('/:id/ai/suggestions', aiLimiter, async (req, res) => {
     const userId = getUserId(res);
-    const { group } = loadGroupForMember(groups, String(req.params.id), userId);
-    const windows = commonWindows(group, blocks);
+    const { group } = await loadGroupForMember(groups, String(req.params.id), userId);
+    const windows = await commonWindows(group, blocks);
     // Las 5 propuestas más recientes, para que la IA no repita planes.
-    const recentTitles = proposals.listByGroup(group.id, userId).slice(0, 5).map((p) => p.title);
+    const recentTitles = (await proposals.listByGroup(group.id, userId)).slice(0, 5).map((p) => p.title);
     const at = now();
     const ideas = await askAi(
       ai,
@@ -116,9 +116,9 @@ export function proposalAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   // Solo lee: nunca confirma, cancela ni reprograma (lo decide quien organiza el plan, D9).
   router.post('/:id/ai/summary', aiLimiter, async (req, res) => {
     const userId = getUserId(res);
-    const proposal = proposals.findById(String(req.params.id), userId);
+    const proposal = await proposals.findById(String(req.params.id), userId);
     if (!proposal) throw new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
-    const { group } = loadGroupForMember(groups, proposal.groupId, userId);
+    const { group } = await loadGroupForMember(groups, proposal.groupId, userId);
     if (proposal.state === 'CANCELADO') {
       throw new ApiError(409, 'INVALID_STATE', 'Este plan está cancelado: no hay votación que resumir.');
     }

@@ -3,11 +3,26 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { AFTER_DEADLINE, bearer, createProposal, DEADLINE, makeClock, makeTestApp, NOW, registerUser, setupSeedGroup, voteFor, windowOf } from './helpers';
+import type { Db } from '../src/db/db';
+import {
+  AFTER_DEADLINE,
+  bearer,
+  createProposal,
+  DEADLINE,
+  interleave,
+  makeClock,
+  makeTestApp,
+  NOW,
+  registerUser,
+  setupSeedGroup,
+  voteFor,
+  windowOf,
+} from './helpers';
 
 const NEW_DEADLINE = new Date(2026, 9, 10, 20, 0).toISOString();
 
 let app: Express;
+let db: Db;
 let clock: ReturnType<typeof makeClock>;
 let yo: { token: string; user: User };
 let ana: { token: string; user: User };
@@ -15,7 +30,7 @@ let group: Group;
 
 beforeEach(async () => {
   clock = makeClock(NOW);
-  ({ app } = makeTestApp({ now: clock.now }));
+  ({ app, db } = await makeTestApp({ now: clock.now }));
   ({ yo, ana, group } = await setupSeedGroup(app));
 });
 
@@ -345,5 +360,47 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
     );
     const enVotacion = await threeWindows();
     expect((await resolve(enVotacion, yo.token, { newState: 'CANCELADO' })).body.error.code).toBe('INVALID_STATE');
+  });
+});
+
+// Otra petición cambia el estado entre la comprobación de la ruta y su escritura (en Neon, dos conexiones a la vez):
+// la escritura solo se aplica si el plan sigue en el estado comprobado; si no, 409 INVALID_STATE y no pisa nada.
+describe('cambios de estado a la vez (M4)', () => {
+  const stateOf = async (p: Proposal) => (await db.one<{ state: string }>('SELECT state FROM proposals WHERE id = $1', [p.id]))!.state;
+  const cancelledMeanwhile = (p: Proposal) => interleave(db, /^UPDATE proposals SET state/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+
+  it('confirmar un plan que otra petición acaba de cancelar: 409 y sigue CANCELADO (no resucita)', async () => {
+    const p = await threeWindows();
+    await vote(p, 2, yo.token);
+    cancelledMeanwhile(p);
+    const res = await postTo(`${p.id}/confirm`, yo.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await db.one('SELECT state, chosen_window_id FROM proposals WHERE id = $1', [p.id])).toEqual({ state: 'CANCELADO', chosen_window_id: null });
+  });
+
+  it('cancelar un plan que otra petición acaba de cancelar: 409 (no hay dos cancelaciones)', async () => {
+    const p = await threeWindows();
+    cancelledMeanwhile(p);
+    const res = await postTo(`${p.id}/cancel`, yo.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+  });
+
+  it('resolver las incidencias de un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y las incidencias sin resolver', async () => {
+    const p = await confirmedPlan();
+    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
+    cancelledMeanwhile(p);
+    const res = await postTo(`${p.id}/incidences/resolve`, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await stateOf(p)).toBe('CANCELADO');
+    expect(await db.many('SELECT resolved FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([{ resolved: false }]);
+    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
+  });
+
+  it('la FALTA de un imprescindible no reabre como EN_RECOORDINACION un plan que otra petición acaba de cancelar', async () => {
+    const p = await confirmedPlan();
+    await makeEssential();
+    cancelledMeanwhile(p);
+    await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+    expect(await stateOf(p)).toBe('CANCELADO');
   });
 });
