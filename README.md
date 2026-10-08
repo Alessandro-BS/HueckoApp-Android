@@ -71,11 +71,42 @@ flowchart LR
 
 | | Qué | Nota |
 |---|---|---|
-| 🟢 | [Node.js](https://nodejs.org/) **22.13 o superior** + npm | Obligatorio |
+| 🟢 | [Node.js](https://nodejs.org/) **22** (22.13 o superior, **no 23 ni 24**) + npm | Obligatorio. La versión está en [`.nvmrc`](.nvmrc); ver [¿Qué versión de Node?](#-qué-versión-de-node) |
 | 🌿 | Git | Obligatorio |
 | 📲 | **Expo Go** en tu celular, o un emulador de Android Studio | Para abrir la app |
 | 🐘 | Base de datos | **No hay que instalar nada**: en desarrollo se usa [PGlite](https://pglite.dev) (PostgreSQL dentro del propio proceso, sin Postgres ni Docker) |
 | 🔑 | Clave de Gemini | Opcional: sin ella la IA funciona en *modo demostración* |
+
+### 🟢 ¿Qué versión de Node?
+
+El proyecto usa **Node 22**. Con Node 24, PGlite hace que Node se cierre de golpe (código `0xC0000409` en Windows) y los tests del backend fallan al azar. Por eso:
+
+- 📌 [`.nvmrc`](.nvmrc) fija la versión y `engines` pide `>=22.13 <23`.
+- 🚫 [`.npmrc`](.npmrc) tiene `engine-strict=true`: con otra versión, `npm install` se detiene con el error `EBADENGINE`.
+
+La forma más simple de tener Node 22 sin quitar otras versiones es **[fnm](https://github.com/Schniz/fnm)**:
+
+```powershell
+# Windows (una sola vez)
+winget install Schniz.fnm
+# Agrega esta línea a tu perfil de PowerShell (notepad $PROFILE) y abre otra terminal:
+fnm env --use-on-cd --shell powershell | Out-String | Invoke-Expression
+```
+
+```bash
+# macOS / Linux (una sola vez)
+curl -fsSL https://fnm.vercel.app/install | bash
+```
+
+Después, en la carpeta del proyecto:
+
+```bash
+fnm install   # instala la versión de .nvmrc
+fnm use       # la activa (con --use-on-cd se activa sola al entrar a la carpeta)
+node -v       # debe decir v22.x
+```
+
+> 💡 Si ya usas **nvm** o **nvm-windows**, también sirve: `nvm install 22` y `nvm use 22`.
 
 ---
 
@@ -86,6 +117,7 @@ flowchart LR
 ```bash
 git clone https://github.com/Alessandro-BS/HueckoApp-Android.git
 cd HueckoApp-Android
+fnm use        # Node 22 (ver «¿Qué versión de Node?»)
 npm install
 ```
 
@@ -350,6 +382,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 - 🏷️ Nombres de rama con prefijo del área cuando ayude: `feature/backend-auth`, `feature/mobile-navigation`.
 - ✍️ Commits en formato convencional y en español: `feat(mobile): ...`, `fix(backend): ...`, `docs: ...`, `chore: ...`.
 - ✅ Antes de abrir un PR: `npm test` y `npm run typecheck` en verde.
+- 🤖 La [CI](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main`.
 
 ---
 
