@@ -26,7 +26,7 @@ const saveButton = () => screen.getByRole('button', { name: 'Añadir a mi horari
 // Elige la hora con el reloj nativo (mockeado en jest.setup.ts): ya no se escribe con el teclado.
 const pickTime = async (label: string, hours: number, minutes: number) => {
   await fireEvent.press(await screen.findByLabelText(label));
-  await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, new Date(2026, 8, 29, hours, minutes));
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, new Date(2026, 8, 29, hours, minutes));
 };
 
 beforeEach(() => {

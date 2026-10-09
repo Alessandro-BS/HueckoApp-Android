@@ -33,8 +33,8 @@ const renderScreen = () => render(<CreateProposalScreen navigation={navigation} 
 // Elige fecha y hora en los dos pasos del selector nativo (mockeado en jest.setup.ts).
 const pickDeadline = async (date: Date) => {
   await fireEvent.press(screen.getByLabelText('Fecha límite de votación'));
-  await fireEvent(screen.getByTestId('datetimepicker-date'), 'change', { type: 'set' }, date);
-  await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, date);
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, date);
 };
 
 beforeEach(() => {

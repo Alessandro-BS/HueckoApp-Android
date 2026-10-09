@@ -19,7 +19,7 @@ beforeEach(() => jest.clearAllMocks());
 // Elige la hora con el reloj nativo (mockeado en jest.setup.ts): ya no se escribe con el teclado.
 const pickTime = async (label: string, hours: number, minutes: number) => {
   await fireEvent.press(screen.getByLabelText(label));
-  await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, new Date(2026, 8, 29, hours, minutes));
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, new Date(2026, 8, 29, hours, minutes));
 };
 const saveButton = () => screen.getByRole('button', { name: 'Guardar bloque' });
 
@@ -89,7 +89,7 @@ it('un bloque puntual lleva fecha (no día), elegida con el selector nativo, y t
   expect(screen.getByText('Mar 29 sep')).toBeTruthy(); // hoy, por defecto
   await fireEvent.press(screen.getByLabelText('Fecha'));
   expect(screen.getByTestId('datetimepicker-date').props.minimumDate).toEqual(new Date(2026, 8, 29));
-  await fireEvent(screen.getByTestId('datetimepicker-date'), 'change', { type: 'set' }, new Date(2026, 9, 2));
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, new Date(2026, 9, 2));
   expect(screen.getByText('Vie 2 oct')).toBeTruthy();
   await fireEvent.press(screen.getByText('Guardar bloque'));
 

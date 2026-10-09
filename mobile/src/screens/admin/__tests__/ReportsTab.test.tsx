@@ -19,7 +19,7 @@ beforeEach(() => {
 
 const pickDate = async (label: string, date: Date) => {
   await fireEvent.press(screen.getByLabelText(label));
-  await fireEvent(screen.getByTestId('datetimepicker-date'), 'change', { type: 'set' }, date);
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);
 };
 
 // El periodo viaja como días de calendario «YYYY-MM-DD», ambos incluidos (contrato de docs/api.md).

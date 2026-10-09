@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -37,10 +37,12 @@ export function TimeField({ label, accessibilityLabel, value, onChange, error, h
   const latest = useRef(onChange);
   latest.current = onChange;
 
-  const handleChange = useCallback((event: DateTimePickerEvent, selected?: Date) => {
+  // onValueChange/onDismiss: la API actual del selector (onChange está obsoleto desde la v9 y avisa en pantalla).
+  const handleValue = useCallback((_event: unknown, selected: Date) => {
     setOpen(false);
-    if (event.type === 'set' && selected) latest.current(`${pad(selected.getHours())}:${pad(selected.getMinutes())}`);
+    latest.current(`${pad(selected.getHours())}:${pad(selected.getMinutes())}`);
   }, []);
+  const handleDismiss = useCallback(() => setOpen(false), []);
 
   return (
     <View>
@@ -66,7 +68,16 @@ export function TimeField({ label, accessibilityLabel, value, onChange, error, h
       ) : helperText ? (
         <Text style={[typography.bodySmall, styles.hint, { color: colors.onSurfaceVariant }]}>{helperText}</Text>
       ) : null}
-      {open ? <DateTimePicker value={toPickerDate(value)} mode="time" is24Hour display="default" onChange={handleChange} /> : null}
+      {open ? (
+        <DateTimePicker
+          value={toPickerDate(value)}
+          mode="time"
+          is24Hour
+          display="default"
+          onValueChange={handleValue}
+          onDismiss={handleDismiss}
+        />
+      ) : null}
     </View>
   );
 }
