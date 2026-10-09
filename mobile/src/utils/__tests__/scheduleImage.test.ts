@@ -1,6 +1,18 @@
 import * as ImagePicker from 'expo-image-picker';
 
-import { IMAGE_MESSAGES, pickScheduleImage } from '../scheduleImage';
+import { IMAGE_MESSAGES, OCR_MAX_SIDE, pickScheduleImage } from '../scheduleImage';
+
+// Reducción de fotos grandes: el contexto de expo-image-manipulator encadena resize → renderAsync → saveAsync.
+const mockResize = jest.fn();
+const mockSave = jest.fn();
+const mockManipulate = jest.fn();
+jest.mock('expo-image-manipulator', () => ({
+  SaveFormat: { JPEG: 'jpeg' },
+  ImageManipulator: { manipulate: (uri: string) => mockManipulate(uri) },
+}));
+// Tamaño real del archivo ya reducido.
+const mockFileSize = jest.fn();
+jest.mock('expo-file-system', () => ({ File: jest.fn().mockImplementation(() => ({ get size() { return mockFileSize(); } })) }));
 
 const picker = jest.mocked(ImagePicker);
 const asset = (over: Record<string, unknown> = {}) => ({
@@ -12,7 +24,14 @@ const OPTIONS = {
   preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  const context = { resize: mockResize, renderAsync: jest.fn(async () => ({ saveAsync: mockSave })) };
+  mockResize.mockReturnValue(context);
+  mockManipulate.mockReturnValue(context);
+  mockSave.mockResolvedValue({ uri: 'file:///cache/reducida.jpg', width: 2000, height: 1500 });
+  mockFileSize.mockReturnValue(800_000);
+});
 
 it('galería: sin pedir permiso (selector del sistema), solo imágenes, comprimidas y en JPEG si eran HEIC', async () => {
   picker.launchImageLibraryAsync.mockResolvedValue(picked());
@@ -46,13 +65,45 @@ it('cancelar el selector no es un error', async () => {
   await expect(pickScheduleImage('gallery')).resolves.toEqual({ kind: 'canceled' });
 });
 
+it('rechaza antes de subir una foto que el sistema no pudo convertir (sigue siendo .heic)', async () => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked({ mimeType: 'image/heic', fileName: 'IMG_0001.HEIC', uri: 'file:///cache/IMG_0001.heic' }));
+  await expect(pickScheduleImage('gallery')).resolves.toEqual({ kind: 'error', message: IMAGE_MESSAGES.unsupported, canOpenSettings: false });
+  expect(mockManipulate).not.toHaveBeenCalled();
+});
+
+it('una foto normal (lado ≤ 2000 px y ≤ 2 MB) se sube tal cual, sin reducir', async () => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked({ width: 2000, height: 1500, fileSize: 2 * 1024 * 1024 }));
+  await expect(pickScheduleImage('gallery')).resolves.toMatchObject({ kind: 'picked', image: { uri: 'file:///horario.jpg' } });
+  expect(mockManipulate).not.toHaveBeenCalled();
+});
+
 it.each([
-  // El sistema no pudo convertirla (el archivo sigue siendo .heic): se rechaza antes de subir.
-  [{ mimeType: 'image/heic', fileName: 'IMG_0001.HEIC', uri: 'file:///cache/IMG_0001.heic' }, IMAGE_MESSAGES.unsupported],
-  [{ fileSize: 5 * 1024 * 1024 + 1 }, IMAGE_MESSAGES.tooLarge],
-])('rechaza antes de subir: %j', async (over, message) => {
-  picker.launchImageLibraryAsync.mockResolvedValue(picked(over));
-  await expect(pickScheduleImage('gallery')).resolves.toEqual({ kind: 'error', message, canOpenSettings: false });
+  ['una foto de 108 MP de la cámara (más de 5 MB)', { width: 12000, height: 9000, fileSize: 9 * 1024 * 1024 }, { width: OCR_MAX_SIDE }],
+  ['vertical: se limita la altura', { width: 3000, height: 4000, fileSize: 3 * 1024 * 1024 }, { height: OCR_MAX_SIDE }],
+])('%s → se reduce a 2000 px de lado mayor, en JPEG, antes de subir', async (_caso, over, size) => {
+  picker.requestCameraPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true } as any);
+  picker.launchCameraAsync.mockResolvedValue(picked({ uri: 'file:///cache/grande.jpg', fileName: 'IMG_1.jpg', ...over }));
+  await expect(pickScheduleImage('camera')).resolves.toEqual({
+    kind: 'picked', image: { uri: 'file:///cache/reducida.jpg', mimeType: 'image/jpeg', fileName: 'IMG_1.jpg' },
+  });
+  expect(mockManipulate).toHaveBeenCalledWith('file:///cache/grande.jpg');
+  expect(mockResize).toHaveBeenCalledWith(size);
+  expect(mockSave).toHaveBeenCalledWith({ compress: 0.7, format: 'jpeg' });
+});
+
+it('pesada pero ya pequeña de tamaño (p. ej. PNG): se vuelve a guardar en JPEG sin cambiar el tamaño', async () => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked({ uri: 'file:///cache/captura.png', mimeType: 'image/png', fileName: 'captura.png', width: 1080, height: 1920, fileSize: 6 * 1024 * 1024 }));
+  await expect(pickScheduleImage('gallery')).resolves.toEqual({
+    kind: 'picked', image: { uri: 'file:///cache/reducida.jpg', mimeType: 'image/jpeg', fileName: 'horario.jpg' },
+  });
+  expect(mockResize).not.toHaveBeenCalled();
+  expect(mockSave).toHaveBeenCalledWith({ compress: 0.7, format: 'jpeg' });
+});
+
+it('si aun reducida pasa de 5 MB, se avisa antes de subir', async () => {
+  picker.launchImageLibraryAsync.mockResolvedValue(picked({ width: 8000, height: 6000, fileSize: 20 * 1024 * 1024 }));
+  mockFileSize.mockReturnValue(5 * 1024 * 1024 + 1);
+  await expect(pickScheduleImage('gallery')).resolves.toEqual({ kind: 'error', message: IMAGE_MESSAGES.tooLarge, canOpenSettings: false });
 });
 
 it('sin mimeType se asume JPG; si algo lanza, error genérico', async () => {
