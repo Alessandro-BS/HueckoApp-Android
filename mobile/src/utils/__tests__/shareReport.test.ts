@@ -6,19 +6,37 @@ import { makeReport } from '../../testing/adminFixtures';
 import { reportCsv, reportHtml } from '../reportExport';
 import { shareReportCsv, shareReportPdf } from '../shareReport';
 
-const writes = () => (FileSystem as unknown as { __writes: Map<string, string> }).__writes;
+const mockFs = FileSystem as unknown as { __writes: Map<string, string>; __encodings: Map<string, string> };
+const writes = () => mockFs.__writes;
 
 beforeEach(() => {
   jest.clearAllMocks();
   writes().clear();
+  mockFs.__encodings.clear();
 });
 
-it('PDF: imprime el HTML del informe, lo renombra con el periodo y lo comparte como PDF', async () => {
+it('PDF: imprime el HTML del informe, lo escribe en la caché con el nombre del periodo y lo comparte como PDF', async () => {
   await shareReportPdf(makeReport());
-  expect(Print.printToFileAsync).toHaveBeenCalledWith({ html: reportHtml(makeReport()) });
-  expect(Sharing.shareAsync).toHaveBeenCalledWith('file:///cache/informe-hueckoapp_2026-08-31_2026-09-29.pdf', {
+  const uri = 'file:///cache/informe-hueckoapp_2026-08-31_2026-09-29.pdf';
+  expect(Print.printToFileAsync).toHaveBeenCalledWith({ html: reportHtml(makeReport()), base64: true });
+  expect(writes().get(uri)).toBe('JVBERi0xLjQK');
+  expect(mockFs.__encodings.get(uri)).toBe('base64');
+  expect(Sharing.shareAsync).toHaveBeenCalledWith(uri, {
     mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Compartir informe',
   });
+});
+
+it('PDF en Expo Go: no mueve el archivo que deja expo-print (está fuera de la caché propia y no hay permiso de lectura)', async () => {
+  // Antes se movía con moveSync y Expo Go respondía «Missing 'READ' permission» → «Ocurrió un error inesperado».
+  await expect(shareReportPdf(makeReport())).resolves.toBeUndefined();
+  expect(Sharing.shareAsync).toHaveBeenCalledTimes(1);
+});
+
+it('PDF: exportar otra vez el mismo periodo sobrescribe el archivo anterior', async () => {
+  const uri = 'file:///cache/informe-hueckoapp_2026-08-31_2026-09-29.pdf';
+  writes().set(uri, 'pdf viejo');
+  await shareReportPdf(makeReport());
+  expect(writes().get(uri)).toBe('JVBERi0xLjQK');
 });
 
 it('CSV: lo escribe en la caché y lo comparte como text/csv', async () => {

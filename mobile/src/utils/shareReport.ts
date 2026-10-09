@@ -18,14 +18,18 @@ const share = (uri: string, mimeType: string, UTI: string) =>
   Sharing.shareAsync(uri, { mimeType, UTI, dialogTitle: 'Compartir informe' });
 
 /**
- * PDF generado en el teléfono a partir del HTML del informe (expo-print, D13) y compartido. expo-print le da un
- * nombre aleatorio: se mueve a la caché con el del periodo (el mismo que el CSV), sobrescribiendo uno anterior.
+ * PDF generado en el teléfono a partir del HTML del informe (expo-print, D13) y compartido. expo-print lo guarda con
+ * un nombre aleatorio en SU caché, que en Expo Go queda fuera de la carpeta de la app: moverlo falla («Missing 'READ'
+ * permission»). Por eso se pide en base64 y se escribe en nuestra caché con el nombre del periodo (el mismo que el CSV),
+ * sobrescribiendo uno anterior.
  */
 export async function shareReportPdf(report: AdminReport): Promise<void> {
   await assertCanShare();
-  const { uri } = await Print.printToFileAsync({ html: reportHtml(report) });
-  const file = new File(uri);
-  file.moveSync(new File(Paths.cache, reportFileName(report, 'pdf')), { overwrite: true });
+  const { base64 } = await Print.printToFileAsync({ html: reportHtml(report), base64: true });
+  if (!base64) throw new Error('expo-print no devolvió el PDF en base64');
+  const file = new File(Paths.cache, reportFileName(report, 'pdf'));
+  file.create({ overwrite: true });
+  file.write(base64, { encoding: 'base64' });
   await share(file.uri, 'application/pdf', 'com.adobe.pdf');
 }
 
