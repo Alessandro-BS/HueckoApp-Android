@@ -19,6 +19,7 @@
 [🗄️ Producción](#️-base-de-datos-en-producción-neon) ·
 [🛡️ Administración](#️-administración-de-la-app) ·
 [🚧 Pendientes](#-estado-y-pendientes) ·
+[🧪 Guía de pruebas](docs/guia-de-pruebas.md) ·
 [📜 API](docs/api.md)
 
 </div>
