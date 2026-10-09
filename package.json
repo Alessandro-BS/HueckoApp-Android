@@ -2,7 +2,7 @@
   "name": "hueckoapp",
   "private": true,
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.13 <23"
   },
   "workspaces": [
     "shared",
