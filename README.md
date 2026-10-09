@@ -229,7 +229,7 @@ Con `DATABASE_URL` vacía (lo normal en desarrollo), el backend guarda todo en P
 
 ## 🛡️ Administración de la app
 
-Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral, con 5 pestañas:
+Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral (botón ☰ arriba a la izquierda), con 5 pestañas:
 
 | | Pestaña | Qué hace |
 |---|---|---|
@@ -279,7 +279,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 | 📍 **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | 🌐 **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
 | 🐘 **Base de datos** | PostgreSQL: Neon en producción (driver `pg` con pool de conexiones) y PGlite en desarrollo y tests, detrás de una misma interfaz (`backend/src/db/db.ts`) con consultas parametrizadas, transacciones reales y migraciones versionadas |
-| 🧭 **Navegación** | `native-stack` (flujos), `drawer` (menú principal; «Administración» solo con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
+| 🧭 **Navegación** | `native-stack` (flujos), `bottom-tabs` (barra inferior: Inicio, Horario y Grupos), `drawer` (menú ☰: Perfil, Cerrar sesión y «Administración» solo con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
 | 📷 **Cámara y galería** | `expo-image-picker` en `mobile/src/utils/scheduleImage.ts`: permiso de cámara en tiempo de ejecución, selector de fotos del sistema y validación de tipo y tamaño antes de subir (HEIC se convierte a JPG) |
 | 🤖 **Inteligencia artificial** | Google Gemini **solo desde el backend** (`backend/src/ai/`, SDK `@google/genai`): OCR de horarios, borrador de propuesta desde una frase, ideas de plan y resumen de votación. Respuestas validadas con zod, límite por usuario y modo demostración sin clave |
 | 📊 **Gráficos e informes** | `mobile/src/screens/admin/`: gráficos con `react-native-gifted-charts`, PDF generado en el teléfono con `expo-print`, CSV con `expo-file-system`, ambos compartidos con `expo-sharing`. Los números los calcula el servidor (`backend/src/admin/stats.ts`) |

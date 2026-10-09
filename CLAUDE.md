@@ -22,7 +22,7 @@ Monorepo con npm workspaces. Instala siempre desde la raíz (`npm install`); hay
 Expo cambia mucho entre SDKs: no confíes en lo que recuerdas. Mira la versión de `expo` en `mobile/package.json` y consulta `https://docs.expo.dev/versions/v<major>.0.0/` o `https://docs.expo.dev/llms.txt`.
 
 - Instala paquetes con `npx expo install <paquete>` dentro de `mobile/` (elige versiones compatibles con el SDK).
-- **Navegación con React Navigation** (no Expo Router), porque lo exige el curso: `native-stack`, `drawer`, `material-top-tabs`.
+- **Navegación con React Navigation** (no Expo Router), porque lo exige el curso: `native-stack`, `drawer`, `material-top-tabs`. Además `bottom-tabs` para la barra inferior (Inicio, Horario, Grupos), que vive dentro del drawer: el drawer queda para Perfil, Administración y Cerrar sesión.
 - Estructura: `src/navigation/` navegadores, `src/screens/` pantallas, `src/components/` UI reutilizable, `src/hooks/` hooks propios, `src/context/` providers, `src/api/` cliente axios, `src/theme/` colores.
 - El token JWT se guarda solo en `expo-secure-store`, nunca en AsyncStorage.
 - No se crean ni editan `android/`/`ios/` a mano: se generan (config en `app.json` y plugins).

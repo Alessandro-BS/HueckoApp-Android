@@ -11,12 +11,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Avatar } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { AdminScreen } from '../screens/admin/AdminScreen';
-import { DashboardScreen } from '../screens/dashboard/DashboardScreen';
-import { GroupListScreen } from '../screens/groups/GroupListScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
-import { MyScheduleScreen } from '../screens/schedule/MyScheduleScreen';
 import { categoryColor, colors, typography } from '../theme';
 import { canSeeAdmin } from '../utils/admin';
+import { AppTabs } from './AppTabs';
 import type { DrawerParamList } from './types';
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -49,7 +47,7 @@ export function AppDrawer() {
   const { user } = useAuth();
   return (
     <Drawer.Navigator
-      initialRouteName="Dashboard"
+      initialRouteName="Home"
       backBehavior="initialRoute"
       drawerContent={(props) => <DrawerContent {...props} />}
       screenOptions={{
@@ -63,9 +61,8 @@ export function AppDrawer() {
         sceneStyle: { backgroundColor: colors.surface },
       }}
     >
-      <Drawer.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Inicio', drawerIcon: icon('dashboard') }} />
-      <Drawer.Screen name="Schedule" component={MyScheduleScreen} options={{ title: 'Horario', drawerIcon: icon('calendar-month') }} />
-      <Drawer.Screen name="Groups" component={GroupListScreen} options={{ title: 'Grupos', drawerIcon: icon('group') }} />
+      {/* «Inicio» es la barra inferior (Inicio, Horario, Grupos); ella pinta su propia cabecera con el botón ☰. */}
+      <Drawer.Screen name="Home" component={AppTabs} options={{ title: 'Inicio', headerShown: false, drawerIcon: icon('home') }} />
       {canSeeAdmin(user) ? (
         <Drawer.Screen
           name="Admin"
