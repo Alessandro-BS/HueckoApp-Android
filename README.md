@@ -308,7 +308,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 |---|---|
 | 🪝 **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`, `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus`, `useAdminStats`, `useAdminReport`, `useAdminUsers`, `useAdminGroups`, `useAdminAudit`, `useAdminUser`, `useAdminGroup`) |
 | 🔐 **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend. **Autorización por roles** (`USER`/`ADMIN`): el servidor lee rol y estado de la base en cada petición (`requireAuth` y `requireAdmin` en `backend/src/auth/require-auth.ts`), nadie se hace administrador por la API, una cuenta suspendida queda fuera al instante y cada acción de administración queda registrada |
-| 📍 **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
+| 📍 **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Elegir en el mapa» con `react-native-maps` (mapa de Google, buscador de direcciones con `geocodeAsync` y pin que se arrastra) en `mobile/src/screens/proposals/PlacePickerModal.tsx`; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | 🌐 **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
 | 🐘 **Base de datos** | PostgreSQL: Neon en producción (driver `pg` con pool de conexiones) y PGlite en desarrollo y tests, detrás de una misma interfaz (`backend/src/db/db.ts`) con consultas parametrizadas, transacciones reales y migraciones versionadas |
 | 🧭 **Navegación** | `native-stack` (flujos), `bottom-tabs` (barra inferior: Inicio, Horario y Grupos), `drawer` (menú ☰: Perfil, Cerrar sesión y «Administración» solo con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
@@ -338,7 +338,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 | 1️⃣ | 📱 **Pruebas en un celular** | Con Expo Go, siguiendo la lista de abajo |
 | 2️⃣ | 🧪 **Probar contra Neon** | Proyecto de pruebas con `DATABASE_URL` real (endpoint *pooled*): salud, login, Inicio y `make-admin` |
 | 3️⃣ | 🌐 **Desplegar en Render** | Backend conectado a Neon, con las variables de [Despliegue](#-despliegue-del-backend-render) |
-| 4️⃣ | 📦 **Generar el APK** | Con EAS Build (`eas.json` con perfil `preview` que genera APK; requiere `npx eas login`). La app debe apuntar a la URL de Render (`EXPO_PUBLIC_API_URL=https://<servicio>.onrender.com/api`) |
+| 4️⃣ | 📦 **Generar el APK** | Con EAS Build (`eas.json` con perfil `preview` que genera APK; requiere `npx eas login`). La app debe apuntar a la URL de Render (`EXPO_PUBLIC_API_URL=https://<servicio>.onrender.com/api`). 🗺️ El mapa de «Elegir en el mapa» funciona en Expo Go sin configurar nada, pero el APK necesita una clave de **Maps SDK for Android** (Google Cloud, gratuita para este uso) en el plugin `react-native-maps` de `app.json` (`androidGoogleMapsApiKey`), restringida al paquete y al SHA-1 de EAS |
 | 5️⃣ | 🏷️ **Publicar `v2.0.0`** | Rama `release/2.0.0` → PR a `main` con el tag `v2.0.0` → de vuelta a `develop` |
 
 ### ✅ Lista de prueba en el celular
@@ -352,6 +352,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 - [ ] 🗳️ Proponer un plan, votar, confirmar, cancelar y reportar un imprevisto.
 - [ ] ✨ Borrador con IA, 💡 ideas de plan y 📋 resumen de la votación.
 - [ ] 📍 Usar mi ubicación (aceptando y rechazando el permiso) y abrir el lugar en el mapa.
+- [ ] 🗺️ «Elegir en el mapa»: buscar una dirección, tocar el mapa y arrastrar el pin; el lugar llega al plan con coordenadas.
 
 **Administración** (gráficos, PDF, CSV y compartir solo se prueban con mocks en Jest)
 - [ ] 🛡️ Entrar como `admin@test.com` y abrir las 5 pestañas (etiquetas de los gráficos legibles).

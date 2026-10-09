@@ -25,8 +25,23 @@ jest.mock('expo-location', () => ({
   hasServicesEnabledAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
   reverseGeocodeAsync: jest.fn(),
+  geocodeAsync: jest.fn(),
   Accuracy: { Balanced: 3 },
 }));
+
+// Mapa (react-native-maps necesita el SDK nativo de Google Maps): MapView y Marker son Views con testID que conservan
+// sus props, para que los tests disparen onPress/onDragEnd. animateToRegion se registra en `__animateToRegion`.
+jest.mock('react-native-maps', () => {
+  const { createElement, forwardRef, useImperativeHandle } = require('react');
+  const { View } = require('react-native');
+  const mockAnimateToRegion = jest.fn();
+  const MapView = forwardRef((props: Record<string, unknown>, ref: unknown) => {
+    useImperativeHandle(ref, () => ({ animateToRegion: mockAnimateToRegion }));
+    return createElement(View, { ...props, testID: 'map' });
+  });
+  const Marker = (props: Record<string, unknown>) => createElement(View, { ...props, testID: 'map-marker' });
+  return { __esModule: true, default: MapView, Marker, PROVIDER_GOOGLE: 'google', __animateToRegion: mockAnimateToRegion };
+});
 
 // Cámara y galería: cada test fija lo que devuelven (jest.mocked(ImagePicker.launchCameraAsync).mockResolvedValue(...)).
 jest.mock('expo-image-picker', () => ({
