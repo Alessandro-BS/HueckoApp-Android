@@ -6,14 +6,14 @@ import { errorMessage } from '../../api/client';
 import { DaySelector, EmptyState, LoadState, PrimaryButton, SecondaryButton, TimeBlockItem } from '../../components';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { useSchedule } from '../../hooks/useSchedule';
-import type { DrawerScreen } from '../../navigation/types';
+import type { TabScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
 import { today } from '../../utils/clock';
 import { blocksForDay, dayShort, formatShortDate, isoDayOf, laterPunctualBlocks } from '../../utils/days';
 import { pickScheduleImage, type ImageSource } from '../../utils/scheduleImage';
 import { showToast } from '../../utils/toast';
 
-export function MyScheduleScreen({ navigation }: DrawerScreen<'Schedule'>) {
+export function MyScheduleScreen({ navigation }: TabScreen<'Schedule'>) {
   const { blocks, loaded, loading, refreshing, error, reload, removeBlock } = useSchedule();
   useRefreshOnFocus(reload);
   const now = today();

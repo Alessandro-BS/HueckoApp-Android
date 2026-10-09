@@ -5,7 +5,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { EmptyState, HueckoCard, LoadState, PrimaryButton, SecondaryButton } from '../../components';
 import { useGroups } from '../../hooks/useGroups';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
-import type { DrawerScreen } from '../../navigation/types';
+import type { TabScreen } from '../../navigation/types';
 import { categoryColorFor, colors, typography } from '../../theme';
 import { memberCountLabel } from '../../utils/groups';
 import { showToast } from '../../utils/toast';
@@ -32,7 +32,7 @@ function GroupCard({ group, onPress }: { group: GroupSummary; onPress: () => voi
   );
 }
 
-export function GroupListScreen({ navigation }: DrawerScreen<'Groups'>) {
+export function GroupListScreen({ navigation }: TabScreen<'Groups'>) {
   const { groups, loaded, loading, refreshing, error, reload, create, join } = useGroups();
   useRefreshOnFocus(reload);
   const [dialog, setDialog] = useState<OpenDialog>(null);

@@ -7,6 +7,8 @@ import { AppDrawer } from '../AppDrawer';
 
 const mockUseAuth = jest.fn();
 jest.mock('../../context/AuthContext', () => ({ useAuth: () => mockUseAuth() }));
+// La barra inferior se prueba en AppTabs.test.tsx.
+jest.mock('../AppTabs', () => ({ AppTabs: () => null }));
 
 // Drawer de mentira (el real necesita gestos y animaciones nativas): pinta el título de cada pantalla registrada.
 // Aquí solo importa qué entradas registra AppDrawer según el rol.
@@ -29,7 +31,7 @@ beforeEach(() => jest.clearAllMocks());
 it('USER no ve «Administración» en el menú', async () => {
   mockUseAuth.mockReturnValue({ user: { ...TEST_USER, role: 'USER' }, logout: jest.fn() });
   await render(<AppDrawer />);
-  expect(screen.getByText('Grupos')).toBeTruthy(); // control: el menú sí está pintado
+  expect(screen.getByText('Perfil')).toBeTruthy(); // control: el menú sí está pintado
   expect(screen.queryByText('Administración')).toBeNull();
 });
 
@@ -37,4 +39,12 @@ it('ADMIN sí lo ve (D12)', async () => {
   mockUseAuth.mockReturnValue({ user: { ...ADMIN_USER, role: 'ADMIN' }, logout: jest.fn() });
   await render(<AppDrawer />);
   expect(screen.getByText('Administración')).toBeTruthy();
+});
+
+it('Horario y Grupos ya no están en el drawer: viven en la barra inferior, dentro de «Inicio»', async () => {
+  mockUseAuth.mockReturnValue({ user: { ...TEST_USER, role: 'USER' }, logout: jest.fn() });
+  await render(<AppDrawer />);
+  expect(screen.getByText('Inicio')).toBeTruthy();
+  expect(screen.queryByText('Horario')).toBeNull();
+  expect(screen.queryByText('Grupos')).toBeNull();
 });

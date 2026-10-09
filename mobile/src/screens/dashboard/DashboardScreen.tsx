@@ -12,7 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useDashboard } from '../../hooks/useDashboard';
 import { useRefreshErrorToast } from '../../hooks/useRefreshErrorToast';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
-import type { DrawerScreen } from '../../navigation/types';
+import type { TabScreen } from '../../navigation/types';
 import { categoryColor, colors, typography } from '../../theme';
 import { today } from '../../utils/clock';
 import { attendanceLabel, BLOCK_BADGE, greetingLine, groupMatchLabel, groupSlotLabel, longDate, weekBlocksLabel } from '../../utils/dashboard';
@@ -85,7 +85,7 @@ function PendingVoteCard({ proposal, now, disabled, onVote }: {
   );
 }
 
-export function DashboardScreen({ navigation }: DrawerScreen<'Dashboard'>) {
+export function DashboardScreen({ navigation }: TabScreen<'Dashboard'>) {
   const { user } = useAuth();
   const { dashboard, loaded, loading, refreshing, error, failedLoads, reload, blocks, toggleVote, voting, voteError } = useDashboard();
   const [now, setNow] = useState(today);

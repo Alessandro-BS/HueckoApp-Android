@@ -1,3 +1,4 @@
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { DrawerScreenProps } from '@react-navigation/drawer';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -7,10 +8,16 @@ import type { ProposalPrefill } from '../utils/ai';
 
 export type AuthStackParamList = { Login: undefined; Register: undefined };
 
-export type DrawerParamList = {
+// Barra inferior: las secciones de uso diario.
+export type TabParamList = {
   Dashboard: undefined;
   Schedule: undefined;
   Groups: undefined;
+};
+
+// Drawer: «Inicio» es la barra inferior; Administración y Perfil se abren desde el menú ☰.
+export type DrawerParamList = {
+  Home: NavigatorScreenParams<TabParamList>;
   Admin: undefined;
   Profile: undefined;
 };
@@ -38,10 +45,16 @@ export type AdminTabsParamList = { Stats: undefined; Reports: undefined; Users: 
 
 export type AppStackScreen<K extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, K>;
 
-// Pantallas del drawer que también abren pantallas apiladas (p. ej. Horario → Nuevo bloque).
+// Pantallas del drawer que también abren pantallas apiladas (p. ej. Administración → detalle de un usuario).
 export type DrawerScreen<K extends keyof DrawerParamList> = CompositeScreenProps<
   DrawerScreenProps<DrawerParamList, K>,
   NativeStackScreenProps<AppStackParamList>
+>;
+
+// Pestañas de la barra inferior, que también abren pantallas apiladas (p. ej. Horario → Nuevo bloque).
+export type TabScreen<K extends keyof TabParamList> = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, K>,
+  CompositeScreenProps<DrawerScreenProps<DrawerParamList>, NativeStackScreenProps<AppStackParamList>>
 >;
 
 declare global {
