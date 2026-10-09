@@ -23,6 +23,11 @@ const block = (over: Partial<TimeBlockInput>): TimeBlockInput => ({
   label: 'Cálculo', type: 'CLASE', startTime: '08:00', endTime: '10:00', isRecurring: true, dayOfWeek: 1, date: null, ...over,
 });
 const saveButton = () => screen.getByRole('button', { name: 'Añadir a mi horario' });
+// Elige la hora con el reloj nativo (mockeado en jest.setup.ts): ya no se escribe con el teclado.
+const pickTime = async (label: string, hours: number, minutes: number) => {
+  await fireEvent.press(await screen.findByLabelText(label));
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, new Date(2026, 8, 29, hours, minutes));
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -51,7 +56,7 @@ it('se pueden corregir y quitar bloques; guarda solo lo que queda y vuelve a «M
 
   await fireEvent.changeText(await screen.findByLabelText('Nombre del bloque 1'), '  Cálculo I ');
   await fireEvent.press(screen.getByLabelText('Bloque 1: martes'));
-  await fireEvent.changeText(screen.getByLabelText('Inicio del bloque 1'), '08:30');
+  await pickTime('Inicio del bloque 1', 8, 30);
   await fireEvent.press(screen.getByLabelText('Quitar bloque 2'));
   expect(screen.getByText('1 bloque detectado')).toBeTruthy();
   expect(screen.queryByDisplayValue('Física')).toBeNull();
@@ -69,7 +74,7 @@ it('guarda: con una hora inválida o un nombre vacío no guarda; control positiv
   mockedSchedule.createTimeBlocksBulk.mockResolvedValue([]);
   await renderScreen();
 
-  await fireEvent.changeText(await screen.findByLabelText('Fin del bloque 1'), '07:00');
+  await pickTime('Fin del bloque 1', 7, 0);
   expect(screen.getByText('Debe ser posterior')).toBeTruthy();
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque 1'), '   ');
   expect(screen.getByText('El nombre es requerido')).toBeTruthy();
@@ -77,10 +82,25 @@ it('guarda: con una hora inválida o un nombre vacío no guarda; control positiv
   await fireEvent.press(saveButton());
   expect(mockedSchedule.createTimeBlocksBulk).not.toHaveBeenCalled();
 
-  await fireEvent.changeText(screen.getByLabelText('Fin del bloque 1'), '10:00');
+  await pickTime('Fin del bloque 1', 10, 0);
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque 1'), 'Cálculo');
   await fireEvent.press(saveButton());
   await waitFor(() => expect(mockedSchedule.createTimeBlocksBulk).toHaveBeenCalledTimes(1));
+});
+
+it('una hora mal leída por la IA se marca en rojo y se corrige con el reloj', async () => {
+  mockedAi.scanSchedule.mockResolvedValue({ blocks: [block({ startTime: '8:5' })] });
+  mockedSchedule.createTimeBlocksBulk.mockResolvedValue([]);
+  await renderScreen();
+  expect(await screen.findByText('8:5')).toBeTruthy();
+  expect(screen.getByText('Formato HH:mm')).toBeTruthy();
+  expect(saveButton().props.accessibilityState.disabled).toBe(true);
+
+  await pickTime('Inicio del bloque 1', 8, 5);
+  expect(screen.getByText('08:05')).toBeTruthy();
+  expect(screen.queryByText('Formato HH:mm')).toBeNull();
+  await fireEvent.press(saveButton());
+  await waitFor(() => expect(mockedSchedule.createTimeBlocksBulk).toHaveBeenCalledWith([expect.objectContaining({ startTime: '08:05' })]));
 });
 
 it('los chips de día y los controles nombran su bloque (accesibilidad)', async () => {

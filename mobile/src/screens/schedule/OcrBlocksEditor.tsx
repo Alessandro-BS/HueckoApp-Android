@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createTimeBlocksBulk } from '../../api/schedule';
-import { AiDemoHint, DaySelector, ErrorBanner, HueckoCard, PrimaryButton, SecondaryButton, TextField } from '../../components';
+import { AiDemoHint, DaySelector, ErrorBanner, HueckoCard, PrimaryButton, SecondaryButton, TextField, TimeField } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import { colors, typography } from '../../theme';
 import { ocrCountLabel } from '../../utils/ai';
@@ -49,24 +49,20 @@ function DraftCard({ draft, index, onChange, onRemove }: CardProps) {
       />
       <View style={styles.row}>
         <View style={styles.flex}>
-          <TextField
-            label="Inicio (HH:mm)"
+          <TimeField
+            label="Inicio"
             accessibilityLabel={`Inicio del bloque ${n}`}
             value={draft.startTime}
-            onChangeText={(startTime) => onChange({ startTime })}
-            keyboardType="numbers-and-punctuation"
-            maxLength={5}
+            onChange={(startTime) => onChange({ startTime })}
             error={startHint.error ? startHint.text : undefined}
           />
         </View>
         <View style={styles.flex}>
-          <TextField
-            label="Fin (HH:mm)"
+          <TimeField
+            label="Fin"
             accessibilityLabel={`Fin del bloque ${n}`}
             value={draft.endTime}
-            onChangeText={(endTime) => onChange({ endTime })}
-            keyboardType="numbers-and-punctuation"
-            maxLength={5}
+            onChange={(endTime) => onChange({ endTime })}
             error={endHint.error ? endHint.text : undefined}
           />
         </View>

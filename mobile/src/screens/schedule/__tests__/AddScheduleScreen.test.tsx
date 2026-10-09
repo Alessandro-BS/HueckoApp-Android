@@ -16,34 +16,40 @@ const renderScreen = (params?: { initialDay?: number }) =>
 
 beforeEach(() => jest.clearAllMocks());
 
-it('empieza con 08:00–09:00 y muestra las pistas de cada hora', async () => {
+// Elige la hora con el reloj nativo (mockeado en jest.setup.ts): ya no se escribe con el teclado.
+const pickTime = async (label: string, hours: number, minutes: number) => {
+  await fireEvent.press(screen.getByLabelText(label));
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, new Date(2026, 8, 29, hours, minutes));
+};
+const saveButton = () => screen.getByRole('button', { name: 'Guardar bloque' });
+
+it('empieza con 08:00–09:00, sin teclado: cada hora es un campo que abre el reloj', async () => {
   await renderScreen();
-  expect(screen.getByLabelText('Hora de inicio').props.value).toBe('08:00');
-  expect(screen.getByLabelText('Hora de fin').props.value).toBe('09:00');
+  expect(screen.getByText('08:00')).toBeTruthy();
+  expect(screen.getByText('09:00')).toBeTruthy();
   expect(screen.getByText('Inicio')).toBeTruthy();
   expect(screen.getByText('Fin')).toBeTruthy();
+  expect(screen.getByLabelText('Hora de inicio').props.accessibilityRole).toBe('button');
 });
 
-it('valida formato y orden de las horas y no guarda si no son válidas', async () => {
+it('valida el orden de las horas y no guarda si el fin no es posterior', async () => {
   await renderScreen();
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), 'Cálculo');
-  await fireEvent.changeText(screen.getByLabelText('Hora de inicio'), '8:00');
-  expect(screen.getByText('Formato HH:mm')).toBeTruthy();
-  await fireEvent.changeText(screen.getByLabelText('Hora de inicio'), '10:00');
-  await fireEvent.changeText(screen.getByLabelText('Hora de fin'), '09:30');
+  await pickTime('Hora de inicio', 10, 0);
+  await pickTime('Hora de fin', 9, 30);
   expect(screen.getByText('Debe ser posterior')).toBeTruthy();
-  // Se envía por el teclado: el botón deshabilitado no demostraría nada, aquí solo frena la guarda de submit.
-  await fireEvent(screen.getByLabelText('Hora de fin'), 'submitEditing');
+  expect(saveButton().props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(saveButton());
   expect(mocked.createTimeBlock).not.toHaveBeenCalled();
 });
 
-it('control positivo: con nombre y horas válidas, enviar desde «Hora de fin» sí guarda', async () => {
+it('control positivo: con nombre y horas elegidas en el reloj, guarda en «HH:mm»', async () => {
   mocked.createTimeBlock.mockResolvedValue({} as any);
   await renderScreen({ initialDay: 2 });
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), 'Cálculo');
-  await fireEvent.changeText(screen.getByLabelText('Hora de inicio'), '10:00');
-  await fireEvent.changeText(screen.getByLabelText('Hora de fin'), '11:30');
-  await fireEvent(screen.getByLabelText('Hora de fin'), 'submitEditing');
+  await pickTime('Hora de inicio', 10, 0);
+  await pickTime('Hora de fin', 11, 30);
+  await fireEvent.press(saveButton());
 
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   expect(mocked.createTimeBlock).toHaveBeenCalledWith({
@@ -54,7 +60,7 @@ it('control positivo: con nombre y horas válidas, enviar desde «Hora de fin» 
 
 it('sin nombre no guarda (sin mensaje, como en Kotlin)', async () => {
   await renderScreen();
-  await fireEvent(screen.getByLabelText('Hora de fin'), 'submitEditing');
+  await fireEvent.press(saveButton());
   expect(mocked.createTimeBlock).not.toHaveBeenCalled();
 });
 
@@ -62,7 +68,7 @@ it('guarda un bloque recurrente del día recibido, con el tipo elegido, y vuelve
   mocked.createTimeBlock.mockResolvedValue({} as any);
   await renderScreen({ initialDay: 3 });
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), '  Clase de Cálculo ');
-  await fireEvent.changeText(screen.getByLabelText('Hora de fin'), '10:00');
+  await pickTime('Hora de fin', 10, 0);
   await fireEvent.press(screen.getByText('Trabajo'));
   await fireEvent.press(screen.getByText('Guardar bloque'));
 
