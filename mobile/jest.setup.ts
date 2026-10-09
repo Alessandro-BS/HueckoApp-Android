@@ -48,16 +48,24 @@ jest.mock('react-native-gifted-charts', () => {
 
 // Informes: PDF, compartir y archivos. Cada test puede cambiar lo que devuelven (jest.mocked(...).mockResolvedValueOnce).
 jest.mock('expo-print', () => ({
-  printToFileAsync: jest.fn(async () => ({ uri: 'file:///cache/informe.pdf', numberOfPages: 1 })),
+  // Con `base64: true` devuelve también el contenido («%PDF-1.4\n» en base64).
+  printToFileAsync: jest.fn(async (options: { base64?: boolean }) => ({
+    uri: 'file:///print/aleatorio.pdf',
+    numberOfPages: 1,
+    ...(options?.base64 ? { base64: 'JVBERi0xLjQK' } : {}),
+  })),
 }));
 jest.mock('expo-sharing', () => ({
   isAvailableAsync: jest.fn(async () => true),
   shareAsync: jest.fn(async () => undefined),
 }));
-// File en memoria: `__writes` guarda lo escrito por URI (los tests lo leen con require('expo-file-system').__writes).
-// `new File('file:///…')` apunta a esa URI; `new File(Paths.cache, nombre)`, a file:///cache/<nombre>. moveSync cambia la URI.
+// File en memoria: `__writes` guarda lo escrito por URI y `__encodings` con qué codificación (los tests los leen con
+// require('expo-file-system').__writes). `new File('file:///…')` apunta a esa URI; `new File(Paths.cache, nombre)`, a
+// file:///cache/<nombre>. moveSync cambia la URI, pero, como en Expo Go, falla si el archivo está fuera de la caché propia
+// (p. ej. el PDF que deja expo-print en la caché de Expo Go: «Missing 'READ' permission»).
 jest.mock('expo-file-system', () => {
   const mockWrites = new Map<string, string>();
+  const mockEncodings = new Map<string, string>();
   class MockFile {
     uri: string;
     constructor(...parts: unknown[]) {
@@ -68,15 +76,19 @@ jest.mock('expo-file-system', () => {
       return mockWrites.has(this.uri);
     }
     create = jest.fn();
-    write = jest.fn((content: string) => {
+    write = jest.fn((content: string, options?: { encoding?: string }) => {
       mockWrites.set(this.uri, content);
+      mockEncodings.set(this.uri, options?.encoding ?? 'utf8');
     });
     delete = jest.fn(() => {
       mockWrites.delete(this.uri);
     });
     moveSync = jest.fn((destination: MockFile) => {
+      if (!this.uri.startsWith('file:///cache/')) {
+        throw new Error("Call to function 'FileSystemFile.moveSync' has been rejected. → Caused by: Missing 'READ' permission");
+      }
       this.uri = destination.uri;
     });
   }
-  return { File: MockFile, Paths: { cache: { uri: 'file:///cache/' } }, __writes: mockWrites };
+  return { File: MockFile, Paths: { cache: { uri: 'file:///cache/' } }, __writes: mockWrites, __encodings: mockEncodings };
 });
