@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
 import type { OcrImage } from '../api/ai';
@@ -5,6 +7,12 @@ import type { OcrImage } from '../api/ai';
 // Mismas reglas que el servidor (POST /ai/schedule-ocr): se comprueban antes de subir nada.
 export const OCR_IMAGE_TYPES: readonly string[] = ['image/jpeg', 'image/png', 'image/webp'];
 export const OCR_MAX_BYTES = 5 * 1024 * 1024;
+
+// Las cámaras de muchos megapíxeles dan fotos de más de 5 MB aunque se compriman al 70 %. Para leer un horario
+// sobran 2000 px de lado mayor: una foto más grande, o que pese más de 2 MB, se reduce y se guarda en JPEG.
+export const OCR_MAX_SIDE = 2000;
+const SHRINK_ABOVE_BYTES = 2 * 1024 * 1024;
+const JPEG_QUALITY = 0.7;
 
 export const IMAGE_MESSAGES = {
   cameraDenied: 'Sin permiso de cámara. Actívalo en los ajustes del teléfono o elige una foto de la galería.',
@@ -54,6 +62,20 @@ function uploadName(fileName: string | null | undefined, mimeType: string): stri
   return hasExtension && typeOfName(fileName) !== mimeType ? `horario.${EXTENSION[mimeType]}` : fileName;
 }
 
+const needsShrink = (asset: ImagePicker.ImagePickerAsset) =>
+  Math.max(asset.width, asset.height) > OCR_MAX_SIDE || (asset.fileSize ?? 0) > SHRINK_ABOVE_BYTES;
+
+/** Limita el lado mayor a OCR_MAX_SIDE (sin agrandar) y guarda en JPEG. Devuelve la uri nueva y su peso real. */
+async function shrink(asset: ImagePicker.ImagePickerAsset): Promise<{ uri: string; size: number }> {
+  const context = ImageManipulator.manipulate(asset.uri);
+  if (Math.max(asset.width, asset.height) > OCR_MAX_SIDE) {
+    context.resize(asset.width >= asset.height ? { width: OCR_MAX_SIDE } : { height: OCR_MAX_SIDE });
+  }
+  const image = await context.renderAsync();
+  const { uri } = await image.saveAsync({ compress: JPEG_QUALITY, format: SaveFormat.JPEG });
+  return { uri, size: new File(uri).size };
+}
+
 /**
  * Foto del horario (tema del curso: cámara y permisos). La cámara pide permiso; la galería usa el selector del
  * sistema, que no lo necesita (D11 de la Fase 4). Nunca lanza.
@@ -71,8 +93,10 @@ export async function pickScheduleImage(source: ImageSource): Promise<PickImageR
 
     const mimeType = realType(asset);
     if (!OCR_IMAGE_TYPES.includes(mimeType)) return { kind: 'error', message: IMAGE_MESSAGES.unsupported, canOpenSettings: false };
-    if (asset.fileSize !== undefined && asset.fileSize > OCR_MAX_BYTES) {
-      return { kind: 'error', message: IMAGE_MESSAGES.tooLarge, canOpenSettings: false };
+    if (needsShrink(asset)) {
+      const small = await shrink(asset);
+      if (small.size > OCR_MAX_BYTES) return { kind: 'error', message: IMAGE_MESSAGES.tooLarge, canOpenSettings: false };
+      return { kind: 'picked', image: { uri: small.uri, mimeType: 'image/jpeg', fileName: uploadName(asset.fileName, 'image/jpeg') } };
     }
     return { kind: 'picked', image: { uri: asset.uri, mimeType, fileName: uploadName(asset.fileName, mimeType) } };
   } catch {
