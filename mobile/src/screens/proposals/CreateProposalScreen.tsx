@@ -15,6 +15,7 @@ import { today } from '../../utils/clock';
 import { windowLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { AiDraftCard } from './AiDraftCard';
+import { PlacePickerModal, type PickedPlace } from './PlacePickerModal';
 import { WindowEditor } from './WindowEditor';
 
 type Coords = { latitude: number; longitude: number };
@@ -53,6 +54,15 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const changePlace = (text: string) => {
     setPlaceName(text);
     setCoords(null);
+    location.clearError();
+  };
+
+  // «Elegir en el mapa»: para un plan que no es donde está el usuario. Abre sobre el lugar ya elegido, si tiene coordenadas.
+  const [mapOpen, setMapOpen] = useState(false);
+  const pickOnMap = (place: PickedPlace) => {
+    setMapOpen(false);
+    setPlaceName(place.name);
+    setCoords({ latitude: place.latitude, longitude: place.longitude });
     location.clearError();
   };
 
@@ -138,6 +148,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
             disabled={location.locating}
             onPress={() => void fillWithMyLocation()}
           />
+          <SecondaryButton title="Elegir en el mapa" icon="map" onPress={() => setMapOpen(true)} />
           {location.error ? <ErrorBanner message={location.error} /> : null}
           {location.canOpenSettings ? <SecondaryButton title="Abrir ajustes" icon="settings" onPress={() => void Linking.openSettings()} /> : null}
         </View>
@@ -201,6 +212,13 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           onPress={() => void submit()}
         />
       </ScrollView>
+      {mapOpen ? (
+        <PlacePickerModal
+          initial={coords ? { name: placeName.trim(), ...coords } : null}
+          onPick={pickOnMap}
+          onDismiss={() => setMapOpen(false)}
+        />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

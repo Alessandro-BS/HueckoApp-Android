@@ -24,6 +24,21 @@ jest.mock('../../../hooks/useCurrentLocation', () => ({
   }),
 }));
 
+// El selector del mapa se prueba en PlacePickerModal.test.tsx: aquí solo importa lo que devuelve.
+const mockPickerProps = jest.fn();
+jest.mock('../PlacePickerModal', () => ({
+  PlacePickerModal: (props: { onPick: (p: unknown) => void; onDismiss: () => void }) => {
+    const { createElement } = require('react');
+    const { Pressable, Text } = require('react-native');
+    mockPickerProps(props);
+    return createElement(
+      Pressable,
+      { accessibilityRole: 'button', onPress: () => props.onPick({ name: 'Biblioteca Central PUCP', latitude: -12.069, longitude: -77.079 }) },
+      createElement(Text, null, 'Elegir en el mapa (simulado)'),
+    );
+  },
+}));
+
 const mocked = proposalsApi as jest.Mocked<typeof proposalsApi>;
 const mockedAi = aiApi as jest.Mocked<typeof aiApi>;
 const navigation = { goBack: jest.fn() } as any;
@@ -91,6 +106,34 @@ it('escribir el lugar a mano descarta las coordenadas', async () => {
 it('la ubicación solo se pide al pulsar el botón, no al abrir la pantalla', async () => {
   await renderScreen();
   expect(mockLocate).not.toHaveBeenCalled();
+  expect(mockPickerProps).not.toHaveBeenCalled(); // el mapa tampoco se abre solo
+});
+
+it('«Elegir en el mapa» abre el selector y el lugar elegido llega a la propuesta con sus coordenadas', async () => {
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Estudiar');
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await fireEvent.press(screen.getByText('Elegir en el mapa'));
+  expect(mockPickerProps).toHaveBeenLastCalledWith(expect.objectContaining({ initial: null }));
+  await fireEvent.press(screen.getByText('Elegir en el mapa (simulado)'));
+
+  expect(screen.queryByText('Elegir en el mapa (simulado)')).toBeNull(); // se cierra al elegir
+  expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca Central PUCP');
+  expect(screen.getByText('Con coordenadas: se podrá abrir en el mapa.')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
+  expect(mocked.createProposal.mock.calls[0][1].location).toEqual({ name: 'Biblioteca Central PUCP', latitude: -12.069, longitude: -77.079 });
+});
+
+it('al volver a abrir el mapa, empieza en el lugar ya elegido', async () => {
+  mockLocate.mockResolvedValue({ name: 'Biblioteca Central, San Miguel', latitude: -12.07, longitude: -77.08 });
+  await renderScreen();
+  await fireEvent.press(screen.getByText('Usar mi ubicación actual'));
+  await waitFor(() => expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca Central, San Miguel'));
+  await fireEvent.press(screen.getByText('Elegir en el mapa'));
+  expect(mockPickerProps).toHaveBeenLastCalledWith(
+    expect.objectContaining({ initial: { name: 'Biblioteca Central, San Miguel', latitude: -12.07, longitude: -77.08 } }),
+  );
 });
 
 it('permiso denegado para siempre: «Abrir ajustes» abre los ajustes; si se puede volver a pedir, no aparece', async () => {
