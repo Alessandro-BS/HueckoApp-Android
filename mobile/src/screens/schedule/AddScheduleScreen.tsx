@@ -1,9 +1,9 @@
 import type { BlockType } from '@hueckoapp/shared';
-import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View, type TextInput } from 'react-native';
+import { useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createTimeBlock } from '../../api/schedule';
-import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, TextField } from '../../components';
+import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, TextField, TimeField } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
@@ -34,7 +34,6 @@ export function AddScheduleScreen({ navigation, route }: AppStackScreen<'AddSche
   const [type, setType] = useState<BlockType>('CLASE');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('09:00');
-  const endRef = useRef<TextInput>(null);
   const save = useAction(createTimeBlock);
 
   const startHint = startTimeHint(startTime);
@@ -131,30 +130,19 @@ export function AddScheduleScreen({ navigation, route }: AppStackScreen<'AddSche
           <FieldLabel>Horario</FieldLabel>
           <View style={styles.row}>
             <View style={styles.flex}>
-              <TextField
+              <TimeField
                 accessibilityLabel="Hora de inicio"
                 value={startTime}
-                onChangeText={setStartTime}
-                placeholder="08:00"
-                keyboardType="numbers-and-punctuation"
-                maxLength={5}
-                returnKeyType="next"
-                onSubmitEditing={() => endRef.current?.focus()}
+                onChange={setStartTime}
                 error={startHint.error ? startHint.text : undefined}
                 helperText={startHint.error ? undefined : startHint.text}
               />
             </View>
             <View style={styles.flex}>
-              <TextField
+              <TimeField
                 accessibilityLabel="Hora de fin"
-                inputRef={endRef}
                 value={endTime}
-                onChangeText={setEndTime}
-                placeholder="10:00"
-                keyboardType="numbers-and-punctuation"
-                maxLength={5}
-                returnKeyType="done"
-                onSubmitEditing={() => void submit()}
+                onChange={setEndTime}
                 error={endHint.error ? endHint.text : undefined}
                 helperText={endHint.error ? undefined : endHint.text}
               />

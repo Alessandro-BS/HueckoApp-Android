@@ -60,8 +60,8 @@ it('«Reprogramar» pide una nueva fecha límite futura antes de enviar (G4)', a
 
   const pick = async (date: Date) => {
     await fireEvent.press(screen.getByLabelText('Nueva fecha límite de votación'));
-    await fireEvent(screen.getByTestId('datetimepicker-date'), 'change', { type: 'set' }, date);
-    await fireEvent(screen.getByTestId('datetimepicker-time'), 'change', { type: 'set' }, date);
+    await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);
+    await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, date);
   };
   await pick(new Date(2026, 8, 29, 9, 0));
   expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();

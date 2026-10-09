@@ -14,6 +14,7 @@ export { DaySelector } from './DaySelector';
 export { LoadState } from './LoadState';
 export { TimeBlockItem } from './TimeBlockItem';
 export { DateTimeField } from './DateTimeField';
+export { TimeField } from './TimeField';
 export { ProposalStateBadge } from './ProposalStateBadge';
 export { BottomSheet } from './BottomSheet';
 export { VoteWindowRow } from './VoteWindowRow';

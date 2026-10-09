@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -27,21 +27,19 @@ export function DateTimeField({ label, value, onChange, mode = 'datetime', minim
   const [step, setStep] = useState<Step>(null);
   const [pickedDay, setPickedDay] = useState<Date | null>(null);
   const initial = value ?? minimumDate ?? today();
-  // Lo que cambia en cada render del padre (onChange en línea, fecha inicial) va en una ref: así handleChange
+  // Lo que cambia en cada render del padre (onChange en línea, fecha inicial) va en una ref: así handleValue
   // solo cambia con el paso o el día elegido y el selector de Android no se reabre por un re-render ajeno.
   const latest = useRef({ onChange, initial });
   latest.current = { onChange, initial };
 
-  const handleChange = useCallback(
-    (event: DateTimePickerEvent, selected?: Date) => {
-      const close = () => {
-        setStep(null);
-        setPickedDay(null);
-      };
-      if (event.type !== 'set' || !selected) {
-        close();
-        return;
-      }
+  const close = useCallback(() => {
+    setStep(null);
+    setPickedDay(null);
+  }, []);
+
+  // onValueChange/onDismiss: la API actual del selector (onChange está obsoleto desde la v9 y avisa en pantalla).
+  const handleValue = useCallback(
+    (_event: unknown, selected: Date) => {
       if (step === 'date') {
         const day = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
         if (mode === 'date') {
@@ -57,7 +55,7 @@ export function DateTimeField({ label, value, onChange, mode = 'datetime', minim
       close();
       latest.current.onChange(new Date(day.getFullYear(), day.getMonth(), day.getDate(), selected.getHours(), selected.getMinutes()));
     },
-    [step, pickedDay, mode],
+    [step, pickedDay, mode, close],
   );
 
   const text = value ? (mode === 'date' ? formatDateLabel(toDateKey(value)) : formatDateTime(value)) : placeholder;
@@ -89,7 +87,8 @@ export function DateTimeField({ label, value, onChange, mode = 'datetime', minim
           is24Hour
           display="default"
           minimumDate={step === 'date' ? minimumDate : undefined}
-          onChange={handleChange}
+          onValueChange={handleValue}
+          onDismiss={close}
         />
       ) : null}
     </View>
