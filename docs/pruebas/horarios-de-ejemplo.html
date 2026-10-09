@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horarios de prueba</title>
+<style>
+  :root { --ink: #1b1b1f; --line: #c4c6d0; --head: #e8eaf6; --cell: #fff8e1; --page: #ffffff; }
+  body { margin: 0; padding: 24px 16px; background: var(--page); color: var(--ink); font: 16px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 0 0 16px; color: #44474f; }
+  section { max-width: 760px; margin: 0 auto 48px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { border: 2px solid var(--line); padding: 10px 6px; text-align: center; vertical-align: middle; }
+  th { background: var(--head); font-size: 15px; }
+  td.time { font-weight: 600; width: 92px; }
+  td.c { background: var(--cell); font-weight: 600; }
+  @media (max-width: 600px) { th, td { font-size: 12px; padding: 6px 2px; } td.time { width: 64px; } }
+</style>
+</head>
+<body>
+<section>
+  <h1>Horario de Ana — Ciclo 2026-II</h1>
+  <p>Tómale una foto a esta tabla desde la cuenta <b>ana@test.com</b>.</p>
+  <table>
+    <tr><th>Hora</th><th>Lunes</th><th>Martes</th><th>Miércoles</th><th>Jueves</th><th>Viernes</th></tr>
+    <tr><td class="time">08:00 - 10:00</td><td></td><td class="c">Física I</td><td class="c">Programación</td><td></td><td></td></tr>
+    <tr><td class="time">10:00 - 12:00</td><td class="c">Programación</td><td class="c">Física I</td><td></td><td></td><td class="c">Base de Datos</td></tr>
+    <tr><td class="time">14:00 - 16:00</td><td></td><td></td><td></td><td class="c">Estadística</td><td></td></tr>
+    <tr><td class="time">16:00 - 18:00</td><td></td><td></td><td class="c">Inglés</td><td class="c">Estadística</td><td></td></tr>
+  </table>
+</section>
+
+<section>
+  <h1>Horario de Carlos — Ciclo 2026-II</h1>
+  <p>Tómale una foto a esta tabla desde la cuenta <b>carlos@test.com</b>.</p>
+  <table>
+    <tr><th>Hora</th><th>Lunes</th><th>Martes</th><th>Miércoles</th><th>Jueves</th><th>Viernes</th><th>Sábado</th></tr>
+    <tr><td class="time">08:00 - 10:00</td><td></td><td></td><td></td><td class="c">Cálculo II</td><td></td><td class="c">Taller de Proyectos</td></tr>
+    <tr><td class="time">10:00 - 12:00</td><td class="c">Redes</td><td></td><td class="c">Redes</td><td></td><td></td><td class="c">Taller de Proyectos</td></tr>
+    <tr><td class="time">14:00 - 16:00</td><td></td><td class="c">Inglés</td><td></td><td></td><td class="c">Ética</td><td></td></tr>
+    <tr><td class="time">18:00 - 20:00</td><td class="c">Trabajo</td><td></td><td class="c">Trabajo</td><td></td><td></td><td></td></tr>
+  </table>
+</section>
+</body>
+</html>
