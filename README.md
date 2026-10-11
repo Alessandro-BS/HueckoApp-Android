@@ -134,12 +134,20 @@ Abre `backend/.env` y completa `JWT_SECRET` con un valor largo y aleatorio:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-> 🔒 `backend/.env` **nunca se sube al repositorio**. Ahí viven los secretos: `JWT_SECRET`, `GEMINI_API_KEY` y `DATABASE_URL`.
+**(Opcional, recomendado) IA real:** consigue una clave gratis en <https://aistudio.google.com/apikey> y pégala en la misma `backend/.env`:
+
+```bash
+GEMINI_API_KEY=tu_clave_aquí
+```
+
+Sin clave la app funciona igual, pero Huecko IA responde con datos de ejemplo y muestra **«Modo demostración»**.
+
+> 🔒 `backend/.env` **nunca se sube al repositorio**. Ahí viven los secretos: `JWT_SECRET`, `GEMINI_API_KEY` y `DATABASE_URL`. La clave de Gemini nunca llega a la app: solo la usa el servidor.
 
 ### 3️⃣ (Opcional) Cargar datos de ejemplo
 
 ```bash
-npm run seed -w backend
+npm run seed -w backend   # con el servidor detenido
 ```
 
 Crea usuarios, grupos, horarios y dos planes con fechas relativas a hoy. Se puede repetir sin duplicar nada (renueva los planes).
@@ -163,30 +171,62 @@ npm run backend
 
 ```bash
 cp mobile/.env.example mobile/.env
-npm run mobile
 ```
 
-📲 Escanea el QR con **Expo Go**, o presiona **`a`** para abrir el emulador de Android.
+Antes de arrancarla, decide **dónde la vas a abrir**: la app tiene que saber a qué dirección llamar al backend. Se configura en `EXPO_PUBLIC_API_URL` de `mobile/.env`.
 
-> ⚠️ **¿A qué dirección apunta la app?** Se configura en `EXPO_PUBLIC_API_URL` de `mobile/.env`:
-> - 🖥️ **Emulador de Android:** `localhost` es el propio emulador; para llegar a tu PC usa `http://10.0.2.2:3000/api` (el valor por defecto).
-> - 📱 **Celular físico:** usa la IP de tu PC en la red Wi-Fi (por ejemplo `http://192.168.1.20:3000/api`), con ambos en la misma red.
+<details open>
+<summary><b>📱 En tu celular (recomendado)</b></summary>
 
-🎉 **¡Listo!** Entra con una cuenta de ejemplo o crea la tuya desde **«Regístrate»**.
+1. Instala **Expo Go** desde [Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent) (o App Store en iPhone).
+2. Conecta el celular a la **misma red** que tu PC (Wi-Fi del mismo router; no datos móviles).
+3. Busca la IP de tu PC en esa red:
+   - **Windows:** `ipconfig` → «Dirección IPv4» del adaptador Wi-Fi o Ethernet (p. ej. `192.168.1.20`).
+   - **macOS / Linux:** `ipconfig getifaddr en0` o `hostname -I`.
+4. En `mobile/.env` pon esa IP:
+   ```bash
+   EXPO_PUBLIC_API_URL=http://192.168.1.20:3000/api
+   ```
+5. Arranca la app y escanea el QR que aparece en la terminal con **Expo Go**:
+   ```bash
+   npm run mobile
+   ```
+
+> 🧱 **¿Expo Go se queda cargando o la app dice error de red al iniciar sesión?** Casi siempre es el firewall de Windows. La primera vez que corre Node, Windows pregunta si lo deja usar la red: acepta. Si tu red está marcada como **Pública** (Configuración → Red e Internet → propiedades de la red), puede bloquear al celular: márcala como **Privada** o permite Node.js en el firewall. Prueba desde el navegador del celular: `http://<IP-de-tu-PC>:3000/api/health` debe decir `ok`.
+
+</details>
+
+<details>
+<summary><b>🖥️ En el emulador de Android Studio</b></summary>
+
+1. Deja el valor por defecto de `mobile/.env`: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api` (dentro del emulador, `localhost` es el propio emulador; `10.0.2.2` es tu PC).
+2. Abre un emulador desde Android Studio (Device Manager) y luego `npm run mobile` y presiona **`a`**: instala Expo Go en el emulador y abre la app.
+
+> ⚠️ El emulador consume mucha RAM (Pixel 9 pide 16 GB). Con poca memoria va muy lento; en ese caso usa tu celular.
+
+</details>
+
+🎉 **¡Listo!** Entra con una cuenta de ejemplo (paso 3) o crea la tuya desde **«Regístrate»**. Para probar todo paso a paso, sigue la [🧪 Guía de pruebas](docs/guia-de-pruebas.md).
 
 ---
 
 ## 🧭 Cómo se usa la app
 
-1. 📝 **Regístrate o inicia sesión.** El token se guarda cifrado en el teléfono.
-2. 📅 **Carga tu horario** en «Mi horario»: agrega bloques a mano o pulsa **📷 Escanear horario** para que la IA los lea de una foto. Revisa el resultado antes de guardarlo.
-3. 👥 **Crea un grupo** y comparte su código de invitación, o **únete** con un código.
-4. 🔍 **Mira la disponibilidad** en la pestaña del grupo: los huecos libres que tienen todos en común.
-5. 🗳️ **Propón un plan** eligiendo un hueco, o escribe una frase como *«pichanga el sábado en la tarde»* y deja que ✨ la IA arme el borrador. También puedes pedirle 💡 ideas de plan.
-6. 📍 **Agrega el lugar** con tu ubicación actual y ábrelo en el mapa.
-7. ✅ **Vota.** El responsable confirma el plan cuando hay acuerdo, y la IA puede 📋 resumir la votación.
-8. ⚠️ **¿Surgió algo?** Reporta un imprevisto: el responsable decide si el plan sigue o se reabre.
+**Moverse por la app:** abajo está la barra **🏠 Inicio · 📅 Horario · 👥 Grupos**. El botón **☰** (arriba a la izquierda) abre el menú con **Perfil**, **Administración** (solo cuentas `ADMIN`) y **Cerrar sesión**.
+
+1. 📝 **Regístrate o inicia sesión.** El token se guarda cifrado en el teléfono: al reabrir la app sigues dentro.
+2. 📅 **Carga tu horario** en la pestaña **Horario**:
+   - **Añadir bloque:** nombre, día y tipo; la hora de inicio y fin se eligen con el **reloj de Android** (sin teclado).
+   - **Escanear → Cámara o Galería:** Huecko IA lee los bloques de una foto de tu horario. Las fotos grandes se reducen solas antes de subirse. **Revisa** lo leído (corrige horas con el reloj o quita bloques) y toca **Añadir a mi horario**.
+3. 👥 **Crea un grupo** en **Grupos → Crear grupo** y comparte su código de invitación, o **únete** con **Unirme** y un código.
+4. 🔍 **Mira los huecos** en el grupo, pestaña **Huecos**: las franjas en las que todos están libres. (Las otras pestañas son **Planes** y **Miembros**.)
+5. 🗳️ **Propón un plan** en **Planes → Crear propuesta**: elige las franjas o deja que Huecko proponga las 3 mejores. En **Describe tu plan** escribe una frase como *«pichanga el sábado en la tarde»* y toca **Rellenar con IA** para que ✨ arme el borrador. Desde **Planes → Ideas con IA** también puedes pedirle 💡 ideas de plan.
+6. 📍 **Agrega el lugar:** **Usar mi ubicación actual**, o **Elegir en el mapa** para buscar una dirección, tocar el mapa o arrastrar el pin. Con coordenadas, después se puede abrir en el mapa.
+7. ✅ **Vota** con **Votar**. En **Ver detalles**, el responsable confirma el plan con **Confirmar plan**, y **Resumir votación** le pide a la IA un 📋 resumen con una recomendación (la IA solo sugiere: nunca cambia el plan).
+8. ⚠️ **¿Surgió algo?** **Reportar imprevisto** en el plan: el responsable decide si sigue o se reabre. En **Miembros**, el dueño puede marcar a alguien como **imprescindible**: si esa persona falta, el plan se vuelve a coordinar.
 9. 🏠 **Inicio** te muestra tu próximo plan, tus grupos, las votaciones abiertas y los avisos de imprevistos.
+
+> 🧪 ¿Quieres probar todo esto de punta a punta, con ejemplos para la IA? Sigue la [Guía de pruebas](docs/guia-de-pruebas.md).
 
 ---
 
@@ -344,12 +384,14 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 
 ### ✅ Lista de prueba en el celular
 
+> Resumen para marcar. El paso a paso, con ejemplos para la IA, está en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md).
+
 **Funciones principales**
 - [ ] 📝 Registro, inicio y cierre de sesión (al reabrir la app, la sesión sigue).
 - [ ] 📅 Crear, editar y borrar bloques de horario.
 - [ ] 📷 Escanear un horario con la cámara y con una foto de la galería (incluida una HEIC del iPhone, si hay).
 - [ ] 👥 Crear un grupo, unirse con código y salir de un grupo.
-- [ ] 🔍 Ver la disponibilidad del grupo.
+- [ ] 🔍 Ver los huecos en común del grupo (pestaña **Huecos**).
 - [ ] 🗳️ Proponer un plan, votar, confirmar, cancelar y reportar un imprevisto.
 - [ ] ✨ Borrador con IA, 💡 ideas de plan y 📋 resumen de la votación.
 - [ ] 📍 Usar mi ubicación (aceptando y rechazando el permiso) y abrir el lugar en el mapa.
