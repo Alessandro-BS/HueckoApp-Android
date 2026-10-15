@@ -1,4 +1,5 @@
 import type { Group, TimeBlock } from '@hueckoapp/shared';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../../api/client';
@@ -6,6 +7,7 @@ import * as dashboardApi from '../../../api/dashboard';
 import * as groupsApi from '../../../api/groups';
 import * as proposalsApi from '../../../api/proposals';
 import * as scheduleApi from '../../../api/schedule';
+import { dashboardCache } from '../../../storage/appStorage';
 import { makeDashboard, makeProposal } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { DashboardScreen } from '../DashboardScreen';
@@ -39,8 +41,9 @@ const SEED_BLOCKS = [
 ];
 const renderScreen = () => render(<DashboardScreen navigation={navigation} route={{} as any} />);
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  await AsyncStorage.clear();
   dashboard.getDashboard.mockResolvedValue(makeDashboard());
   schedule.listTimeBlocks.mockResolvedValue(SEED_BLOCKS);
 });
@@ -192,4 +195,13 @@ it('si la primera carga falla muestra el error con «Reintentar»', async () => 
   expect(await screen.findByText('No se pudo conectar con el servidor. Revisa tu conexión.')).toBeTruthy();
   await fireEvent.press(screen.getByText('Reintentar'));
   expect(await screen.findByText('6 h')).toBeTruthy();
+});
+
+it('sin red muestra los últimos datos guardados con un aviso, en vez del error', async () => {
+  await dashboardCache.set('u1', { dashboard: makeDashboard(), blocks: SEED_BLOCKS });
+  dashboard.getDashboard.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.'));
+  await renderScreen();
+  expect(await screen.findByText('Sin conexión: estos son los últimos datos guardados.')).toBeTruthy();
+  expect(screen.getByText('6 h')).toBeTruthy();
+  expect(screen.queryByText('Reintentar')).toBeNull();
 });

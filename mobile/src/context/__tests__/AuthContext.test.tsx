@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
 import { AxiosError, type InternalAxiosRequestConfig } from 'axios';
@@ -6,7 +7,9 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import * as authApi from '../../api/auth';
 import { api, ApiError } from '../../api/client';
+import { dashboardCache, lastEmailStorage } from '../../storage/appStorage';
 import { showToast } from '../../utils/toast';
+import { makeDashboard } from '../../testing/fixtures';
 import { AuthProvider, useAuth } from '../AuthContext';
 
 jest.mock('../../api/auth');
@@ -18,6 +21,7 @@ const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{childr
 beforeEach(async () => {
   jest.clearAllMocks();
   await SecureStore.deleteItemAsync('hueckoapp.token');
+  await AsyncStorage.clear();
 });
 
 it('sin token guardado termina en signedOut', async () => {
@@ -62,6 +66,22 @@ it('login guarda el token y logout lo borra', async () => {
   await act(() => result.current.logout());
   expect(result.current.status).toBe('signedOut');
   expect(await SecureStore.getItemAsync('hueckoapp.token')).toBeNull();
+});
+
+it('login recuerda el correo; logout borra la copia de Inicio pero conserva el correo', async () => {
+  mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+
+  await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+  expect(await lastEmailStorage.get()).toBe('ana@correo.com');
+  // El token nunca pasa por AsyncStorage: solo por SecureStore.
+  expect(await AsyncStorage.getAllKeys()).toEqual(['hueckoapp.lastEmail']);
+  await dashboardCache.set('u1', { dashboard: makeDashboard(), blocks: [] });
+
+  await act(() => result.current.logout());
+  expect(await dashboardCache.get('u1')).toBeNull();
+  expect(await lastEmailStorage.get()).toBe('ana@correo.com');
 });
 
 it('guarda el rol que devuelve el servidor', async () => {

@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../api/auth';
 import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
 import { tokenStorage } from '../auth/tokenStorage';
+import { dashboardCache, lastEmailStorage } from '../storage/appStorage';
 import { showToast } from '../utils/toast';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
@@ -27,11 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');
-    await tokenStorage.clear();
+    await Promise.all([tokenStorage.clear(), dashboardCache.clearAll()]);
   }, []);
 
   const startSession = useCallback(async ({ token, user }: AuthResponse) => {
-    await tokenStorage.set(token);
+    await Promise.all([tokenStorage.set(token), lastEmailStorage.set(user.email)]);
     setAuthToken(token);
     setUser(user);
     setStatus('signedIn');

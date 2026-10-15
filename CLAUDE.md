@@ -25,6 +25,7 @@ Expo cambia mucho entre SDKs: no confíes en lo que recuerdas. Mira la versión 
 - **Navegación con React Navigation** (no Expo Router), porque lo exige el curso: `native-stack`, `drawer`, `material-top-tabs`. Además `bottom-tabs` para la barra inferior (Inicio, Horario, Grupos), que vive dentro del drawer: el drawer queda para Perfil, Administración y Cerrar sesión.
 - Estructura: `src/navigation/` navegadores, `src/screens/` pantallas, `src/components/` UI reutilizable, `src/hooks/` hooks propios, `src/context/` providers, `src/api/` cliente axios, `src/theme/` colores.
 - El token JWT se guarda solo en `expo-secure-store`, nunca en AsyncStorage.
+- AsyncStorage (`src/storage/appStorage.ts`) solo para datos no secretos: último correo del login y copia de Inicio por usuario (se borra al cerrar sesión).
 - No se crean ni editan `android/`/`ios/` a mano: se generan (config en `app.json` y plugins).
 - Librerías con código nativo que no vienen en Expo Go requieren un development build (`npx expo run:android` o `eas build --profile development`).
 - Diagnóstico: `npx expo-doctor`, `npx expo install --fix`.
