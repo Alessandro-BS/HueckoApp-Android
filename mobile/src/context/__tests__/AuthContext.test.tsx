@@ -87,7 +87,7 @@ it('login recuerda el correo; logout borra la copia de Inicio pero conserva el c
   expect(await lastEmailStorage.get()).toBe('ana@correo.com');
   expect(await sessionUserStorage.get()).toEqual(ana);
   // El token nunca pasa por AsyncStorage: solo por SecureStore.
-  expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['hueckoapp.lastEmail', 'hueckoapp.sessionUser']);
+  expect([...(await AsyncStorage.getAllKeys())].sort()).toEqual(['hueckoapp.lastEmail', 'hueckoapp.sessionUser']);
   expect(JSON.stringify(await AsyncStorage.multiGet(await AsyncStorage.getAllKeys()))).not.toContain('nuevo');
   await dashboardCache.set('u1', { dashboard: makeDashboard(), blocks: [] });
 
