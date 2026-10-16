@@ -179,7 +179,7 @@ export type ProposalDraft = {
   title: string;
   category: PlanCategory;
   placeName: string | null;
-  window: MatchWindow | null;      // uno de los huecos reales del grupo (GET /groups/:id/availability), o null
+  window: MatchWindow | null;      // dentro de un hueco real del grupo (GET /groups/:id/availability), recortado a lo pedido, o null
   votingDeadline: string;          // ISO futura sugerida
 };
 
