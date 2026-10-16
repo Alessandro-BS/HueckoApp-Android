@@ -46,6 +46,9 @@ export const draftResponseSchema = z.object({
   category: categorySchema,
   placeName: optionalText(100),
   windowIndex: windowIndexSchema,
+  // Recorte dentro de la franja (lo valida narrowWindow); cualquier cosa rara vale null = la franja completa.
+  startTime: z.string().nullish().catch(null).transform((s) => s ?? null),
+  endTime: z.string().nullish().catch(null).transform((s) => s ?? null),
   deadlineHours: z.number().int().min(1).max(168).catch(DEFAULT_DEADLINE_HOURS),
 });
 
@@ -56,9 +59,11 @@ export const DRAFT_JSON_SCHEMA: JsonSchema = {
     category: { type: 'string', enum: [...PLAN_CATEGORIES] },
     placeName: { type: ['string', 'null'], description: 'Lugar del plan, o null' },
     windowIndex: { type: ['integer', 'null'], description: 'Número de la franja elegida de la lista, o null' },
+    startTime: { type: ['string', 'null'], description: 'Hora de inicio HH:mm (24 h) dentro de la franja elegida, o null' },
+    endTime: { type: ['string', 'null'], description: 'Hora de fin HH:mm (24 h) dentro de la franja elegida, o null' },
     deadlineHours: { type: 'integer', minimum: 1, maximum: 168, description: 'Horas hasta el cierre de la votación' },
   },
-  required: ['title', 'category', 'placeName', 'windowIndex', 'deadlineHours'],
+  required: ['title', 'category', 'placeName', 'windowIndex', 'startTime', 'endTime', 'deadlineHours'],
 };
 
 export function draftPrompt({ text, group, windows, now }: { text: string; group: Group; windows: readonly MatchWindow[]; now: Date }): string {
@@ -70,7 +75,17 @@ export function draftPrompt({ text, group, windows, now }: { text: string; group
     '- "placeName": el lugar si el usuario lo menciona o si hay uno obvio; si no, null.',
     '- "windowIndex": el número de la franja de la lista que mejor encaje con lo que pide (día, momento del día, duración). ' +
       'Solo puedes elegir un número de la lista; si ninguna encaja, null.',
+    '- "startTime" y "endTime": la hora de inicio y de fin del plan (HH:mm, 24 h), DENTRO de la franja elegida: ' +
+      'las franjas son tramos libres largos y el plan solo ocupa una parte. Respeta la duración que pida el usuario; ' +
+      'si no la dice, 2 horas (o la franja entera si es más corta). Si no elegiste franja, null.',
     `- "deadlineHours": en cuántas horas debería cerrar la votación (entre 1 y 168; si no dice nada, ${DEFAULT_DEADLINE_HOURS}).`,
+    '',
+    'Cómo leer lo que pide:',
+    '- Las franjas son de una semana tipo y se repiten cada semana. Si nombra un día ("el viernes", "hoy", "mañana" = el día ' +
+      'siguiente a hoy), elige una franja de ESE día de la semana; si ese día no tiene franjas, "windowIndex" null.',
+    '- Momentos del día: "en la mañana" = 08:00-12:00, "en la tarde" = 12:00-18:00, "en la noche" = desde las 18:00. ' +
+      'Si acepta varios ("mañana o tarde"), elige el que tenga franja ese día, el más cercano a ahora.',
+    '- Si el plan es pronto (hoy o mañana), que la votación cierre antes de que empiece: "deadlineHours" menor que las horas que faltan.',
     '',
     'Franjas en las que el grupo está libre (semana tipo):',
     numberedWindows(windows),

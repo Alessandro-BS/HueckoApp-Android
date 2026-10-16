@@ -10,7 +10,7 @@ import { proposalsRepository } from '../proposals/proposals.repository';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { aiCallRecorder, aiCallsRepository } from './ai-calls.repository';
 import { askAi } from './ask-ai';
-import { commonWindows, pickWindow } from './plan-context';
+import { commonWindows, narrowWindow, pickWindow } from './plan-context';
 import {
   DRAFT_JSON_SCHEMA, draftDeadline, draftPrompt, draftResponseSchema, proposalDraftInputSchema,
   SUGGESTIONS_JSON_SCHEMA, suggestionsPrompt, suggestionsResponseSchema,
@@ -67,7 +67,7 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
       draftResponseSchema,
       aiCallRecorder(calls, userId, at),
     );
-    const window = pickWindow(windows, answer.windowIndex);
+    const window = narrowWindow(pickWindow(windows, answer.windowIndex), answer.startTime, answer.endTime);
     const draft: ProposalDraft = {
       title: answer.title,
       category: answer.category,

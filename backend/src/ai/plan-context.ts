@@ -2,6 +2,7 @@ import type { Group, MatchWindow } from '@hueckoapp/shared';
 
 import { groupWindows } from '../availability/group-availability';
 import type { timeBlocksRepository } from '../schedule/time-blocks.repository';
+import { TIME_REGEX } from '../schedule/time-blocks.schemas';
 
 type TimeBlocksRepository = ReturnType<typeof timeBlocksRepository>;
 
@@ -34,6 +35,19 @@ export function numberedWindows(windows: readonly MatchWindow[]): string {
 export function pickWindow(windows: readonly MatchWindow[], index: number | null): MatchWindow | null {
   if (index === null || !Number.isInteger(index) || index < 1 || index > windows.length) return null;
   return windows[index - 1];
+}
+
+/**
+ * Recorta la franja elegida a las horas que propone la IA (p. ej. «2 horas el viernes en la tarde» → 16:00-18:00).
+ * Solo si son HH:mm, el fin va después del inicio y las dos caen dentro de la franja: así el recorte nunca incluye
+ * una hora en la que alguien está ocupado. Si no, la franja completa. Conserva el % y las personas libres de la franja
+ * (el peor caso de todo el tramo: dentro del recorte nunca hay menos gente libre).
+ */
+export function narrowWindow(window: MatchWindow | null, startTime: string | null, endTime: string | null): MatchWindow | null {
+  if (!window || !startTime || !endTime || !TIME_REGEX.test(startTime) || !TIME_REGEX.test(endTime)) return window;
+  // «HH:mm» con ceros a la izquierda: comparar el texto es comparar la hora.
+  if (startTime >= endTime || startTime < window.startTime || endTime > window.endTime) return window;
+  return { ...window, startTime, endTime };
 }
 
 /** «martes 29 de septiembre de 2026, 10:00» en la hora del servidor (sin Intl: igual en cualquier sistema). */
