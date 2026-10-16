@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "HueckoApp",
+    "slug": "hueckoapp",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#EADDFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.hueckoapp.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "HueckoApp usa tu ubicación para proponer dónde se reúne tu grupo."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HueckoApp usa tus fotos para leer tu horario de clases con Huecko IA.",
+          "cameraPermission": "HueckoApp usa la cámara para fotografiar tu horario y leerlo con Huecko IA.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-sharing"
+    ]
+  }
+}
