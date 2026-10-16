@@ -100,7 +100,7 @@ Recorrido completo para comprobar HueckoApp en un celular (o emulador) **con la 
 
 **Por qué:** la IA convierte la frase en título, categoría, lugar, franja y fecha límite. **Todo se puede editar** antes de crear la propuesta.
 
-> 💡 La franja se **recorta** a lo que pides dentro del hueco libre: `reunión de 2 horas el viernes en la tarde` → algo como **Vie 15:00–17:00** (sin duración, 2 h). La votación cierra antes de que empiece.
+> 💡 La franja se **recorta** a lo que pides dentro del hueco libre: `reunión de 2 horas el viernes en la tarde` → algo como **Vie 15:00–17:00** (sin duración, 2 h), con **hasta 3 opciones** cargadas en «Elegir yo las franjas» (p. ej. 12–14, 14–16 y 16–18). La votación cierra antes de la primera.
 
 ## 8️⃣ Lugar del plan
 

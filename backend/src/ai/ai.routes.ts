@@ -10,7 +10,7 @@ import { proposalsRepository } from '../proposals/proposals.repository';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { aiCallRecorder, aiCallsRepository } from './ai-calls.repository';
 import { askAi } from './ask-ai';
-import { commonWindows, narrowWindow, pickWindow } from './plan-context';
+import { commonWindows, draftWindows, earliestWindow, pickWindow } from './plan-context';
 import {
   DRAFT_JSON_SCHEMA, draftDeadline, draftPrompt, draftResponseSchema, proposalDraftInputSchema,
   SUGGESTIONS_JSON_SCHEMA, suggestionsPrompt, suggestionsResponseSchema,
@@ -67,13 +67,15 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
       draftResponseSchema,
       aiCallRecorder(calls, userId, at),
     );
-    const window = narrowWindow(pickWindow(windows, answer.windowIndex), answer.startTime, answer.endTime);
+    const options = draftWindows(windows, [answer, ...answer.alternatives]);
     const draft: ProposalDraft = {
       title: answer.title,
       category: answer.category,
       placeName: answer.placeName,
-      window,
-      votingDeadline: draftDeadline(at, answer.deadlineHours, window),
+      window: options[0] ?? null,
+      windows: options,
+      // La votación cierra antes de la opción que llega primero.
+      votingDeadline: draftDeadline(at, answer.deadlineHours, earliestWindow(options, at)),
     };
     res.json(draft);
   });

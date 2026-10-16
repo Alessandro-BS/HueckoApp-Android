@@ -180,7 +180,8 @@ export type ProposalDraft = {
   category: PlanCategory;
   placeName: string | null;
   window: MatchWindow | null;      // dentro de un hueco real del grupo (GET /groups/:id/availability), recortado a lo pedido, o null
-  votingDeadline: string;          // ISO futura sugerida
+  windows: MatchWindow[];          // 0–3 opciones para votar (la primera = `window`), con las mismas reglas
+  votingDeadline: string;          // ISO futura sugerida (antes de la opción que llega primero)
 };
 
 export type PlanSuggestion = {

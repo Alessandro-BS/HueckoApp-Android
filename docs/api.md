@@ -325,11 +325,14 @@ Convierte una frase en un borrador para «Nueva propuesta». Solo miembros (`403
 ```json
 { "title": "Estudiar para el parcial", "category": "ESTUDIO", "placeName": "Biblioteca central",
   "window": { "dayOfWeek": 2, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
+  "windows": [ { "dayOfWeek": 2, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
+               { "dayOfWeek": 2, "startTime": "14:00", "endTime": "16:00", "availabilityPercentage": 100, "freeMembers": 2 } ],
   "votingDeadline": "2026-09-30T15:00:00.000Z" }
 ```
 - `category` ∈ `ESTUDIO | REUNION | COMIDA | DEPORTE | SALIDA | OTRO` (`PlanCategory`; una desconocida → `OTRO`). No se guarda en la propuesta.
 - `window` está **siempre dentro** de uno de los huecos reales de `GET /groups/:id/availability`: a la IA se le pasan numerados y responde con el número (si da uno que no existe, `window` es `null`) y, además, con `startTime`/`endTime` para recortarlo a lo que se pide (duración, momento del día; 2 h si no dice). El recorte solo se aplica si son `HH:mm`, el fin va después del inicio y caen dentro del hueco; si no, `window` es el hueco completo. Conserva `availabilityPercentage` y `freeMembers` del hueco (el peor caso del tramo).
-- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. Con `window`, el cierre se adelanta a 1 h antes de su próximo inicio (el del recorte) (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
+- `windows`: de 0 a 3 opciones para votar (la IA da la principal y hasta 2 alternativas), cada una con las mismas reglas que `window`; las inválidas o repetidas se descartan. La primera es `window`. La app las carga todas en «Elegir yo las franjas».
+- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. Con opciones, el cierre se adelanta a 1 h antes del próximo inicio de la que llega primero (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
 - A la IA se le pasan como máximo 30 huecos (los primeros de `GET /groups/:id/availability`), así que `window` siempre cae dentro de uno de ellos.
 - Títulos de más de 80 y lugares de más de 100 caracteres se recortan; un lugar vacío es `null`.
 
