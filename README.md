@@ -302,7 +302,7 @@ Con `DATABASE_URL` vacía (lo normal en desarrollo), el backend guarda todo en P
 
 ## 🛡️ Administración de la app
 
-Una cuenta con rol `ADMIN` ve **«Administración»** en el menú lateral (botón ☰ arriba a la izquierda), con 5 pestañas:
+Una cuenta con rol `ADMIN` **solo administra**: la app abre en **«Administración»** y el menú lateral (botón ☰ arriba a la izquierda) tiene solo Administración, Perfil y Cerrar sesión (sin Inicio, Horario ni Grupos). Administración tiene 5 pestañas:
 
 | | Pestaña | Qué hace |
 |---|---|---|

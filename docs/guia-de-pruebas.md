@@ -156,7 +156,7 @@ En el formulario de la propuesta de estudio:
 
 | # | Qué hacer | Qué deberías ver | Por qué |
 |---|---|---|---|
-| 1 | **☰ → Administración** | 5 pestañas: Estadísticas, Informes, Usuarios, Grupos, Registro | Con otras cuentas el menú no aparece |
+| 1 | Inicia sesión | Abre directo en **Administración**, con 5 pestañas: Estadísticas, Informes, Usuarios, Grupos, Registro. En ☰ solo hay Administración, Perfil y Cerrar sesión | Una cuenta ADMIN solo administra; las demás no ven el menú |
 | 2 | **Estadísticas** | La IA con tus llamadas por función (escaneo, borrador, ideas, resumen), % de éxito y tiempo medio | Confirma que lo anterior usó la IA real |
 | 3 | **Informes → Exportar PDF** | Se abre «Compartir» con `informe-hueckoapp_<desde>_<hasta>.pdf` | El PDF se genera en el teléfono (`expo-print`) |
 | 4 | **Exportar CSV** y ábrelo en Excel | Tildes bien y columnas separadas | CSV con `;` y BOM UTF-8 para Excel en español |
