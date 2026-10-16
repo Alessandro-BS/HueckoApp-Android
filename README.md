@@ -4,23 +4,25 @@
 
 ### Encuentra el hueco perfecto para juntarte con tu grupo ✨
 
-*Cruza horarios automáticamente, vota planes, gestiona imprevistos y deja que la IA lea tu horario desde una foto.*
+*Cruza los horarios del grupo, propone planes con IA, vota, confirma y resuelve imprevistos, todo desde el celular.*
 
+[![CI](https://github.com/Alessandro-BS/HueckoApp-Android/actions/workflows/ci.yml/badge.svg)](https://github.com/Alessandro-BS/HueckoApp-Android/actions/workflows/ci.yml)
+![Versión](https://img.shields.io/badge/versión-2.0.0-6750A4)
 ![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo&logoColor=white)
 ![React Native](https://img.shields.io/badge/React%20Native-0.86-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon%20%2B%20PGlite-4169E1?logo=postgresql&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-988%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1060%20%E2%9C%94-2EA44F)
 
-[🚀 Inicio rápido](#-inicio-rápido-en-5-pasos) ·
-[🧭 Cómo se usa](#-cómo-se-usa-la-app) ·
-[🗄️ Producción](#️-base-de-datos-en-producción-neon) ·
-[🛡️ Administración](#️-administración-de-la-app) ·
-[🚧 Pendientes](#-estado-y-pendientes) ·
-[🧪 Guía de pruebas](docs/guia-de-pruebas.md) ·
-[📜 API](docs/api.md)
+[🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
+[🚀 Instalación](#-instalación-paso-a-paso) ·
+[🧭 Cómo se usa](#-cómo-se-usa) ·
+[🤖 Huecko IA](#-huecko-ia) ·
+[🩺 Problemas comunes](#-solución-de-problemas) ·
+[🗺️ Hoja de ruta](#️-hoja-de-ruta) ·
+[📝 Cambios](CHANGELOG.md)
 
 </div>
 
@@ -28,17 +30,85 @@
 
 ## 📌 ¿Qué es HueckoApp?
 
-HueckoApp reúne la disponibilidad de grupos de amigos, compañeros de universidad o de trabajo:
+Coordinar a un grupo (amigos, compañeros de universidad o de trabajo) suele terminar en un chat interminable de «¿y tú cuándo puedes?». **HueckoApp** lo resuelve en cuatro pasos:
 
-| | Función |
+```mermaid
+flowchart LR
+    A["📅 Cada uno carga<br/>su horario<br/>(a mano o con una foto)"] --> B["🔍 La app cruza<br/>los horarios y muestra<br/>los huecos en común"]
+    B --> C["🤖 Huecko IA arma<br/>la propuesta desde<br/>una frase"]
+    C --> D["🗳️ El grupo vota<br/>y el responsable<br/>confirma el plan"]
+    D -. "⚠️ imprevisto" .-> C
+```
+
+| | Función | Detalle |
+|---|---|---|
+| 📅 | **Horario semanal** | Bloques escritos a mano (reloj nativo de Android) o leídos de una foto con IA |
+| 👥 | **Grupos** | Código de invitación y roles: dueño, miembro y miembro **imprescindible** |
+| 🔍 | **Huecos en común** | El servidor cruza las agendas de 08:00 a 20:00 y muestra el % del grupo libre |
+| 🗳️ | **Propuestas y votación** | Franjas, fecha límite, lugar con tu ubicación, un voto por persona |
+| ⚠️ | **Imprevistos** | Si alguien no puede ir, el responsable decide si el plan sigue o se reprograma |
+| 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
+| 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
+| 🛡️ | **Administración** | Estadísticas, gráficos, informes PDF/CSV, usuarios, grupos y registro de acciones |
+
+---
+
+## 🎓 Requisitos de la segunda entrega
+
+Los cuatro requisitos del curso, dónde están en el código y **cómo mostrarlos en vivo**:
+
+| Requisito | ¿Para qué lo usa la app? | Dónde está | 🎬 Cómo mostrarlo |
+|---|---|---|---|
+| 📍 **Geolocalización** | Poner el lugar del plan con tu ubicación actual, convertida en dirección | `expo-location` en [`useCurrentLocation.ts`](mobile/src/hooks/useCurrentLocation.ts) y [`usePlaceLookup.ts`](mobile/src/hooks/usePlaceLookup.ts); permiso en el plugin de [`app.json`](mobile/app.json) | **Crear propuesta → Usar mi ubicación actual**: rechaza el permiso (mensaje claro) y luego acéptalo (sale tu dirección y «Con coordenadas») |
+| 🪝 **React Native (hooks)** | Toda la lógica de las pantallas vive en hooks reutilizables | 25 hooks propios en [`mobile/src/hooks/`](mobile/src/hooks/) más `AuthContext` en [`mobile/src/context/`](mobile/src/context/) | Mostrar en el código `useResource` (cargar, refrescar y descartar respuestas tardías) y `useDashboard` |
+| 🌐 **API REST** | La app habla con el backend Express por HTTP + JSON con token JWT | Cliente `axios` en [`mobile/src/api/`](mobile/src/api/); contrato completo en [`docs/api.md`](docs/api.md) | Crear un bloque o un grupo y ver la petición en la terminal del backend; abrir `http://localhost:3000/api/health` |
+| 💾 **Async Storage** | Recordar el último correo, el perfil de la sesión y una copia de Inicio para abrir la app **sin red** | `@react-native-async-storage/async-storage` en [`appStorage.ts`](mobile/src/storage/appStorage.ts), usado por [`AuthContext.tsx`](mobile/src/context/AuthContext.tsx), [`LoginScreen.tsx`](mobile/src/screens/auth/LoginScreen.tsx) y [`useDashboard.ts`](mobile/src/hooks/useDashboard.ts) | 1) Cerrar sesión: el login trae el correo. 2) Apagar el backend y recargar la app: entra igual y Inicio muestra ☁️ «Sin conexión: estos son los últimos datos guardados.» |
+
+<details>
+<summary><b>🪝 Los 25 hooks propios, por tipo</b></summary>
+
+| Tipo | Hooks |
 |---|---|
-| 📅 | **Tu horario semanal** en bloques, escrito a mano o leído desde una foto con IA |
-| 👥 | **Grupos** con código de invitación y roles (dueño / miembro) |
-| 🔍 | **Cruce automático** de agendas: muestra los huecos libres en común |
-| 🗳️ | **Propuestas y votación** de planes, con plazo, lugar y ubicación en el mapa |
-| ⚠️ | **Imprevistos**: si alguien ya no puede, el plan se reabre |
-| 🤖 | **Huecko IA**: OCR de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
-| 📊 | **Panel de administración**: estadísticas, gráficos, informes PDF/CSV, usuarios, grupos y registro de acciones |
+| ♻️ Genéricos | `useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList` |
+| 📅 Horario y grupos | `useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useDashboard` |
+| 🗳️ Planes | `useProposals`, `useProposal` |
+| 📍 Ubicación | `useCurrentLocation`, `usePlaceLookup` |
+| 🤖 IA | `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus` |
+| 🛡️ Administración | `useAdminStats`, `useAdminReport`, `useAdminUser`, `useAdminGroup`, `useAdminLists` (usuarios, grupos y registro) |
+
+</details>
+
+<details>
+<summary><b>💾 Qué se guarda en el teléfono y dónde (seguridad)</b></summary>
+
+| Dato | Dónde | ¿Cifrado? | ¿Cuándo se borra? |
+|---|---|---|---|
+| 🔑 Token de sesión (JWT) | `expo-secure-store` (Keystore de Android) | ✅ Sí | Al cerrar sesión o si el servidor lo rechaza |
+| 📧 Último correo usado | AsyncStorage | No (no es secreto) | Se conserva, para rellenar el login |
+| 👤 Perfil de la sesión (nombre, correo y rol) | AsyncStorage | No | Al cerrar sesión |
+| 🏠 Copia de Inicio (por usuario) | AsyncStorage | No | Al cerrar sesión |
+
+- El token **nunca** pasa por AsyncStorage: un test lo comprueba.
+- Una copia de otra versión de la app o con otra forma se ignora en vez de romper Inicio.
+- El rol guardado solo sirve para dibujar el menú: el servidor revisa el rol en **cada** petición.
+
+</details>
+
+> 🎓 Además se aplican otros temas del curso: **seguridad** (JWT, bcrypt, permisos en tiempo de ejecución, roles), **navegación** (`native-stack`, `bottom-tabs`, `drawer`, `material-top-tabs`), **cámara y galería** (`expo-image-picker`), **base de datos** (PostgreSQL) y **gráficos e informes** (`react-native-gifted-charts`, `expo-print`). Ver [Arquitectura](#️-arquitectura).
+
+---
+
+## 🆕 Novedades de la v2.0.0
+
+| | Cambio |
+|---|---|
+| 📱 | App nueva en **Expo + React Native**, con backend propio en Express y PostgreSQL (la v1.0.0 nativa en Kotlin queda en [`legacy-android/`](legacy-android/)) |
+| 💾 | **Async Storage**: correo recordado, sesión y copia de Inicio para abrir **sin red** |
+| 🤖 | El borrador con IA respeta la **duración y el momento** pedidos y propone **hasta 3 franjas** para votar |
+| 🛡️ | La cuenta administradora **solo administra**: abre en Administración, sin Inicio, Horario ni Grupos |
+| 🗺️ | Mapa de **OpenStreetMap** listo para «Elegir en el mapa» (el botón queda *en curso*) |
+
+Todos los cambios, en el [📝 CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -46,58 +116,85 @@ HueckoApp reúne la disponibilidad de grupos de amigos, compañeros de universid
 
 ```mermaid
 flowchart LR
-    A["📱 App móvil<br/>Expo · React Native"] -- "REST + JWT<br/>(axios)" --> B["⚙️ API REST<br/>Express 5 · TypeScript"]
-    B -- "SQL parametrizado" --> C[("🐘 PostgreSQL<br/>Neon (prod) · PGlite (dev/tests)")]
+    A["📱 App móvil<br/>Expo · React Native<br/>TypeScript"] -- "REST + JWT<br/>(axios)" --> B["⚙️ API REST<br/>Express 5 · TypeScript<br/>zod"]
+    A -. "sin red:<br/>AsyncStorage" .-> L[("💾 Teléfono<br/>SecureStore +<br/>AsyncStorage")]
+    B -- "SQL parametrizado" --> C[("🐘 PostgreSQL<br/>PGlite (dev/tests)<br/>Neon (producción)")]
     B -- "clave solo en el servidor" --> D["🤖 Google Gemini"]
     S["📦 shared/<br/>tipos del contrato"] -. "import type" .-> A
     S -. "import type" .-> B
 ```
 
+| Capa | Tecnología | Versión |
+|---|---|---|
+| 📱 App | Expo SDK · React Native · React · TypeScript | 57 · 0.86.3 · 19.2.3 · 6.0 |
+| 🧭 Navegación | React Navigation (`native-stack`, `bottom-tabs`, `drawer`, `material-top-tabs`) | 7 |
+| 🌐 Cliente HTTP | axios | 1.20 |
+| ⚙️ API | Node.js · Express · zod · JWT · bcrypt | 22 · 5.2 · 4.6 |
+| 🐘 Base de datos | PGlite (desarrollo y tests) · `pg` para Neon (producción) | 0.5 · 8.23 |
+| 🤖 IA | Google Gemini con `@google/genai` | 2.24 |
+| 🧪 Tests | Vitest + Supertest (backend) · Jest + Testing Library (app) | — |
+
 ### 📁 Estructura del monorepo
 
-| Carpeta | Qué contiene | Tecnología |
-|---|---|---|
-| 📱 [`mobile/`](mobile/) | App móvil | Expo SDK 57 + React Native 0.86 + TypeScript, React Navigation 7 |
-| ⚙️ [`backend/`](backend/) | API REST, base de datos e IA | Node.js + Express 5 + TypeScript, zod, JWT, bcrypt |
-| 📦 [`shared/`](shared/) | Tipos del contrato (`@hueckoapp/shared`) | TypeScript (solo tipos) |
-| 📜 [`docs/`](docs/) | Contrato de la API ([`api.md`](docs/api.md)) y planes | Markdown |
-| 🗃️ [`legacy-android/`](legacy-android/) | Versión nativa anterior, congelada en `v1.0.0` | Kotlin + Jetpack Compose |
+```text
+HueckoApp-Android/
+├── 📱 mobile/            App Expo
+│   └── src/
+│       ├── api/          Cliente axios, una función por endpoint
+│       ├── components/   UI reutilizable (botones, tarjetas, mapa OSM…)
+│       ├── context/      AuthContext: sesión, token y perfil
+│       ├── hooks/        25 hooks propios
+│       ├── navigation/   Stack, drawer, barra inferior y pestañas
+│       ├── screens/      Pantallas por área (auth, dashboard, schedule, groups, proposals, admin)
+│       └── storage/      AsyncStorage (datos no secretos)
+├── ⚙️ backend/           API REST Express
+│   ├── src/              ai/ · auth/ · availability/ · groups/ · proposals/ · schedule/ · admin/ · db/
+│   └── test/             Tests con Vitest y Supertest
+├── 📦 shared/            Tipos del contrato (@hueckoapp/shared)
+├── 📜 docs/              Contrato de la API, guía de pruebas y despliegue
+└── 🗃️ legacy-android/    v1.0.0 nativa en Kotlin (congelada)
+```
 
-> 💡 Es un **monorepo con npm workspaces**: un solo `npm install` en la raíz instala todo, con un único `package-lock.json`.
-> El **contrato de la API** ([`docs/api.md`](docs/api.md)) es el acuerdo entre la app y el backend: cualquier cambio de endpoint se actualiza ahí en el mismo PR.
+> 💡 Es un **monorepo con npm workspaces**: un solo `npm install` en la raíz instala todo, con un único `package-lock.json`. El [contrato de la API](docs/api.md) es el acuerdo entre la app y el backend.
 
 ---
 
-## ✅ Requisitos
+## ✅ Antes de empezar
 
-| | Qué | Nota |
+| | Necesitas | Nota |
 |---|---|---|
-| 🟢 | [Node.js](https://nodejs.org/) **22** (22.13 o superior, **no 23 ni 24**) + npm | Obligatorio. La versión está en [`.nvmrc`](.nvmrc); ver [¿Qué versión de Node?](#-qué-versión-de-node) |
-| 🌿 | Git | Obligatorio |
-| 📲 | **Expo Go** en tu celular, o un emulador de Android Studio | Para abrir la app |
-| 🐘 | Base de datos | **No hay que instalar nada**: en desarrollo se usa [PGlite](https://pglite.dev) (PostgreSQL dentro del propio proceso, sin Postgres ni Docker) |
-| 🔑 | Clave de Gemini | Opcional: sin ella la IA funciona en *modo demostración* |
+| 🟢 | **Node.js 22** (22.13 o superior, **no 23 ni 24**) y npm | Obligatorio. Ver [¿Qué versión de Node?](#-qué-versión-de-node) |
+| 🌿 | **Git** | Para clonar el repositorio |
+| 📲 | **Expo Go** en tu celular Android (o un emulador de Android Studio) | [Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent) |
+| 📶 | **PC y celular en la misma red Wi-Fi** | El celular se conecta al backend de tu PC |
+| 🔑 | **Clave de Gemini** (gratis) | Opcional: sin ella la IA funciona en *modo demostración* |
+| 🐘 | Base de datos | **No hay que instalar nada**: se usa [PGlite](https://pglite.dev), PostgreSQL dentro del propio backend |
 
 ### 🟢 ¿Qué versión de Node?
 
-El proyecto usa **Node 22**. Con Node 24, PGlite hace que Node se cierre de golpe (código `0xC0000409` en Windows) y los tests del backend fallan al azar. Por eso:
-
-- 📌 [`.nvmrc`](.nvmrc) fija la versión y `engines` pide `>=22.13 <23`.
-- 🚫 [`.npmrc`](.npmrc) tiene `engine-strict=true`: con otra versión, `npm install` se detiene con el error `EBADENGINE`.
+El proyecto usa **Node 22**. Con Node 24, PGlite hace que Node se cierre de golpe (código `0xC0000409` en Windows) y los tests fallan al azar. Por eso [`.nvmrc`](.nvmrc) fija la versión, `engines` pide `>=22.13 <23` y [`.npmrc`](.npmrc) tiene `engine-strict=true`: con otra versión, `npm install` se detiene con `EBADENGINE`.
 
 La forma más simple de tener Node 22 sin quitar otras versiones es **[fnm](https://github.com/Schniz/fnm)**:
 
+<details open>
+<summary><b>🪟 Windows</b></summary>
+
 ```powershell
-# Windows (una sola vez)
 winget install Schniz.fnm
 # Agrega esta línea a tu perfil de PowerShell (notepad $PROFILE) y abre otra terminal:
 fnm env --use-on-cd --shell powershell | Out-String | Invoke-Expression
 ```
 
+</details>
+
+<details>
+<summary><b>🍎 macOS / 🐧 Linux</b></summary>
+
 ```bash
-# macOS / Linux (una sola vez)
 curl -fsSL https://fnm.vercel.app/install | bash
 ```
+
+</details>
 
 Después, en la carpeta del proyecto:
 
@@ -107,18 +204,18 @@ fnm use       # la activa (con --use-on-cd se activa sola al entrar a la carpeta
 node -v       # debe decir v22.x
 ```
 
-> 💡 Si ya usas **nvm** o **nvm-windows**, también sirve: `nvm install 22` y `nvm use 22`.
+> 💡 Con **nvm** o **nvm-windows** también sirve: `nvm install 22` y `nvm use 22`.
 
 ---
 
-## 🚀 Inicio rápido en 5 pasos
+## 🚀 Instalación paso a paso
 
 ### 1️⃣ Clonar e instalar (una sola vez)
 
 ```bash
 git clone https://github.com/Alessandro-BS/HueckoApp-Android.git
 cd HueckoApp-Android
-fnm use        # Node 22 (ver «¿Qué versión de Node?»)
+fnm use
 npm install
 ```
 
@@ -128,293 +225,251 @@ npm install
 cp backend/.env.example backend/.env
 ```
 
-Abre `backend/.env` y completa `JWT_SECRET` con un valor largo y aleatorio:
+Abre `backend/.env` y completa:
 
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-```
+| Variable | Qué poner | ¿Obligatoria? |
+|---|---|---|
+| `JWT_SECRET` | Un valor largo y aleatorio. Genéralo con `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` | ✅ Sí |
+| `GEMINI_API_KEY` | Tu clave de <https://aistudio.google.com/apikey> | Recomendada (sin ella, «Modo demostración») |
 
-**(Opcional, recomendado) IA real:** consigue una clave gratis en <https://aistudio.google.com/apikey> y pégala en la misma `backend/.env`:
+> 🔒 `backend/.env` **nunca se sube al repositorio**. La clave de Gemini **nunca llega a la app**: solo la usa el servidor.
 
-```bash
-GEMINI_API_KEY=tu_clave_aquí
-```
-
-Sin clave la app funciona igual, pero Huecko IA responde con datos de ejemplo y muestra **«Modo demostración»**.
-
-> 🔒 `backend/.env` **nunca se sube al repositorio**. Ahí viven los secretos: `JWT_SECRET`, `GEMINI_API_KEY` y `DATABASE_URL`. La clave de Gemini nunca llega a la app: solo la usa el servidor.
-
-### 3️⃣ (Opcional) Cargar datos de ejemplo
+### 3️⃣ Cargar datos de ejemplo (opcional)
 
 ```bash
 npm run seed -w backend   # con el servidor detenido
 ```
 
-Crea usuarios, grupos, horarios y dos planes con fechas relativas a hoy. Se puede repetir sin duplicar nada (renueva los planes).
+Crea usuarios, grupos, horarios y dos planes con fechas relativas a hoy. Se puede repetir sin duplicar nada.
 
 | 👤 Correo | 🔑 Contraseña | Qué tiene |
 |---|---|---|
-| `test@test.com` | `password123` | Administra «Proyecto Integrador» (código `PROY2026`) con Ana. Clases lunes 08–10 y miércoles 14–16. Creó «Reunión de avance del proyecto», confirmada para dentro de 2 días a las 11:00, con un imprevisto de Ana (sale el aviso en Inicio) |
-| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador». Propuso «Repaso antes de la entrega», en votación hasta mañana a las 20:00 |
+| `test@test.com` | `password123` | Dueño de «Proyecto Integrador» (código `PROY2026`) con Ana. Tiene un plan confirmado con un imprevisto de Ana |
+| `ana@test.com` | `password123` | Miembro de «Proyecto Integrador», con una votación abierta |
 | `carlos@test.com` | `password123` | Único miembro de «Amigos de la Uni»: prueba **Unirme** con el código `HUECKO123` |
-| `admin@test.com` | `password123` | 🛡️ Rol `ADMIN`: ve «Administración» en el menú. No pertenece a ningún grupo |
+| `admin@test.com` | `password123` | 🛡️ Administrador: la app abre en Administración |
 
-### 4️⃣ Levantar el backend
+### 4️⃣ Levantar el backend (terminal 1)
 
 ```bash
 npm run backend
 ```
 
-✔️ Comprueba que responde: <http://localhost:3000/api/health>
+✔️ Comprueba que responde: <http://localhost:3000/api/health> debe decir `{"status":"ok"}`.
 
-### 5️⃣ Levantar la app (en otra terminal)
+### 5️⃣ Levantar la app (terminal 2)
 
 ```bash
 cp mobile/.env.example mobile/.env
 ```
 
-Antes de arrancarla, decide **dónde la vas a abrir**: la app tiene que saber a qué dirección llamar al backend. Se configura en `EXPO_PUBLIC_API_URL` de `mobile/.env`.
+La app tiene que saber dónde está el backend. Se configura en `EXPO_PUBLIC_API_URL` de `mobile/.env`:
 
 <details open>
-<summary><b>📱 En tu celular (recomendado)</b></summary>
+<summary><b>📱 En tu celular con Expo Go (recomendado)</b></summary>
 
-1. Instala **Expo Go** desde [Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent) (o App Store en iPhone).
-2. Conecta el celular a la **misma red** que tu PC (Wi-Fi del mismo router; no datos móviles).
-3. Busca la IP de tu PC en esa red:
+1. Conecta el celular a la **misma Wi-Fi** que tu PC (no uses datos móviles).
+2. Busca la IP de tu PC:
    - **Windows:** `ipconfig` → «Dirección IPv4» del adaptador Wi-Fi o Ethernet (p. ej. `192.168.1.20`).
    - **macOS / Linux:** `ipconfig getifaddr en0` o `hostname -I`.
-4. En `mobile/.env` pon esa IP:
+3. Pon esa IP en `mobile/.env`:
    ```bash
    EXPO_PUBLIC_API_URL=http://192.168.1.20:3000/api
    ```
-5. Arranca la app y escanea el QR que aparece en la terminal con **Expo Go**:
+4. Arranca la app y escanea el QR con **Expo Go**:
    ```bash
    npm run mobile
    ```
-
-> 🧱 **¿Expo Go se queda cargando o la app dice error de red al iniciar sesión?** Casi siempre es el firewall de Windows. La primera vez que corre Node, Windows pregunta si lo deja usar la red: acepta. Si tu red está marcada como **Pública** (Configuración → Red e Internet → propiedades de la red), puede bloquear al celular: márcala como **Privada** o permite Node.js en el firewall. Prueba desde el navegador del celular: `http://<IP-de-tu-PC>:3000/api/health` debe decir `ok`.
+5. ✔️ Prueba desde el navegador del celular: `http://<IP-de-tu-PC>:3000/api/health` debe decir `ok`.
 
 </details>
 
 <details>
 <summary><b>🖥️ En el emulador de Android Studio</b></summary>
 
-1. Deja el valor por defecto de `mobile/.env`: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api` (dentro del emulador, `localhost` es el propio emulador; `10.0.2.2` es tu PC).
-2. Abre un emulador desde Android Studio (Device Manager) y luego `npm run mobile` y presiona **`a`**: instala Expo Go en el emulador y abre la app.
+1. Deja el valor por defecto de `mobile/.env`: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000/api` (dentro del emulador, `10.0.2.2` es tu PC).
+2. Abre un emulador desde Android Studio (Device Manager), ejecuta `npm run mobile` y presiona **`a`**.
 
-> ⚠️ El emulador consume mucha RAM (Pixel 9 pide 16 GB). Con poca memoria va muy lento; en ese caso usa tu celular.
+> ⚠️ El emulador consume mucha RAM. Con poca memoria va muy lento: en ese caso usa tu celular.
 
 </details>
 
-🎉 **¡Listo!** Entra con una cuenta de ejemplo (paso 3) o crea la tuya desde **«Regístrate»**. Para probar todo paso a paso, sigue la [🧪 Guía de pruebas](docs/guia-de-pruebas.md).
+> 🔁 **¿Cambiaste `mobile/.env`?** Reinicia Expo limpiando la caché, porque las variables `EXPO_PUBLIC_*` se copian dentro de la app: `cd mobile` y `npx expo start --clear`.
+
+🎉 **¡Listo!** Entra con una cuenta de ejemplo o crea la tuya desde **«Regístrate»**. Para un recorrido completo, sigue la [🧪 Guía de pruebas](docs/guia-de-pruebas.md).
 
 ---
 
-## 🧭 Cómo se usa la app
+## 🧭 Cómo se usa
 
-**Moverse por la app:** abajo está la barra **🏠 Inicio · 📅 Horario · 👥 Grupos**. El botón **☰** (arriba a la izquierda) abre el menú con **Perfil**, **Administración** (solo cuentas `ADMIN`) y **Cerrar sesión**.
+**Moverse por la app:** abajo está la barra **🏠 Inicio · 📅 Horario · 👥 Grupos**. El botón **☰** (arriba a la izquierda) abre **Perfil** y **Cerrar sesión**.
 
-1. 📝 **Regístrate o inicia sesión.** El token se guarda cifrado en el teléfono: al reabrir la app sigues dentro.
-2. 📅 **Carga tu horario** en la pestaña **Horario**:
-   - **Añadir bloque:** nombre, día y tipo; la hora de inicio y fin se eligen con el **reloj de Android** (sin teclado).
-   - **Escanear → Cámara o Galería:** Huecko IA lee los bloques de una foto de tu horario. Las fotos grandes se reducen solas antes de subirse. **Revisa** lo leído (corrige horas con el reloj o quita bloques) y toca **Añadir a mi horario**.
-3. 👥 **Crea un grupo** en **Grupos → Crear grupo** y comparte su código de invitación, o **únete** con **Unirme** y un código.
-4. 🔍 **Mira los huecos** en el grupo, pestaña **Huecos**: las franjas en las que todos están libres. (Las otras pestañas son **Planes** y **Miembros**.)
-5. 🗳️ **Propón un plan** en **Planes → Crear propuesta**: elige las franjas o deja que Huecko proponga las 3 mejores. En **Describe tu plan** escribe una frase como *«pichanga el sábado en la tarde»* y toca **Rellenar con IA** para que ✨ arme el borrador. Desde **Planes → Ideas con IA** también puedes pedirle 💡 ideas de plan.
-6. 📍 **Agrega el lugar:** **Usar mi ubicación actual** o escríbelo a mano. Con coordenadas, después se puede abrir en el mapa. (**Elegir en el mapa** aparece desactivado, marcado «en curso»: ver [Pendientes](#-estado-y-pendientes).)
-7. ✅ **Vota** con **Votar**. En **Ver detalles**, el responsable confirma el plan con **Confirmar plan**, y **Resumir votación** le pide a la IA un 📋 resumen con una recomendación (la IA solo sugiere: nunca cambia el plan).
-8. ⚠️ **¿Surgió algo?** **Reportar imprevisto** en el plan: el responsable decide si sigue o se reabre. En **Miembros**, el dueño puede marcar a alguien como **imprescindible**: si esa persona falta, el plan se vuelve a coordinar.
-9. 🏠 **Inicio** te muestra tu próximo plan, tus grupos, las votaciones abiertas y los avisos de imprevistos.
-
-> 🧪 ¿Quieres probar todo esto de punta a punta, con ejemplos para la IA? Sigue la [Guía de pruebas](docs/guia-de-pruebas.md).
-
----
-
-## 🤖 Huecko IA (opcional)
-
-1. Consigue una clave gratis en 👉 <https://aistudio.google.com/apikey>
-2. Pégala en `GEMINI_API_KEY` de `backend/.env`.
-3. Reinicia el backend. ¡Eso es todo!
-
-| Variable | Por defecto | Para qué |
+| # | Paso | Cómo |
 |---|---|---|
-| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Modelo principal: responde en pocos segundos, también el OCR |
-| `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash` | Se prueba una vez si el principal está saturado (503), sin cuota (429), no existe (404) o tarda demasiado |
+| 1️⃣ | 📝 **Entra** | Regístrate o inicia sesión. Al reabrir la app sigues dentro, incluso sin red |
+| 2️⃣ | 📅 **Carga tu horario** | **Horario → Añadir bloque** (las horas se eligen con el reloj de Android) o **Escanear → Cámara / Galería**: la IA lee la foto, tú revisas y tocas **Añadir a mi horario** |
+| 3️⃣ | 👥 **Arma el grupo** | **Grupos → Crear grupo** y comparte el código, o **Unirme** con un código |
+| 4️⃣ | 🔍 **Mira los huecos** | En el grupo, pestaña **Huecos**: las franjas en las que el grupo está libre |
+| 5️⃣ | ✨ **Propón un plan con IA** | **Planes → Crear propuesta → Describe tu plan**: escribe *«reunión de 2 horas el viernes en la tarde»* y toca **Rellenar con IA**. Revisa las franjas y crea la propuesta |
+| 6️⃣ | 📍 **Pon el lugar** | **Usar mi ubicación actual** o escríbelo a mano |
+| 7️⃣ | 🗳️ **Vota y confirma** | Cada uno toca **Votar**. En **Ver detalles**, **Resumir votación** pide a la IA un resumen y el responsable toca **Confirmar plan** |
+| 8️⃣ | ⚠️ **Resuelve imprevistos** | **Reportar imprevisto** en el plan. El dueño puede marcar a alguien **imprescindible** en **Miembros**: si esa persona falta, el plan se reprograma |
+| 9️⃣ | 🏠 **Sigue todo en Inicio** | Próximo plan, grupos, votaciones abiertas y avisos de imprevistos |
+
+> 📆 **Las franjas son de una semana tipo.** «Vie 15:00–17:00» significa *el próximo viernes*: al confirmar, el plan se agenda en la próxima vez que ocurre esa franja. Confirma **antes** de que empiece para que sea esta semana.
+
+---
+
+## 🤖 Huecko IA
+
+Google Gemini, llamado **solo desde el backend** ([`backend/src/ai/`](backend/src/ai/)).
+
+| Función | Dónde en la app | Qué hace |
+|---|---|---|
+| 📷 **Escanear horario** | Horario → Escanear | Lee los bloques de una foto (las fotos grandes se reducen solas antes de subirse) |
+| ✨ **Borrador de plan** | Crear propuesta → Rellenar con IA | De una frase saca título, categoría, lugar, fecha límite y **hasta 3 franjas** recortadas a la duración y al momento pedidos |
+| 💡 **Ideas de plan** | Planes → Ideas con IA | Hasta 3 ideas con lugar, franja y motivo, sin repetir planes recientes |
+| 📋 **Resumen de votación** | Ver detalles → Resumir votación | Quién votó, qué franja va ganando y una recomendación: confirmar, reprogramar o cancelar |
+
+**🛡️ Cómo se mantiene segura y fiable**
+
+- 🔐 La clave nunca va en la app; el texto del usuario se envía **marcado como dato**, no como instrucciones.
+- ✅ Cada respuesta se valida con zod. La IA elige franjas **por número** de una lista de huecos reales, y el servidor solo acepta horas que caben dentro de ese hueco: **nunca propone una hora en la que alguien está ocupado**.
+- 🙋 La IA **solo sugiere**: confirmar un plan siempre lo decide una persona.
+- ⏱️ Límite de 20 llamadas por usuario cada 15 minutos; si el modelo principal falla, se prueba uno de respaldo.
+
+| Variable (`backend/.env`) | Por defecto | Para qué |
+|---|---|---|
+| `GEMINI_API_KEY` | vacía | Sin clave, respuestas de ejemplo y aviso «Modo demostración» |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Modelo principal (rápido, también para el escaneo) |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash` | Respaldo si el principal está saturado, sin cuota o tarda demasiado |
 | `GEMINI_THINKING_LEVEL` | `low` | Menos razonamiento = respuestas más rápidas |
-| `GEMINI_TIMEOUT_MS` | `30000` | Tiempo máximo total; después responde `503 AI_UNAVAILABLE` |
+| `GEMINI_TIMEOUT_MS` | `30000` | Tiempo máximo; después responde `503 AI_UNAVAILABLE` |
 | `AI_RATE_LIMIT` | `20` | Llamadas por usuario cada 15 minutos |
 
-> 🧪 Sin clave, la IA responde con datos de ejemplo y la app muestra **«Modo demostración»**.
-> 🔐 La clave **nunca** va en la app: solo el servidor habla con Gemini. Todo texto del usuario se envía marcado como dato (no como instrucciones) y cada respuesta se valida con zod.
-
 ---
 
-## 🐘 Base de datos
+## 🛡️ Administración
 
-### 💻 En desarrollo: PGlite
-
-Con `DATABASE_URL` vacía (lo normal en desarrollo), el backend guarda todo en PostgreSQL con PGlite, en `backend/data/pglite`. La carpeta se crea sola al arrancar, con todas las tablas.
-
-> ⚠️ **PGlite admite un solo proceso.** Detén el servidor antes de `npm run seed -w backend` o `npm run make-admin -w backend`. Si no lo haces, te avisan: «La base local … está abierta por otro proceso».
-
-- 🔄 **Empezar de cero:** detén el servidor y borra `backend/data/pglite`.
-- 🗑️ El archivo `backend/data/hueckoapp.db` de la versión con SQLite ya no se usa y se puede borrar (la semilla vuelve a crear los datos de ejemplo).
-
-### ☁️ Base de datos en producción (Neon)
-
-1. 🆕 Crea un proyecto en [Neon](https://console.neon.tech) con **Postgres 18** (la versión por defecto; hace falta 16 o posterior), **en la misma región que el servicio de Render** o la más cercana. Cada consulta es un viaje de red y algunas pantallas (como los informes de administración) hacen una docena seguidas.
-2. 🔗 En **Connect**, copia la cadena de conexión (la *pooled* sirve) y cambia `sslmode=require` por `sslmode=verify-full` (mismo cifrado, sin el aviso de seguridad de `pg`).
-3. 🔒 Ponla en `DATABASE_URL` del entorno del servidor, **nunca en el repo ni en la app**. Con `NODE_ENV=production` el servidor no arranca sin ella.
-   - ⏱️ Tiempos máximos (en `backend/src/db/pg-driver.ts`): Postgres cancela a los **15 s** una sentencia dentro de una transacción (`SET LOCAL statement_timeout`, compatible con la conexión *pooled*), y el servidor deja de esperar cualquier consulta a los **20 s**.
-4. 🧱 Al arrancar, el servidor crea o actualiza las tablas solo (migraciones en `backend/src/db/migrations.ts`, anotadas en `schema_migrations`).
-5. 🛡️ **Primer administrador:** ejecuta `make-admin` con la `DATABASE_URL` de producción **solo para ese comando**, en la terminal. **Nunca la escribas en `backend/.env`**: así ni `npm run backend` ni la semilla tocan producción por descuido. Una variable definida en la terminal gana a `backend/.env`:
-
-   ```bash
-   # bash
-   DATABASE_URL='postgresql://…' npm run make-admin -w backend -- <correo>
-   ```
-
-   ```powershell
-   # PowerShell
-   $env:DATABASE_URL='postgresql://…'; npm run make-admin -w backend -- <correo>; Remove-Item Env:DATABASE_URL
-   ```
-
-   - `make-admin` solo abre una base que ya tenga el esquema **en la misma versión que tu copia del código**. No la migra (eso lo hace el servidor desplegado al arrancar), así que despliega antes y usa el mismo commit.
-   - 🚫 La semilla es solo para desarrollo: si `DATABASE_URL` no apunta a esta máquina, se niega a escribir (salvo con `-- --allow-remote`, para una base de pruebas), porque crea cuentas con contraseña conocida, una de ellas ADMIN.
-6. 🧪 **Antes de desplegar en Render**, arranca el servidor una vez contra un proyecto Neon de pruebas (con su `DATABASE_URL` real) y comprueba salud, inicio de sesión, Inicio y `make-admin`. Los tests no usan red, así que Neon no se prueba automáticamente.
-
----
-
-## 🌐 Despliegue del backend (Render)
-
-| Variable | Valor recomendado | ¿Por qué? |
-|---|---|---|
-| `NODE_ENV` | `production` | Exige `DATABASE_URL` y desactiva comportamientos de desarrollo |
-| `DATABASE_URL` | Cadena de Neon con `sslmode=verify-full` | Base de datos de producción |
-| `JWT_SECRET` | Valor largo y aleatorio (distinto al de desarrollo) | Firma de los tokens |
-| `TZ` | `America/Lima` | 🕐 Los planes confirmados (`scheduledAt`, `scheduledDate`) se calculan en esta zona. Sin ella el servidor usa UTC y los planes caerían en otra fecha u hora |
-| `TRUST_PROXY` | `1` | 🧱 Render pone un proxy delante. Sin esto, todas las peticiones parecen venir de la misma IP y el límite de intentos de login (`LOGIN_RATE_LIMIT`) y de registro (`REGISTER_RATE_LIMIT`) bloquearía a todos a la vez |
-| `GEMINI_API_KEY` | Tu clave | IA (opcional) |
-
-> ⚙️ Comandos: build `npm install && npm run build -w backend` · start `npm start -w backend`.
-
----
-
-## 🛡️ Administración de la app
-
-Una cuenta con rol `ADMIN` **solo administra**: la app abre en **«Administración»** y el menú lateral (botón ☰ arriba a la izquierda) tiene solo Administración, Perfil y Cerrar sesión (sin Inicio, Horario ni Grupos). Administración tiene 5 pestañas:
+Una cuenta con rol `ADMIN` **solo administra**: la app abre en **Administración** y el menú ☰ tiene solo Administración, Perfil y Cerrar sesión.
 
 | | Pestaña | Qué hace |
 |---|---|---|
-| 📊 | Estadísticas | Totales y gráficos de usuarios, grupos, planes y uso de la IA |
+| 📊 | Estadísticas | Totales y gráficos de usuarios, grupos, planes y uso de la IA (por función, % de éxito y tiempo medio) |
 | 📄 | Informes | Filtro por fechas y exportación a **PDF** y **CSV** |
 | 👤 | Usuarios | Buscar, suspender o reactivar, dar o quitar el rol de administrador |
 | 👥 | Grupos | Ver detalle, cancelar planes y eliminar grupos |
 | 📜 | Registro | Historial de cada acción de administración |
 
-🔑 **Nadie se hace administrador al registrarse ni desde la API**: el rol se da o se quita **desde la consola del servidor**:
+🔑 **Nadie se hace administrador al registrarse ni desde la API.** El rol se da o se quita desde la consola del servidor, con el backend **detenido** (PGlite admite un solo proceso):
 
 ```bash
-npm run make-admin -w backend -- ana@test.com            # ➕ dar el rol
-npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
+npm run make-admin -w backend -- correo@ejemplo.com            # ➕ dar el rol
+npm run make-admin -w backend -- correo@ejemplo.com --revoke   # ➖ quitarlo
 ```
 
-- Usa la base de `backend/.env` (`DATABASE_URL` o, si está vacía, PGlite en `PGLITE_DATA_DIR`).
-- Solo abre una base que ya exista con el esquema de HueckoApp en la versión de este código: si la carpeta o la URL están mal, lo dice en vez de crear una vacía; si le faltan migraciones, pide arrancar antes el servidor.
-- Con la base local, detén antes el servidor (PGlite admite un solo proceso).
-- No deja la app sin ningún administrador activo, y queda en el registro como «Consola del servidor».
-- La persona ve (o deja de ver) el menú **al volver la app al primer plano, al reabrirla o al iniciar sesión**. Si pierde el rol mientras usa «Administración», la app lo detecta en la siguiente petición y sale de esas pantallas.
+> 💡 Mientras tenga el rol, esa cuenta deja de ver Inicio, Horario y Grupos. Usa una cuenta aparte para administrar.
 
 ---
 
-## 🧰 Comandos útiles
+## ⚙️ Configuración
 
-| Dónde | Comando | Para qué |
+### `backend/.env` (copia de [`backend/.env.example`](backend/.env.example))
+
+| Variable | Por defecto | Para qué |
 |---|---|---|
-| raíz | `npm run backend` | ⚙️ Levantar la API en <http://localhost:3000> |
-| raíz | `npm run mobile` | 📱 Levantar la app con Expo |
-| raíz | `npm test` | 🧪 Tests del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y de mobile (Jest). Fijan solos `TZ=America/Lima`, así que pasan igual en cualquier PC o CI |
-| raíz | `npm run typecheck` | 🔎 Revisar tipos de backend y mobile |
-| raíz | `npm run build -w backend` | 🏗️ Compilar el backend a JavaScript |
-| raíz | `npm run seed -w backend` | 🌱 Datos de ejemplo en la base local (con el servidor detenido) |
-| raíz | `npm run make-admin -w backend -- <correo> [--revoke]` | 🛡️ Dar o quitar el rol de administrador |
-| `mobile/` | `npx expo install <paquete>` | 📦 Instalar paquetes compatibles con el SDK (**no uses `npm install`** para librerías nativas) |
-| `mobile/` | `npx expo-doctor` | 🩺 Diagnosticar dependencias |
+| `PORT` | `3000` | Puerto de la API |
+| `JWT_SECRET` | — | **Obligatoria.** Firma de los tokens |
+| `JWT_EXPIRES_IN` | `7d` | Duración de la sesión |
+| `DATABASE_URL` | vacía | Vacía = PGlite local. Con una URL de Neon, PostgreSQL en la nube ([despliegue](docs/despliegue.md)) |
+| `PGLITE_DATA_DIR` | `./data/pglite` | Carpeta de la base local (se crea sola) |
+| `TZ` | `America/Lima` | Zona horaria con la que se agendan los planes confirmados |
+| `GEMINI_*`, `AI_RATE_LIMIT` | ver [Huecko IA](#-huecko-ia) | IA |
+| `LOGIN_RATE_LIMIT` / `REGISTER_RATE_LIMIT` | `20` / `10` | Intentos por IP cada 15 min |
+| `TRUST_PROXY` | `false` | Proxies delante del servidor (solo en producción) |
+
+### `mobile/.env` (copia de [`mobile/.env.example`](mobile/.env.example))
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `EXPO_PUBLIC_API_URL` | `http://10.0.2.2:3000/api` | Dirección del backend. En un celular: `http://<IP-de-tu-PC>:3000/api` |
+
+> ⚠️ Todo lo que esté en `mobile/.env` termina dentro de la app: ahí solo van valores públicos.
 
 ---
 
-## 🎓 Temas del curso y dónde se aplican
+## 🐘 Base de datos
 
-| Tema | Dónde |
+En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL con PGlite** en `backend/data/pglite`. La carpeta se crea sola al arrancar, con todas las tablas (migraciones versionadas en [`migrations.ts`](backend/src/db/migrations.ts)).
+
+- ⚠️ **PGlite admite un solo proceso:** detén el servidor antes de `seed` o `make-admin`.
+- 🔄 **Empezar de cero:** detén el servidor y borra `backend/data/pglite`.
+- ☁️ **Producción** con Neon y Render: [📜 docs/despliegue.md](docs/despliegue.md) (fuera del alcance de esta versión).
+
+---
+
+## 🧪 Calidad
+
+| | Qué | Cómo |
+|---|---|---|
+| ✅ | **1060 tests** | 560 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 500 de la app (Jest + Testing Library) |
+| 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
+| 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
+| 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |
+
+```bash
+npm run typecheck
+npm test
+```
+
+> 🕐 Los tests fijan solos `TZ=America/Lima`, así que pasan igual en cualquier PC o en la CI.
+
+---
+
+## 🧰 Comandos
+
+| Comando (desde la raíz) | Para qué |
 |---|---|
-| 🪝 **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`, `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus`, `useAdminStats`, `useAdminReport`, `useAdminUsers`, `useAdminGroups`, `useAdminAudit`, `useAdminUser`, `useAdminGroup`) |
-| 🔐 **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend. **Autorización por roles** (`USER`/`ADMIN`): el servidor lee rol y estado de la base en cada petición (`requireAuth` y `requireAdmin` en `backend/src/auth/require-auth.ts`), nadie se hace administrador por la API, una cuenta suspendida queda fuera al instante y cada acción de administración queda registrada |
-| 📍 **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Elegir en el mapa» (en curso, desactivado con `features.mapPicker` en `mobile/src/config.ts`) con un mapa de OpenStreetMap: Leaflet dentro de `react-native-webview` (`mobile/src/components/OsmMap.tsx`, sin clave), buscador de direcciones con `geocodeAsync` y pin que se arrastra, en `mobile/src/screens/proposals/PlacePickerModal.tsx`; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
-| 💾 **Almacenamiento local (AsyncStorage)** | `@react-native-async-storage/async-storage` en `mobile/src/storage/appStorage.ts`, solo para datos no secretos: el login recuerda el último correo; el perfil de la sesión (nombre, correo y rol) permite abrir la app sin red; e Inicio guarda una copia por usuario que se muestra al abrir mientras carga y, sin red, con el aviso «Sin conexión» (`useDashboard`). Perfil y copia se borran al cerrar sesión. El token **no** va aquí: va cifrado en `expo-secure-store` |
-| 🌐 **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
-| 🐘 **Base de datos** | PostgreSQL: Neon en producción (driver `pg` con pool de conexiones) y PGlite en desarrollo y tests, detrás de una misma interfaz (`backend/src/db/db.ts`) con consultas parametrizadas, transacciones reales y migraciones versionadas |
-| 🧭 **Navegación** | `native-stack` (flujos), `bottom-tabs` (barra inferior: Inicio, Horario y Grupos), `drawer` (menú ☰: Perfil, Cerrar sesión y «Administración» solo con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
-| 📷 **Cámara y galería** | `expo-image-picker` en `mobile/src/utils/scheduleImage.ts`: permiso de cámara en tiempo de ejecución, selector de fotos del sistema y validación de tipo y tamaño antes de subir (HEIC se convierte a JPG) |
-| 🤖 **Inteligencia artificial** | Google Gemini **solo desde el backend** (`backend/src/ai/`, SDK `@google/genai`): OCR de horarios, borrador de propuesta desde una frase, ideas de plan y resumen de votación. Respuestas validadas con zod, límite por usuario y modo demostración sin clave |
-| 📊 **Gráficos e informes** | `mobile/src/screens/admin/`: gráficos con `react-native-gifted-charts`, PDF generado en el teléfono con `expo-print`, CSV con `expo-file-system`, ambos compartidos con `expo-sharing`. Los números los calcula el servidor (`backend/src/admin/stats.ts`) |
+| `npm run backend` | ⚙️ API en <http://localhost:3000> (se recarga sola al cambiar el código) |
+| `npm run mobile` | 📱 App con Expo |
+| `npm test` | 🧪 Tests del backend y de la app |
+| `npm run typecheck` | 🔎 Revisar tipos |
+| `npm run seed -w backend` | 🌱 Datos de ejemplo (con el servidor detenido) |
+| `npm run make-admin -w backend -- <correo> [--revoke]` | 🛡️ Dar o quitar el rol de administrador |
+| `npm run build -w backend` | 🏗️ Compilar el backend a JavaScript |
+
+Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compatibles con el SDK (**no uses `npm install`** para librerías nativas) y `npx expo-doctor` para diagnosticar dependencias.
 
 ---
 
-## 🚧 Estado y pendientes
+## 🩺 Solución de problemas
 
-### 🗺️ Hoja de ruta
-
-- [x] **Fase 0** — Monorepo, base de `mobile/` y `backend/`, contrato de la API
-- [x] **Fase 1** — Autenticación (JWT + SecureStore) y navegación completa
-- [x] **Fase 2** — Grupos, horarios y cruce de disponibilidad
-- [x] **Fase 3** — Propuestas, votación y ubicación
-- [x] **Fase 4** — IA: OCR de horarios y ayuda para organizar planes
-- [x] **Fase 4.5** — Administración: roles, estadísticas, informes (PDF y CSV), usuarios, grupos y registro de acciones
-- [x] **Migración a PostgreSQL** — Neon en producción y PGlite en desarrollo y tests (PR #25)
-- [ ] **Fase 5** — Pruebas en dispositivo, despliegue, APK y versión `v2.0.0` 👇
-
-### 📋 Lo que falta (en orden)
-
-| # | Tarea | Detalle |
+| Síntoma | Causa | Solución |
 |---|---|---|
-| 1️⃣ | 📱 **Pruebas en un celular** | Con Expo Go, siguiendo la lista de abajo |
-| 2️⃣ | 🧪 **Probar contra Neon** | Proyecto de pruebas con `DATABASE_URL` real (endpoint *pooled*): salud, login, Inicio y `make-admin` |
-| 3️⃣ | 🌐 **Desplegar en Render** | Backend conectado a Neon, con las variables de [Despliegue](#-despliegue-del-backend-render) |
-| 4️⃣ | 📦 **Generar el APK** | Con EAS Build (`eas.json` con perfil `preview` que genera APK; requiere `npx eas login`). La app debe apuntar a la URL de Render (`EXPO_PUBLIC_API_URL=https://<servicio>.onrender.com/api`). |
-| 5️⃣ | 🏷️ **Publicar `v2.0.0`** | Rama `release/2.0.0` → PR a `main` con el tag `v2.0.0` → de vuelta a `develop` |
+| `npm install` falla con `EBADENGINE` | No estás en Node 22 | `fnm use` y vuelve a intentar |
+| Expo Go se queda cargando | El celular no llega a tu PC | Misma Wi-Fi; acepta el permiso de red de Node en el firewall de Windows o marca tu red como **Privada** |
+| «No se pudo conectar con el servidor» al iniciar sesión | Backend apagado o IP equivocada en `mobile/.env` | Enciende el backend, revisa la IP y reinicia Expo con `npx expo start --clear` |
+| La IA dice «Modo demostración» | Falta `GEMINI_API_KEY` o no reiniciaste el backend | Pon la clave en `backend/.env` y reinicia |
+| «Demasiadas solicitudes» (`429`) | Límite de la IA: 20 llamadas cada 15 min por cuenta | Espera unos minutos |
+| «La base local … está abierta por otro proceso» | `seed` o `make-admin` con el servidor encendido | Detén el servidor primero |
+| El plan confirmado quedó para la semana siguiente | Se confirmó después de que empezara la franja | Confirma antes del inicio de la franja |
 
-### ✅ Lista de prueba en el celular
+---
 
-> Resumen para marcar. El paso a paso, con ejemplos para la IA, está en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md).
+## 🗺️ Hoja de ruta
 
-**Funciones principales**
-- [ ] 📝 Registro, inicio y cierre de sesión (al reabrir la app, la sesión sigue).
-- [ ] 💾 Tras cerrar sesión, el login ya trae el último correo. Con la sesión abierta, apaga el backend y recarga la app: entra igual e Inicio muestra los últimos datos con el aviso «Sin conexión».
-- [ ] 📅 Crear, editar y borrar bloques de horario.
-- [ ] 📷 Escanear un horario con la cámara y con una foto de la galería (incluida una HEIC del iPhone, si hay).
-- [ ] 👥 Crear un grupo, unirse con código y salir de un grupo.
-- [ ] 🔍 Ver los huecos en común del grupo (pestaña **Huecos**).
-- [ ] 🗳️ Proponer un plan, votar, confirmar, cancelar y reportar un imprevisto.
-- [ ] ✨ Borrador con IA, 💡 ideas de plan y 📋 resumen de la votación.
-- [ ] 📍 Usar mi ubicación (aceptando y rechazando el permiso) y abrir el lugar en el mapa.
-- [ ] 🗺️ «Elegir en el mapa» se ve desactivado con «(en curso)» y no abre nada.
+| Versión | Estado | Qué incluye |
+|---|---|---|
+| 🏷️ **v1.0.0** | ✅ Publicada | App nativa en Kotlin + Jetpack Compose ([`legacy-android/`](legacy-android/)) |
+| 🏷️ **v2.0.0** | ✅ Esta versión | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
+| 📦 **v3.0.0** | 🔜 Planificada | **APK** instalable con EAS Build |
 
-**Administración** (gráficos, PDF, CSV y compartir solo se prueban con mocks en Jest)
-- [ ] 🛡️ Entrar como `admin@test.com` y abrir las 5 pestañas (etiquetas de los gráficos legibles).
-- [ ] 📄 En «Informes», exportar PDF y CSV y abrir los dos (nombre `informe-hueckoapp_<desde>_<hasta>`, tildes bien en Excel).
-- [ ] 🚫 Suspender a `ana@test.com`: su sesión se cierra con el aviso.
-- [ ] 🔁 Quitar y dar el rol a alguien: el menú cambia al volver a la app.
+**🔜 Pendientes conocidos**
 
-### 🗺️ «Elegir en el mapa» (en curso)
-
-El botón está desactivado (`features.mapPicker = false` en `mobile/src/config.ts`). El mapa ya funciona con OpenStreetMap: el de Google (`react-native-maps`) salía negro en Expo Go porque Google rechaza la clave que trae Expo Go («Authorization failure» en `adb logcat`). Falta un buscador con sugerencias mientras se escribe (p. ej. [Photon](https://photon.komoot.io), basado en OpenStreetMap; Nominatim prohíbe el autocompletado). Para activarlo, cambia `mapPicker` a `true`.
-
-### 📝 Detalles menores conocidos (no bloquean)
-
-- 💾 La copia de Inicio y el perfil de la sesión se guardan **sin cifrar** en el almacenamiento privado de la app (AsyncStorage): son datos de la propia cuenta y se borran al cerrar sesión. El token sí va cifrado (SecureStore). Una copia de otra versión o con otra forma se ignora.
-- ⏱️ Si dos instancias del servidor arrancan a la vez, la segunda puede fallar al esperar más de 15 s el candado de migración (Render la reinicia).
-- 🔗 La protección de la semilla contra bases remotas solo mira el nombre del host de `DATABASE_URL`. Protege contra accidentes, no contra ataques.
-- ⚠️ Un imprevisto reportado justo cuando otro cancela el plan queda guardado en el plan cancelado (el plan no se reactiva).
+- 🗺️ **«Elegir en el mapa» (en curso):** el mapa de OpenStreetMap ya funciona ([`OsmMap.tsx`](mobile/src/components/OsmMap.tsx)), pero el botón está desactivado (`features.mapPicker` en [`config.ts`](mobile/src/config.ts)) hasta tener un buscador con sugerencias mientras se escribe. El mapa de Google no se usa porque en Expo Go sale negro: Google rechaza la clave que trae Expo Go.
+- 🤖 **Borrador con IA para «hoy»:** si se pide un plan para hoy a una hora que ya pasó, la franja se agenda la semana siguiente; y si la franja empieza en menos de 2 h, la votación puede cerrar después de su inicio. El borrador siempre se revisa antes de crear la propuesta.
+- 📆 La agenda de huecos va de **08:00 a 20:00**; un plan fuera de ese rango se agrega como franja a mano.
+- ⚠️ Un imprevisto reportado justo cuando otro cancela el plan queda guardado en el plan cancelado.
 
 ---
 
@@ -422,24 +477,35 @@ El botón está desactivado (`features.mapPicker = false` en `mobile/src/config.
 
 | Rama | Uso |
 |---|---|
-| 🏷️ `main` | Solo versiones publicadas. Cada merge lleva un tag (`v1.0.0`, `v2.0.0`…) |
-| 🔀 `develop` | Integración: aquí se juntan las funciones terminadas |
-| ✨ `feature/<nombre>` | Una función. Sale de `develop` y vuelve por PR a `develop` |
-| 📦 `release/<versión>` | Preparar una versión. Sale de `develop`, va por PR a `main` y se vuelve a unir a `develop` |
-| 🚑 `hotfix/<nombre>` | Arreglo urgente en producción. Sale de `main` y vuelve a `main` y `develop` |
+| 🏷️ `main` | Solo versiones publicadas, cada una con su tag (`v1.0.0`, `v2.0.0`…) |
+| 🔀 `develop` | Integración de las funciones terminadas |
+| ✨ `feature/<nombre>` | Una función: sale de `develop` y vuelve por PR |
+| 📦 `release/<versión>` | Preparar una versión: va por PR a `main` y vuelve a `develop` |
+| 🚑 `hotfix/<nombre>` | Arreglo urgente: sale de `main` y vuelve a `main` y `develop` |
 
-**Reglas**
 - 🚫 Nunca se hace commit directo en `main` ni en `develop`: todo entra por Pull Request.
-- 🏷️ Nombres de rama con prefijo del área cuando ayude: `feature/backend-auth`, `feature/mobile-navigation`.
-- ✍️ Commits en formato convencional y en español: `feat(mobile): ...`, `fix(backend): ...`, `docs: ...`, `chore: ...`.
-- ✅ Antes de abrir un PR: `npm test` y `npm run typecheck` en verde.
-- 🤖 La [CI](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main`.
+- ✍️ Commits convencionales en español: `feat(mobile): …`, `fix(backend): …`, `docs: …`.
+- ✅ Antes de abrir un PR: `npm run typecheck` y `npm test` en verde.
+
+---
+
+## 👥 Equipo
+
+| Integrante |
+|---|
+| Marcela Natalie Rodriguez Munaylla |
+| Fabrizio Alessandro Bustamante Soria |
+| Fabrizio Adrián Medina Niño |
+
+## 📜 Licencia
+
+Proyecto académico del curso de Aplicaciones Móviles. El repositorio **no incluye un archivo `LICENSE`**: confirmen la licencia antes de reutilizar el código fuera del curso.
 
 ---
 
 <div align="center">
 
-*Este proyecto sigue las metodologías de gestión de requerimientos (REQM) y Scrum para asegurar la trazabilidad y calidad del software.*
+*Desarrollado con gestión de requerimientos (REQM) y Scrum para asegurar la trazabilidad y la calidad del software.*
 
 Hecho con 💜 para el curso de Aplicaciones Móviles
 
