@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,6 +7,7 @@ import { errorMessage } from '../../api/client';
 import { ErrorBanner, PrimaryButton, TextField } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import type { AuthStackParamList } from '../../navigation/types';
+import { lastEmailStorage } from '../../storage/appStorage';
 import { colors, radius, typography } from '../../theme';
 import { showToast } from '../../utils/toast';
 import { validateEmail, validatePassword } from '../../utils/validation';
@@ -20,6 +21,17 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
+
+  // Rellena el correo de la última sesión (AsyncStorage), salvo que ya se haya empezado a escribir otro.
+  useEffect(() => {
+    let cancelled = false;
+    void lastEmailStorage.get().then((saved) => {
+      if (!cancelled && saved) setEmail((current) => current || saved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async () => {
     if (loading) return;

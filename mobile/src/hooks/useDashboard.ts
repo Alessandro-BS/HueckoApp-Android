@@ -1,8 +1,10 @@
 import type { Dashboard, Proposal, TimeBlock } from '@hueckoapp/shared';
+import { useEffect, useState } from 'react';
 
 import { getDashboard } from '../api/dashboard';
 import { removeVote, voteWindow } from '../api/proposals';
 import { listTimeBlocks } from '../api/schedule';
+import { dashboardCache } from '../storage/appStorage';
 import { useResource } from './useResource';
 import { useVoteToggle } from './useVoteToggle';
 
@@ -17,8 +19,30 @@ const loadDashboard = async (): Promise<DashboardData> => {
   return { dashboard, blocks };
 };
 
-export function useDashboard() {
-  const { data, loaded, loading, refreshing, error, failedLoads, reload, mutate } = useResource(loadDashboard);
+// `userId` activa la copia local (AsyncStorage): al abrir Inicio se muestra la última copia mientras llega la del
+// servidor, o en su lugar si no hay red (`stale`). Cada carga buena reemplaza la copia.
+export function useDashboard(userId?: string) {
+  const { data: fresh, loading, refreshing, error, failedLoads, reload, mutate } = useResource(loadDashboard);
+  const [cached, setCached] = useState<{ userId: string; data: DashboardData }>();
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void dashboardCache.get(userId).then((saved) => {
+      if (!cancelled && saved) setCached({ userId, data: saved });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (userId && fresh) void dashboardCache.set(userId, fresh);
+  }, [userId, fresh]);
+
+  const fromCache = fresh === undefined && cached?.userId === userId ? cached?.data : undefined;
+  const data = fresh ?? fromCache;
+  const stale = fromCache !== undefined;
 
   // Actualiza solo esa votación; conserva el nombre del grupo, que la respuesta no trae.
   const replacePending = (updated: Proposal) =>
@@ -40,8 +64,10 @@ export function useDashboard() {
     unvote: async (id) => replacePending(await removeVote(id)),
   });
 
+  // Con la copia en pantalla no se vota: sus votaciones pueden estar desactualizadas (y votar sobre ellas pisaría la carga en curso).
   return {
-    dashboard: data?.dashboard, blocks: data?.blocks ?? NO_BLOCKS, loaded, loading, refreshing, error, failedLoads, reload,
-    toggleVote, voting, voteError, clearVoteError,
+    dashboard: data?.dashboard, blocks: data?.blocks ?? NO_BLOCKS, loaded: data !== undefined, stale,
+    loading, refreshing: refreshing || (stale && loading), error, failedLoads, reload,
+    toggleVote, voting: voting || stale, voteError, clearVoteError,
   };
 }
