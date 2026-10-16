@@ -45,9 +45,13 @@ function DrawerContent(props: DrawerContentComponentProps) {
 
 export function AppDrawer() {
   const { user } = useAuth();
+  // Una cuenta ADMIN solo administra: su menú es Administración y Perfil (sin Inicio, Horario ni Grupos).
+  // `key` vuelve a montar el menú si el rol cambia en plena sesión, para abrir en la pantalla que corresponde.
+  const admin = canSeeAdmin(user);
   return (
     <Drawer.Navigator
-      initialRouteName="Home"
+      key={admin ? 'admin' : 'user'}
+      initialRouteName={admin ? 'Admin' : 'Home'}
       backBehavior="initialRoute"
       drawerContent={(props) => <DrawerContent {...props} />}
       screenOptions={{
@@ -61,15 +65,16 @@ export function AppDrawer() {
         sceneStyle: { backgroundColor: colors.surface },
       }}
     >
-      {/* «Inicio» es la barra inferior (Inicio, Horario, Grupos); ella pinta su propia cabecera con el botón ☰. */}
-      <Drawer.Screen name="Home" component={AppTabs} options={{ title: 'Inicio', headerShown: false, drawerIcon: icon('home') }} />
-      {canSeeAdmin(user) ? (
+      {admin ? (
         <Drawer.Screen
           name="Admin"
           component={AdminScreen}
           options={{ title: 'Administración', drawerIcon: icon('admin-panel-settings') }}
         />
-      ) : null}
+      ) : (
+        // «Inicio» es la barra inferior (Inicio, Horario, Grupos); ella pinta su propia cabecera con el botón ☰.
+        <Drawer.Screen name="Home" component={AppTabs} options={{ title: 'Inicio', headerShown: false, drawerIcon: icon('home') }} />
+      )}
       <Drawer.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil', drawerIcon: icon('person-outline') }} />
     </Drawer.Navigator>
   );
