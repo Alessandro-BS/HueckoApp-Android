@@ -80,14 +80,18 @@ export const makeDashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
 });
 
 // Respuestas de IA de ejemplo (la franja es un hueco real de la semilla).
-export const makeDraft = (over: Partial<ProposalDraft> = {}): ProposalDraft => ({
-  title: 'Estudiar para el parcial',
-  category: 'ESTUDIO',
-  placeName: 'Biblioteca central',
-  window: { dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
-  votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
-  ...over,
-});
+// Sin `windows` explícitas, las opciones son solo `window` (como responde el servidor).
+export const makeDraft = (over: Partial<ProposalDraft> = {}): ProposalDraft => {
+  const draft = {
+    title: 'Estudiar para el parcial',
+    category: 'ESTUDIO' as const,
+    placeName: 'Biblioteca central',
+    window: { dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+    votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
+    ...over,
+  };
+  return { ...draft, windows: over.windows ?? (draft.window ? [draft.window] : []) };
+};
 
 export const makeSuggestion = (over: Partial<PlanSuggestion> = {}): PlanSuggestion => ({
   title: 'Sesión de estudio antes del parcial',

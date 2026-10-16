@@ -10,7 +10,7 @@ import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { useProposalDraft } from '../../hooks/useProposalDraft';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
-import { prefillFromDraft, type ProposalPrefill } from '../../utils/ai';
+import { prefillFromDraft, prefillWindows, type ProposalPrefill } from '../../utils/ai';
 import { today } from '../../utils/clock';
 import { windowLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
@@ -31,11 +31,11 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const [placeName, setPlaceName] = useState(prefill?.placeName ?? '');
   const [coords, setCoords] = useState<Coords | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(prefill?.votingDeadline ? new Date(prefill.votingDeadline) : null);
-  const [auto, setAuto] = useState(!prefill?.window);
-  const [windows, setWindows] = useState<TimeWindowInput[]>(prefill?.window ? [prefill.window] : []);
+  const [windows, setWindows] = useState<TimeWindowInput[]>(prefill ? prefillWindows(prefill) : []);
+  const [auto, setAuto] = useState(windows.length === 0);
   const [category, setCategory] = useState<PlanCategory | null>(prefill?.category ?? null);
   // La IA no eligió franja: se avisa en «Franjas» (el formulario queda en «las 3 mejores», que da 409 si no hay huecos).
-  const [noWindow, setNoWindow] = useState(Boolean(prefill && !prefill.window));
+  const [noWindow, setNoWindow] = useState(Boolean(prefill && windows.length === 0));
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -80,10 +80,11 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
     setCoords(null);
     location.clearError();
     setDeadline(p.votingDeadline ? new Date(p.votingDeadline) : null);
-    setAuto(!p.window);
-    setWindows(p.window ? [p.window] : []);
+    const options = prefillWindows(p);
+    setAuto(options.length === 0);
+    setWindows(options);
     setCategory(p.category);
-    setNoWindow(!p.window);
+    setNoWindow(options.length === 0);
   };
 
   const generateDraft = async (text: string) => {
