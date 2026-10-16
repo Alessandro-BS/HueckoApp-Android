@@ -9,6 +9,26 @@ import type { DashboardData } from '../hooks/useDashboard';
 const LAST_EMAIL_KEY = 'hueckoapp.lastEmail';
 const SESSION_USER_KEY = 'hueckoapp.sessionUser';
 const DASHBOARD_PREFIX = 'hueckoapp.dashboard.';
+// Sube si cambia la forma de DashboardData: una copia de otra versión de la app se ignora en vez de romper Inicio.
+const DASHBOARD_CACHE_VERSION = 1;
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+// Lo mínimo que Inicio lee sin comprobar: si falta, la copia no se usa (se espera al servidor).
+const isDashboardData = (v: unknown): v is DashboardData =>
+  isRecord(v) &&
+  Array.isArray(v.blocks) &&
+  isRecord(v.dashboard) &&
+  isRecord(v.dashboard.metrics) &&
+  Array.isArray(v.dashboard.groups) &&
+  Array.isArray(v.dashboard.pendingVotes);
+
+const isCurrentUser = (v: unknown): v is CurrentUser =>
+  isRecord(v) &&
+  typeof v.id === 'string' &&
+  typeof v.name === 'string' &&
+  typeof v.email === 'string' &&
+  (v.role === 'USER' || v.role === 'ADMIN');
 
 const read = async <T>(key: string): Promise<T | null> => {
   try {
@@ -38,7 +58,10 @@ export const lastEmailStorage = {
  * guardada. Se borra al cerrar sesión. El rol es solo para mostrar el menú: el servidor lo revisa en cada petición.
  */
 export const sessionUserStorage = {
-  get: () => read<CurrentUser>(SESSION_USER_KEY),
+  get: async () => {
+    const saved = await read<unknown>(SESSION_USER_KEY);
+    return isCurrentUser(saved) ? saved : null;
+  },
   set: (user: CurrentUser) => write(SESSION_USER_KEY, user),
   clear: async () => {
     try {
@@ -51,8 +74,11 @@ export const sessionUserStorage = {
 
 /** Copia de Inicio por usuario. Se borra al cerrar sesión: en un teléfono compartido, nadie ve la de otro. */
 export const dashboardCache = {
-  get: (userId: string) => read<DashboardData>(DASHBOARD_PREFIX + userId),
-  set: (userId: string, data: DashboardData) => write(DASHBOARD_PREFIX + userId, data),
+  get: async (userId: string) => {
+    const saved = await read<{ v?: unknown; data?: unknown }>(DASHBOARD_PREFIX + userId);
+    return saved?.v === DASHBOARD_CACHE_VERSION && isDashboardData(saved.data) ? saved.data : null;
+  },
+  set: (userId: string, data: DashboardData) => write(DASHBOARD_PREFIX + userId, { v: DASHBOARD_CACHE_VERSION, data }),
   clearAll: async () => {
     try {
       const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(DASHBOARD_PREFIX));

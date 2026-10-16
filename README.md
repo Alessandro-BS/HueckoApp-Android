@@ -407,6 +407,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 
 ### 📝 Detalles menores conocidos (no bloquean)
 
+- 💾 La copia de Inicio y el perfil de la sesión se guardan **sin cifrar** en el almacenamiento privado de la app (AsyncStorage): son datos de la propia cuenta y se borran al cerrar sesión. El token sí va cifrado (SecureStore). Una copia de otra versión o con otra forma se ignora.
 - ⏱️ Si dos instancias del servidor arrancan a la vez, la segunda puede fallar al esperar más de 15 s el candado de migración (Render la reinicia).
 - 🔗 La protección de la semilla contra bases remotas solo mira el nombre del host de `DATABASE_URL`. Protege contra accidentes, no contra ataques.
 - ⚠️ Un imprevisto reportado justo cuando otro cancela el plan queda guardado en el plan cancelado (el plan no se reactiva).
