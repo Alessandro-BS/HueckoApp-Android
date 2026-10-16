@@ -6,6 +6,7 @@ import * as aiApi from '../../../api/ai';
 import * as proposalsApi from '../../../api/proposals';
 import { makeDraft, makeProposal } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
+import { features } from '../../../config';
 import { CreateProposalScreen } from '../CreateProposalScreen';
 
 jest.mock('../../../api/proposals');
@@ -109,31 +110,45 @@ it('la ubicación solo se pide al pulsar el botón, no al abrir la pantalla', as
   expect(mockPickerProps).not.toHaveBeenCalled(); // el mapa tampoco se abre solo
 });
 
-it('«Elegir en el mapa» abre el selector y el lugar elegido llega a la propuesta con sus coordenadas', async () => {
+it('mientras «Elegir en el mapa» está en curso, el botón se ve desactivado y no abre el mapa', async () => {
   await renderScreen();
-  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Estudiar');
-  await pickDeadline(new Date(2026, 9, 2, 20, 0));
-  await fireEvent.press(screen.getByText('Elegir en el mapa'));
-  expect(mockPickerProps).toHaveBeenLastCalledWith(expect.objectContaining({ initial: null }));
-  await fireEvent.press(screen.getByText('Elegir en el mapa (simulado)'));
-
-  expect(screen.queryByText('Elegir en el mapa (simulado)')).toBeNull(); // se cierra al elegir
-  expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca Central PUCP');
-  expect(screen.getByText('Con coordenadas: se podrá abrir en el mapa.')).toBeTruthy();
-  await fireEvent.press(screen.getByText('Crear propuesta'));
-  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
-  expect(mocked.createProposal.mock.calls[0][1].location).toEqual({ name: 'Biblioteca Central PUCP', latitude: -12.069, longitude: -77.079 });
+  const button = screen.getByRole('button', { name: /Elegir en el mapa \(en curso\)/ });
+  expect(button.props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(button);
+  expect(mockPickerProps).not.toHaveBeenCalled();
 });
 
-it('al volver a abrir el mapa, empieza en el lugar ya elegido', async () => {
-  mockLocate.mockResolvedValue({ name: 'Biblioteca Central, San Miguel', latitude: -12.07, longitude: -77.08 });
-  await renderScreen();
-  await fireEvent.press(screen.getByText('Usar mi ubicación actual'));
-  await waitFor(() => expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca Central, San Miguel'));
-  await fireEvent.press(screen.getByText('Elegir en el mapa'));
-  expect(mockPickerProps).toHaveBeenLastCalledWith(
-    expect.objectContaining({ initial: { name: 'Biblioteca Central, San Miguel', latitude: -12.07, longitude: -77.08 } }),
-  );
+describe('con «Elegir en el mapa» activado (features.mapPicker)', () => {
+  beforeEach(() => {
+    jest.replaceProperty(features, 'mapPicker', true);
+  });
+
+  it('«Elegir en el mapa» abre el selector y el lugar elegido llega a la propuesta con sus coordenadas', async () => {
+    await renderScreen();
+    await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Estudiar');
+    await pickDeadline(new Date(2026, 9, 2, 20, 0));
+    await fireEvent.press(screen.getByText('Elegir en el mapa'));
+    expect(mockPickerProps).toHaveBeenLastCalledWith(expect.objectContaining({ initial: null }));
+    await fireEvent.press(screen.getByText('Elegir en el mapa (simulado)'));
+
+    expect(screen.queryByText('Elegir en el mapa (simulado)')).toBeNull(); // se cierra al elegir
+    expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca Central PUCP');
+    expect(screen.getByText('Con coordenadas: se podrá abrir en el mapa.')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Crear propuesta'));
+    await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
+    expect(mocked.createProposal.mock.calls[0][1].location).toEqual({ name: 'Biblioteca Central PUCP', latitude: -12.069, longitude: -77.079 });
+  });
+
+  it('al volver a abrir el mapa, empieza en el lugar ya elegido', async () => {
+    mockLocate.mockResolvedValue({ name: 'Biblioteca Central, San Miguel', latitude: -12.07, longitude: -77.08 });
+    await renderScreen();
+    await fireEvent.press(screen.getByText('Usar mi ubicación actual'));
+    await waitFor(() => expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca Central, San Miguel'));
+    await fireEvent.press(screen.getByText('Elegir en el mapa'));
+    expect(mockPickerProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ initial: { name: 'Biblioteca Central, San Miguel', latitude: -12.07, longitude: -77.08 } }),
+    );
+  });
 });
 
 it('permiso denegado para siempre: «Abrir ajustes» abre los ajustes; si se puede volver a pedir, no aparece', async () => {

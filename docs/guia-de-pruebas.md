@@ -110,11 +110,8 @@ En el formulario de la propuesta de estudio:
 |---|---|---|---|
 | 1 | **Usar mi ubicación actual** y **rechaza** el permiso | Mensaje claro, sin romperse | El permiso se pide en tiempo de ejecución (tema del curso) |
 | 2 | Repite y **acéptalo** | La dirección donde estás, y «Con coordenadas: se podrá abrir en el mapa.» | Geocodificación inversa del teléfono |
-| 3 | **Elegir en el mapa** | Mapa de Google a pantalla completa | Para planes que no son donde estás |
-| 4 | Busca `Plaza de Armas de Lima` → **Buscar** | El mapa va al lugar, con el pin y el nombre abajo | Geocodificador del teléfono, sin claves |
-| 5 | Toca otro punto del mapa y **arrastra el pin** | El nombre cambia a la dirección del nuevo punto | Para ajustar el sitio exacto |
-| 6 | **Usar este lugar** | El campo Lugar se llena, con coordenadas | — |
-| 7 | Elige la fecha límite y **Crear propuesta** | «Propuesta creada.» | — |
+| 3 | Mira **Elegir en el mapa (en curso)** | Desactivado: no abre nada | Función en curso (ver «Pendientes» en el [README](../README.md)) |
+| 4 | Elige la fecha límite y **Crear propuesta** | «Propuesta creada.» | — |
 
 ## 9️⃣ Ideas de plan con IA (`test@test.com`)
 

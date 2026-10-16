@@ -1,10 +1,10 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, type MapPressEvent, type MarkerDragStartEndEvent } from 'react-native-maps';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorBanner, PrimaryButton, SecondaryButton, TextField } from '../../components';
+import { OsmMap, PIN_ZOOM, type LatLng, type OsmMapHandle } from '../../components/OsmMap';
 import { usePlaceLookup } from '../../hooks/usePlaceLookup';
 import { colors, typography } from '../../theme';
 
@@ -19,14 +19,13 @@ type Props = {
 
 // Centro de Lima: punto de partida cuando todavía no hay lugar.
 const LIMA = { latitude: -12.0464, longitude: -77.0428 };
-const ZOOM = { latitudeDelta: 0.02, longitudeDelta: 0.02 };
-const WIDE = { latitudeDelta: 0.15, longitudeDelta: 0.15 };
+const CITY_ZOOM = 12;
 
-// Elegir el lugar de un plan en un mapa de Google (react-native-maps): buscando una dirección, tocando el mapa o
+// Elegir el lugar de un plan en un mapa de OpenStreetMap (OsmMap): buscando una dirección, tocando el mapa o
 // arrastrando el pin. Complementa a «Usar mi ubicación actual» cuando el plan no es donde está el usuario.
 export function PlacePickerModal({ initial, onPick, onDismiss }: Props) {
   const lookup = usePlaceLookup();
-  const map = useRef<MapView>(null);
+  const map = useRef<OsmMapHandle>(null);
   const [query, setQuery] = useState('');
   const [place, setPlace] = useState<PickedPlace | null>(initial);
   const [naming, setNaming] = useState(false);
@@ -44,8 +43,7 @@ export function PlacePickerModal({ initial, onPick, onDismiss }: Props) {
     setNaming(false);
   };
 
-  const onMapPress = (event: MapPressEvent) => void pinAt(event.nativeEvent.coordinate.latitude, event.nativeEvent.coordinate.longitude);
-  const onDragEnd = (event: MarkerDragStartEndEvent) => void pinAt(event.nativeEvent.coordinate.latitude, event.nativeEvent.coordinate.longitude);
+  const onPoint = (p: LatLng) => void pinAt(p.latitude, p.longitude);
 
   const search = async () => {
     const found = await lookup.search(query);
@@ -53,7 +51,7 @@ export function PlacePickerModal({ initial, onPick, onDismiss }: Props) {
     lastRequest.current++; // descarta un nombre pendiente de un toque anterior
     setNaming(false);
     setPlace(found);
-    map.current?.animateToRegion({ latitude: found.latitude, longitude: found.longitude, ...ZOOM }, 600);
+    map.current?.animateTo(found);
   };
 
   const ready = place !== null && !naming && place.name.length > 0;
@@ -89,17 +87,15 @@ export function PlacePickerModal({ initial, onPick, onDismiss }: Props) {
           </View>
         ) : null}
 
-        <MapView
+        <OsmMap
           ref={map}
           style={styles.flex}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          initialRegion={initial ? { latitude: initial.latitude, longitude: initial.longitude, ...ZOOM } : { ...LIMA, ...WIDE }}
-          onPress={onMapPress}
-        >
-          {place ? (
-            <Marker coordinate={{ latitude: place.latitude, longitude: place.longitude }} draggable onDragEnd={onDragEnd} />
-          ) : null}
-        </MapView>
+          initialCenter={initial ?? LIMA}
+          initialZoom={initial ? PIN_ZOOM : CITY_ZOOM}
+          marker={place}
+          onPress={onPoint}
+          onMarkerDragEnd={onPoint}
+        />
 
         <View style={styles.footer}>
           {place ? (
