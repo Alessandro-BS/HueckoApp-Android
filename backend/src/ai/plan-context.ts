@@ -2,6 +2,8 @@ import type { Group, MatchWindow } from '@hueckoapp/shared';
 
 import { groupWindows } from '../availability/group-availability';
 import type { timeBlocksRepository } from '../schedule/time-blocks.repository';
+import { nextOccurrence } from '../proposals/rules';
+import { TIME_REGEX } from '../schedule/time-blocks.schemas';
 
 type TimeBlocksRepository = ReturnType<typeof timeBlocksRepository>;
 
@@ -12,6 +14,8 @@ const MONTH_NAMES = [
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export const MAX_AI_WINDOWS = 30;
+/** Opciones de franja de un borrador: la principal y hasta 2 alternativas. */
+export const MAX_DRAFT_WINDOWS = 3;
 
 /** Huecos en común reales del grupo (los mismos que GET /groups/:id/availability), limitados para el prompt. */
 export async function commonWindows(group: Group, blocks: TimeBlocksRepository): Promise<MatchWindow[]> {
@@ -34,6 +38,44 @@ export function numberedWindows(windows: readonly MatchWindow[]): string {
 export function pickWindow(windows: readonly MatchWindow[], index: number | null): MatchWindow | null {
   if (index === null || !Number.isInteger(index) || index < 1 || index > windows.length) return null;
   return windows[index - 1];
+}
+
+/**
+ * Recorta la franja elegida a las horas que propone la IA (p. ej. «2 horas el viernes en la tarde» → 16:00-18:00).
+ * Solo si son HH:mm, el fin va después del inicio y las dos caen dentro de la franja: así el recorte nunca incluye
+ * una hora en la que alguien está ocupado. Si no, la franja completa. Conserva el % y las personas libres de la franja
+ * (el peor caso de todo el tramo: dentro del recorte nunca hay menos gente libre).
+ */
+export function narrowWindow(window: MatchWindow | null, startTime: string | null, endTime: string | null): MatchWindow | null {
+  if (!window || !startTime || !endTime || !TIME_REGEX.test(startTime) || !TIME_REGEX.test(endTime)) return window;
+  // «HH:mm» con ceros a la izquierda: comparar el texto es comparar la hora.
+  if (startTime >= endTime || startTime < window.startTime || endTime > window.endTime) return window;
+  return { ...window, startTime, endTime };
+}
+
+type WindowChoice = { windowIndex: number | null; startTime: string | null; endTime: string | null };
+
+/** Las opciones de franja de un borrador: cada una validada y recortada, sin repetidas, como máximo 3. */
+export function draftWindows(windows: readonly MatchWindow[], choices: readonly WindowChoice[]): MatchWindow[] {
+  const result: MatchWindow[] = [];
+  for (const choice of choices) {
+    const w = narrowWindow(pickWindow(windows, choice.windowIndex), choice.startTime, choice.endTime);
+    if (!w || result.some((r) => r.dayOfWeek === w.dayOfWeek && r.startTime === w.startTime && r.endTime === w.endTime)) continue;
+    result.push(w);
+    if (result.length === MAX_DRAFT_WINDOWS) break;
+  }
+  return result;
+}
+
+/** La opción cuyo próximo inicio llega antes (la votación debe cerrar antes de ella); null sin opciones. */
+export function earliestWindow(windows: readonly MatchWindow[], now: Date): MatchWindow | null {
+  let best: MatchWindow | null = null;
+  let bestAt = Infinity;
+  for (const w of windows) {
+    const at = nextOccurrence(w.dayOfWeek, w.startTime, now).getTime();
+    if (at < bestAt) [best, bestAt] = [w, at];
+  }
+  return best;
 }
 
 /** «martes 29 de septiembre de 2026, 10:00» en la hora del servidor (sin Intl: igual en cualquier sistema). */

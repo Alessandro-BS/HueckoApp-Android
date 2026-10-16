@@ -38,9 +38,15 @@ export type ProposalPrefill = {
   title: string;
   placeName: string | null;
   window: TimeWindowInput | null;
+  /** Todas las opciones para votar (la primera = `window`); si falta, solo `window`. */
+  windows?: TimeWindowInput[];
   votingDeadline: string | null;
   category: PlanCategory;
 };
+
+/** Las franjas con las que se abre el formulario. */
+export const prefillWindows = (p: ProposalPrefill): TimeWindowInput[] =>
+  p.windows?.length ? p.windows : p.window ? [p.window] : [];
 
 const toWindowInput = (w: MatchWindow | null): TimeWindowInput | null =>
   w ? { dayOfWeek: w.dayOfWeek, startTime: w.startTime, endTime: w.endTime } : null;
@@ -49,6 +55,7 @@ export const prefillFromDraft = (d: ProposalDraft): ProposalPrefill => ({
   title: d.title,
   placeName: d.placeName,
   window: toWindowInput(d.window),
+  windows: (d.windows ?? []).map((w) => ({ dayOfWeek: w.dayOfWeek, startTime: w.startTime, endTime: w.endTime })),
   votingDeadline: d.votingDeadline,
   category: d.category,
 });

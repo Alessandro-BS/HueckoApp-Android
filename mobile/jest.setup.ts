@@ -8,6 +8,8 @@ jest.mock('expo-secure-store', () => {
     __store: store,
   };
 });
+// AsyncStorage en memoria (mock oficial de la librería). Los tests que lo usan lo vacían con AsyncStorage.clear().
+jest.mock('@react-native-async-storage/async-storage', () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(async () => true) }));
 
 // Selector nativo de fecha/hora: un View con testID `datetimepicker-<modo>` que conserva sus props,

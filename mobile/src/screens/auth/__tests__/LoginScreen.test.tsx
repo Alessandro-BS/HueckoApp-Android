@@ -1,13 +1,18 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../../api/client';
+import { lastEmailStorage } from '../../../storage/appStorage';
 import { LoginScreen } from '../LoginScreen';
 
 const mockLogin = jest.fn();
 jest.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ login: mockLogin }) }));
 const navigation = { navigate: jest.fn() } as any;
 
-beforeEach(() => mockLogin.mockReset());
+beforeEach(async () => {
+  mockLogin.mockReset();
+  await AsyncStorage.clear();
+});
 
 it('valida los campos antes de llamar al servidor', async () => {
   await render(<LoginScreen navigation={navigation} route={{} as any} />);
@@ -38,4 +43,10 @@ it('"Regístrate" navega al registro', async () => {
   await render(<LoginScreen navigation={navigation} route={{} as any} />);
   await fireEvent.press(screen.getByText('Regístrate'));
   expect(navigation.navigate).toHaveBeenCalledWith('Register');
+});
+
+it('rellena el correo de la última sesión guardado en AsyncStorage', async () => {
+  await lastEmailStorage.set('ana@correo.com');
+  await render(<LoginScreen navigation={navigation} route={{} as any} />);
+  await waitFor(() => expect(screen.getByPlaceholderText('tucorreo@ejemplo.com').props.value).toBe('ana@correo.com'));
 });

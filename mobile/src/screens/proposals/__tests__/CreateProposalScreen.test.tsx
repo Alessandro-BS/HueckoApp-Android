@@ -266,6 +266,27 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
   });
 });
 
+it('un borrador con varias opciones las carga todas en «Elegir yo las franjas» y las envía', async () => {
+  const viernes = (startTime: string, endTime: string) => ({ dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
+  mockedAi.draftProposal.mockResolvedValue(
+    makeDraft({ window: viernes('15:00', '17:00'), windows: [viernes('15:00', '17:00'), viernes('09:00', '11:00'), viernes('13:00', '15:00')] }),
+  );
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Reunión de 2 horas el viernes');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await waitFor(() => expect(screen.getByText('Vie · 15:00 - 17:00')).toBeTruthy());
+  expect(screen.getByText('Vie · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText('Vie · 13:00 - 15:00')).toBeTruthy();
+
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
+  expect(mocked.createProposal.mock.calls[0][1].windows).toEqual([
+    { dayOfWeek: 5, startTime: '15:00', endTime: '17:00' },
+    { dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
+    { dayOfWeek: 5, startTime: '13:00', endTime: '15:00' },
+  ]);
+});
+
 it('un borrador sin franja deja «las 3 mejores»', async () => {
   mockedAi.draftProposal.mockResolvedValue(makeDraft({ window: null, placeName: null }));
   await renderScreen();

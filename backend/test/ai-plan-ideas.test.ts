@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AiClient } from '../src/ai/ai-client';
 import { MOCK_RESPONSES } from '../src/ai/mock-client';
-import { numberedWindows, pickWindow, todayLabel } from '../src/ai/plan-context';
+import { narrowWindow, numberedWindows, pickWindow, todayLabel } from '../src/ai/plan-context';
 import { draftDeadline } from '../src/ai/plan-ideas';
 import {
   bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup,
@@ -58,6 +58,32 @@ describe('contexto de los planes', () => {
   });
 });
 
+describe('narrowWindow: recorte de la IA dentro de la franja', () => {
+  const viernes = mw(5, '11:00', '20:00');
+
+  it('acepta horas HH:mm dentro de la franja y conserva su % y personas libres', () => {
+    expect(narrowWindow(viernes, '16:00', '18:00')).toEqual(mw(5, '16:00', '18:00'));
+    expect(narrowWindow(viernes, '11:00', '20:00')).toEqual(viernes);
+    expect(narrowWindow(mw(5, '11:00', '20:00', 50, 1), '18:30', '19:45')).toEqual(mw(5, '18:30', '19:45', 50, 1));
+  });
+
+  it.each([
+    ['fuera por delante', '10:00', '12:00'],
+    ['fuera por detrás', '19:00', '21:00'],
+    ['fin antes que inicio', '18:00', '16:00'],
+    ['duración cero', '16:00', '16:00'],
+    ['formato inválido', '4pm', '6pm'],
+    ['sin ceros', '9:00', '10:00'],
+    ['solo inicio', '16:00', null],
+  ] as const)('%s → la franja completa', (_, start, end) => {
+    expect(narrowWindow(viernes, start, end)).toEqual(viernes);
+  });
+
+  it('sin franja no inventa una', () => {
+    expect(narrowWindow(null, '16:00', '18:00')).toBeNull();
+  });
+});
+
 describe('draftDeadline (D7)', () => {
   it('ahora + horas, redondeado hacia arriba a la hora en punto', () => {
     expect(draftDeadline(new Date(2026, 8, 29, 10, 25), 24, null)).toBe(at(8, 30, 11));
@@ -94,6 +120,7 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
       category: 'ESTUDIO',
       placeName: 'Biblioteca central',
       window: E3[1],
+      windows: [E3[1]],
       votingDeadline: at(8, 30, 10),
     });
     expect(fake.calls).toHaveLength(1);
@@ -111,6 +138,51 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
     expect(res.body.votingDeadline).toBe(at(8, 30, 7));
   });
 
+  it('recorta la franja a las horas que pide (p. ej. 2 h el viernes en la tarde) y cierra la votación antes', async () => {
+    const fake = fakeAiJson({ ...DRAFT_REPLY, windowIndex: 7, startTime: '16:00', endTime: '18:00', deadlineHours: 96 });
+    const { yo, group } = await setup(fake.client);
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Reunión de 2 horas el viernes en la tarde' });
+    expect(res.body.window).toEqual(mw(5, '16:00', '18:00'));
+    // 96 h llegarían al sábado: cierra el viernes 2 de octubre a las 15:00, 1 h antes del recorte.
+    expect(res.body.votingDeadline).toBe(at(9, 2, 15));
+    expect(fake.calls[0].prompt).toContain('"startTime" y "endTime"');
+    expect(fake.calls[0].prompt).toContain('"en la tarde" = 12:00-18:00');
+  });
+
+  it('hasta 3 opciones para votar: las inválidas y repetidas se descartan, y cierra antes de la primera que llega', async () => {
+    const reply = {
+      ...DRAFT_REPLY, windowIndex: 7, startTime: '16:00', endTime: '18:00', deadlineHours: 96,
+      alternatives: [
+        { windowIndex: 7, startTime: '16:00', endTime: '18:00' }, // repetida
+        { windowIndex: 99, startTime: null, endTime: null }, // no existe
+        { windowIndex: 6, startTime: '08:00', endTime: '09:00' }, // viernes temprano: llega antes
+        { windowIndex: 7, startTime: '12:00', endTime: '14:00' },
+      ],
+    };
+    const fake = fakeAiJson({ ...reply, alternatives: [...reply.alternatives, { windowIndex: 2, startTime: null, endTime: null }] });
+    const { yo, group } = await setup(fake.client);
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Reunión de 2 horas el viernes' });
+    expect(res.body.window).toEqual(mw(5, '16:00', '18:00'));
+    // La del martes sobra: ya hay 3 opciones válidas.
+    expect(res.body.windows).toEqual([mw(5, '16:00', '18:00'), E3[5], mw(5, '12:00', '14:00')]);
+    // Cierra el viernes 2 de octubre a las 07:00, 1 h antes de la opción de las 08:00.
+    expect(res.body.votingDeadline).toBe(at(9, 2, 7));
+    expect(fake.calls[0].prompt).toContain('"alternatives"');
+  });
+
+  it('alternativas ausentes o mal formadas no rompen el borrador', async () => {
+    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, alternatives: 'ninguna' }).client);
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el martes' });
+    expect(res.status).toBe(200);
+    expect(res.body.windows).toEqual([E3[1]]);
+  });
+
+  it('un recorte fuera de la franja no pasa: queda la franja completa', async () => {
+    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 7, startTime: '20:15', endTime: '21:45' }).client);
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'El viernes en la noche' });
+    expect(res.body.window).toEqual(E3[6]);
+  });
+
   it('una franja inventada no pasa: window null (D5)', async () => {
     for (const windowIndex of [99, 0]) {
       const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex, deadlineHours: 48 }).client);
@@ -126,7 +198,7 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
     const { yo, group } = await setup(fakeAiJson(reply).client);
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Algo' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ title: 'x'.repeat(80), category: 'OTRO', placeName: null, window: null, votingDeadline: at(9, 1, 10) });
+    expect(res.body).toEqual({ title: 'x'.repeat(80), category: 'OTRO', placeName: null, window: null, windows: [], votingDeadline: at(9, 1, 10) });
   });
 
   it('valida el texto antes de llamar a la IA', async () => {
@@ -165,7 +237,8 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
     const { yo, group } = await setup();
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Lo que sea' });
     expect(res.body).toEqual({
-      title: 'Plan de ejemplo con el grupo', category: 'REUNION', placeName: 'Biblioteca central', window: E3[0], votingDeadline: at(9, 1, 10),
+      title: 'Plan de ejemplo con el grupo', category: 'REUNION', placeName: 'Biblioteca central', window: E3[0], windows: [E3[0]],
+      votingDeadline: at(9, 1, 10),
     });
   });
 
@@ -179,6 +252,18 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
       windows: [{ dayOfWeek: body.window.dayOfWeek, startTime: body.window.startTime, endTime: body.window.endTime }],
     });
     expect(created.windows).toEqual([expect.objectContaining({ dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100 })]);
+  });
+
+  it('el borrador recortado también sirve para crear la propuesta', async () => {
+    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, startTime: '16:00', endTime: '18:00' }).client);
+    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el martes en la tarde' });
+    const created = await createProposal(app, yo.token, group.id, {
+      title: body.title,
+      location: null,
+      votingDeadline: body.votingDeadline,
+      windows: [{ dayOfWeek: body.window.dayOfWeek, startTime: body.window.startTime, endTime: body.window.endTime }],
+    });
+    expect(created.windows).toEqual([expect.objectContaining({ dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 })]);
   });
 });
 

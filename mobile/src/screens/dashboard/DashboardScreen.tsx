@@ -87,7 +87,7 @@ function PendingVoteCard({ proposal, now, disabled, onVote }: {
 
 export function DashboardScreen({ navigation }: TabScreen<'Dashboard'>) {
   const { user } = useAuth();
-  const { dashboard, loaded, loading, refreshing, error, failedLoads, reload, blocks, toggleVote, voting, voteError } = useDashboard();
+  const { dashboard, loaded, stale, loading, refreshing, error, failedLoads, reload, blocks, toggleVote, voting, voteError } = useDashboard(user?.id);
   const [now, setNow] = useState(today);
   // Al volver a Inicio se recarga todo y se actualiza «hoy» (saludo, horario del día y plazos).
   const refresh = useCallback(async () => {
@@ -132,6 +132,12 @@ export function DashboardScreen({ navigation }: TabScreen<'Dashboard'>) {
         <LoadState loading={loading} error={error} hasData={loaded} onRetry={() => void reload()}>
           {dashboard ? (
             <>
+              {stale && error ? (
+                <View style={styles.iconLine}>
+                  <MaterialIcons name="cloud-off" size={16} color={colors.onSurfaceVariant} />
+                  <Text style={[typography.bodySmall, styles.caption]}>Sin conexión: estos son los últimos datos guardados.</Text>
+                </View>
+              ) : null}
               {dashboard.expressAlert ? (
                 <ExpressVoteCard
                   key={dashboard.expressAlert.proposalId}
