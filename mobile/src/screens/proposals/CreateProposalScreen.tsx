@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSh
 
 import { createProposal } from '../../api/proposals';
 import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, SecondaryButton, TextField } from '../../components';
+import { features } from '../../config';
 import { useAction } from '../../hooks/useAction';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { useProposalDraft } from '../../hooks/useProposalDraft';
@@ -148,7 +149,11 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
             disabled={location.locating}
             onPress={() => void fillWithMyLocation()}
           />
-          <SecondaryButton title="Elegir en el mapa" icon="map" onPress={() => setMapOpen(true)} />
+          {features.mapPicker ? (
+            <SecondaryButton title="Elegir en el mapa" icon="map" onPress={() => setMapOpen(true)} />
+          ) : (
+            <SecondaryButton title="Elegir en el mapa (en curso)" icon="map" disabled onPress={() => undefined} />
+          )}
           {location.error ? <ErrorBanner message={location.error} /> : null}
           {location.canOpenSettings ? <SecondaryButton title="Abrir ajustes" icon="settings" onPress={() => void Linking.openSettings()} /> : null}
         </View>

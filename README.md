@@ -221,7 +221,7 @@ Antes de arrancarla, decide **dónde la vas a abrir**: la app tiene que saber a 
 3. 👥 **Crea un grupo** en **Grupos → Crear grupo** y comparte su código de invitación, o **únete** con **Unirme** y un código.
 4. 🔍 **Mira los huecos** en el grupo, pestaña **Huecos**: las franjas en las que todos están libres. (Las otras pestañas son **Planes** y **Miembros**.)
 5. 🗳️ **Propón un plan** en **Planes → Crear propuesta**: elige las franjas o deja que Huecko proponga las 3 mejores. En **Describe tu plan** escribe una frase como *«pichanga el sábado en la tarde»* y toca **Rellenar con IA** para que ✨ arme el borrador. Desde **Planes → Ideas con IA** también puedes pedirle 💡 ideas de plan.
-6. 📍 **Agrega el lugar:** **Usar mi ubicación actual**, o **Elegir en el mapa** para buscar una dirección, tocar el mapa o arrastrar el pin. Con coordenadas, después se puede abrir en el mapa.
+6. 📍 **Agrega el lugar:** **Usar mi ubicación actual** o escríbelo a mano. Con coordenadas, después se puede abrir en el mapa. (**Elegir en el mapa** aparece desactivado, marcado «en curso»: ver [Pendientes](#-estado-y-pendientes).)
 7. ✅ **Vota** con **Votar**. En **Ver detalles**, el responsable confirma el plan con **Confirmar plan**, y **Resumir votación** le pide a la IA un 📋 resumen con una recomendación (la IA solo sugiere: nunca cambia el plan).
 8. ⚠️ **¿Surgió algo?** **Reportar imprevisto** en el plan: el responsable decide si sigue o se reabre. En **Miembros**, el dueño puede marcar a alguien como **imprescindible**: si esa persona falta, el plan se vuelve a coordinar.
 9. 🏠 **Inicio** te muestra tu próximo plan, tus grupos, las votaciones abiertas y los avisos de imprevistos.
@@ -349,7 +349,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 |---|---|
 | 🪝 **Hooks** | `useState`/`useEffect`, `AuthContext` y hooks propios en `mobile/src/hooks/`: genéricos (`useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList`) y de dominio (`useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useProposals`, `useProposal`, `useDashboard`, `useCurrentLocation`, `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus`, `useAdminStats`, `useAdminReport`, `useAdminUsers`, `useAdminGroups`, `useAdminAudit`, `useAdminUser`, `useAdminGroup`) |
 | 🔐 **Seguridad en Android** | Token JWT en `expo-secure-store`, permisos en tiempo de ejecución, contraseñas con bcrypt y claves de IA solo en el backend. **Autorización por roles** (`USER`/`ADMIN`): el servidor lee rol y estado de la base en cada petición (`requireAuth` y `requireAdmin` en `backend/src/auth/require-auth.ts`), nadie se hace administrador por la API, una cuenta suspendida queda fuera al instante y cada acción de administración queda registrada |
-| 📍 **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Elegir en el mapa» con `react-native-maps` (mapa de Google, buscador de direcciones con `geocodeAsync` y pin que se arrastra) en `mobile/src/screens/proposals/PlacePickerModal.tsx`; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
+| 📍 **Localización** | `expo-location` en `mobile/src/hooks/useCurrentLocation.ts`: permiso de ubicación en primer plano (texto en el plugin de `app.json`), posición actual y geocodificación inversa para el lugar de un plan; «Elegir en el mapa» (en curso, desactivado con `features.mapPicker` en `mobile/src/config.ts`) con un mapa de OpenStreetMap: Leaflet dentro de `react-native-webview` (`mobile/src/components/OsmMap.tsx`, sin clave), buscador de direcciones con `geocodeAsync` y pin que se arrastra, en `mobile/src/screens/proposals/PlacePickerModal.tsx`; «Abrir en el mapa» con `Linking` (`geo:` en Android) |
 | 🌐 **Consumo de APIs REST** | Cliente `axios` en `mobile/src/api/` contra el backend Express |
 | 🐘 **Base de datos** | PostgreSQL: Neon en producción (driver `pg` con pool de conexiones) y PGlite en desarrollo y tests, detrás de una misma interfaz (`backend/src/db/db.ts`) con consultas parametrizadas, transacciones reales y migraciones versionadas |
 | 🧭 **Navegación** | `native-stack` (flujos), `bottom-tabs` (barra inferior: Inicio, Horario y Grupos), `drawer` (menú ☰: Perfil, Cerrar sesión y «Administración» solo con rol `ADMIN`) y `material-top-tabs` (pestañas del grupo y del panel de administración) |
@@ -379,7 +379,7 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 | 1️⃣ | 📱 **Pruebas en un celular** | Con Expo Go, siguiendo la lista de abajo |
 | 2️⃣ | 🧪 **Probar contra Neon** | Proyecto de pruebas con `DATABASE_URL` real (endpoint *pooled*): salud, login, Inicio y `make-admin` |
 | 3️⃣ | 🌐 **Desplegar en Render** | Backend conectado a Neon, con las variables de [Despliegue](#-despliegue-del-backend-render) |
-| 4️⃣ | 📦 **Generar el APK** | Con EAS Build (`eas.json` con perfil `preview` que genera APK; requiere `npx eas login`). La app debe apuntar a la URL de Render (`EXPO_PUBLIC_API_URL=https://<servicio>.onrender.com/api`). 🗺️ El mapa de «Elegir en el mapa» funciona en Expo Go sin configurar nada, pero el APK necesita una clave de **Maps SDK for Android** (Google Cloud, gratuita para este uso) en el plugin `react-native-maps` de `app.json` (`androidGoogleMapsApiKey`), restringida al paquete y al SHA-1 de EAS |
+| 4️⃣ | 📦 **Generar el APK** | Con EAS Build (`eas.json` con perfil `preview` que genera APK; requiere `npx eas login`). La app debe apuntar a la URL de Render (`EXPO_PUBLIC_API_URL=https://<servicio>.onrender.com/api`). |
 | 5️⃣ | 🏷️ **Publicar `v2.0.0`** | Rama `release/2.0.0` → PR a `main` con el tag `v2.0.0` → de vuelta a `develop` |
 
 ### ✅ Lista de prueba en el celular
@@ -395,13 +395,17 @@ npm run make-admin -w backend -- ana@test.com --revoke   # ➖ quitarlo
 - [ ] 🗳️ Proponer un plan, votar, confirmar, cancelar y reportar un imprevisto.
 - [ ] ✨ Borrador con IA, 💡 ideas de plan y 📋 resumen de la votación.
 - [ ] 📍 Usar mi ubicación (aceptando y rechazando el permiso) y abrir el lugar en el mapa.
-- [ ] 🗺️ «Elegir en el mapa»: buscar una dirección, tocar el mapa y arrastrar el pin; el lugar llega al plan con coordenadas.
+- [ ] 🗺️ «Elegir en el mapa» se ve desactivado con «(en curso)» y no abre nada.
 
 **Administración** (gráficos, PDF, CSV y compartir solo se prueban con mocks en Jest)
 - [ ] 🛡️ Entrar como `admin@test.com` y abrir las 5 pestañas (etiquetas de los gráficos legibles).
 - [ ] 📄 En «Informes», exportar PDF y CSV y abrir los dos (nombre `informe-hueckoapp_<desde>_<hasta>`, tildes bien en Excel).
 - [ ] 🚫 Suspender a `ana@test.com`: su sesión se cierra con el aviso.
 - [ ] 🔁 Quitar y dar el rol a alguien: el menú cambia al volver a la app.
+
+### 🗺️ «Elegir en el mapa» (en curso)
+
+El botón está desactivado (`features.mapPicker = false` en `mobile/src/config.ts`). El mapa ya funciona con OpenStreetMap: el de Google (`react-native-maps`) salía negro en Expo Go porque Google rechaza la clave que trae Expo Go («Authorization failure» en `adb logcat`). Falta un buscador con sugerencias mientras se escribe (p. ej. [Photon](https://photon.komoot.io), basado en OpenStreetMap; Nominatim prohíbe el autocompletado). Para activarlo, cambia `mapPicker` a `true`.
 
 ### 📝 Detalles menores conocidos (no bloquean)
 

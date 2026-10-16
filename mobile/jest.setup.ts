@@ -29,18 +29,17 @@ jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
 }));
 
-// Mapa (react-native-maps necesita el SDK nativo de Google Maps): MapView y Marker son Views con testID que conservan
-// sus props, para que los tests disparen onPress/onDragEnd. animateToRegion se registra en `__animateToRegion`.
-jest.mock('react-native-maps', () => {
+// WebView (OsmMap): un View con testID 'webview' que conserva sus props, para que los tests disparen
+// onMessage/onLoadEnd. Lo que se inyecta con injectJavaScript se registra en `__injectJavaScript`.
+jest.mock('react-native-webview', () => {
   const { createElement, forwardRef, useImperativeHandle } = require('react');
   const { View } = require('react-native');
-  const mockAnimateToRegion = jest.fn();
-  const MapView = forwardRef((props: Record<string, unknown>, ref: unknown) => {
-    useImperativeHandle(ref, () => ({ animateToRegion: mockAnimateToRegion }));
-    return createElement(View, { ...props, testID: 'map' });
+  const mockInjectJavaScript = jest.fn();
+  const WebView = forwardRef((props: Record<string, unknown>, ref: unknown) => {
+    useImperativeHandle(ref, () => ({ injectJavaScript: mockInjectJavaScript }));
+    return createElement(View, { ...props, testID: 'webview' });
   });
-  const Marker = (props: Record<string, unknown>) => createElement(View, { ...props, testID: 'map-marker' });
-  return { __esModule: true, default: MapView, Marker, PROVIDER_GOOGLE: 'google', __animateToRegion: mockAnimateToRegion };
+  return { __esModule: true, default: WebView, WebView, __injectJavaScript: mockInjectJavaScript };
 });
 
 // Cámara y galería: cada test fija lo que devuelven (jest.mocked(ImagePicker.launchCameraAsync).mockResolvedValue(...)).
