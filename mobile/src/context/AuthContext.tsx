@@ -5,7 +5,7 @@ import { AppState } from 'react-native';
 import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../api/auth';
 import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
 import { tokenStorage } from '../auth/tokenStorage';
-import { dashboardCache, lastEmailStorage } from '../storage/appStorage';
+import { dashboardCache, lastEmailStorage, sessionUserStorage } from '../storage/appStorage';
 import { showToast } from '../utils/toast';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
@@ -28,11 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');
-    await Promise.all([tokenStorage.clear(), dashboardCache.clearAll()]);
+    await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll()]);
   }, []);
 
   const startSession = useCallback(async ({ token, user }: AuthResponse) => {
-    await Promise.all([tokenStorage.set(token), lastEmailStorage.set(user.email)]);
+    await Promise.all([tokenStorage.set(token), lastEmailStorage.set(user.email), sessionUserStorage.set(user)]);
     setAuthToken(token);
     setUser(user);
     setStatus('signedIn');
@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setUser(me);
           setStatus('signedIn');
+          void sessionUserStorage.set(me);
         }
       } catch (e) {
         if (cancelled) return;
@@ -60,9 +61,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (e instanceof ApiError && (e.status === 401 || e.code === 'ACCOUNT_SUSPENDED')) {
           await logout();
         } else {
-          // Sin red o error del servidor: conservar el token para reintentar en el próximo arranque.
-          setAuthToken(null);
-          setStatus('signedOut');
+          // Sin red o error del servidor: se entra con el perfil guardado (Inicio muestra su copia con el aviso
+          // «Sin conexión»). Cuando vuelva la red, cualquier 401 o cuenta suspendida cierra la sesión (interceptor).
+          // Sin perfil guardado (sesión de una versión anterior) se conserva el token para el próximo arranque.
+          const saved = await sessionUserStorage.get();
+          if (cancelled) return;
+          if (saved) {
+            setUser(saved);
+            setStatus('signedIn');
+          } else {
+            setAuthToken(null);
+            setStatus('signedOut');
+          }
         }
       }
     })();
@@ -86,7 +96,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== 'signedIn') return;
     let closed = false;
-    const refresh = () => void meRequest().then((me) => !closed && setUser(me), () => undefined);
+    const refresh = () =>
+      void meRequest().then(
+        (me) => {
+          if (closed) return;
+          setUser(me);
+          void sessionUserStorage.set(me);
+        },
+        () => undefined,
+      );
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') refresh();
     });

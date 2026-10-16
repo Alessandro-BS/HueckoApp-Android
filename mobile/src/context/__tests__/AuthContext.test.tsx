@@ -7,7 +7,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import * as authApi from '../../api/auth';
 import { api, ApiError } from '../../api/client';
-import { dashboardCache, lastEmailStorage } from '../../storage/appStorage';
+import { dashboardCache, lastEmailStorage, sessionUserStorage } from '../../storage/appStorage';
 import { showToast } from '../../utils/toast';
 import { makeDashboard } from '../../testing/fixtures';
 import { AuthProvider, useAuth } from '../AuthContext';
@@ -46,7 +46,17 @@ it('con token inválido lo borra y queda signedOut', async () => {
   expect(await SecureStore.getItemAsync('hueckoapp.token')).toBeNull();
 });
 
-it('con error de red conserva el token guardado y queda signedOut', async () => {
+it('sin red y con el perfil guardado entra igual, con el token (para la copia de Inicio)', async () => {
+  await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+  await sessionUserStorage.set(ana);
+  mocked.meRequest.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'sin red'));
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedIn'));
+  expect(result.current.user).toEqual(ana);
+  expect(await SecureStore.getItemAsync('hueckoapp.token')).toBe('tok');
+});
+
+it('sin red y sin perfil guardado conserva el token y queda signedOut', async () => {
   await SecureStore.setItemAsync('hueckoapp.token', 'tok');
   mocked.meRequest.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'sin red'));
   const { result } = await renderHook(() => useAuth(), { wrapper });
@@ -75,12 +85,15 @@ it('login recuerda el correo; logout borra la copia de Inicio pero conserva el c
 
   await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
   expect(await lastEmailStorage.get()).toBe('ana@correo.com');
+  expect(await sessionUserStorage.get()).toEqual(ana);
   // El token nunca pasa por AsyncStorage: solo por SecureStore.
-  expect(await AsyncStorage.getAllKeys()).toEqual(['hueckoapp.lastEmail']);
+  expect((await AsyncStorage.getAllKeys()).sort()).toEqual(['hueckoapp.lastEmail', 'hueckoapp.sessionUser']);
+  expect(JSON.stringify(await AsyncStorage.multiGet(await AsyncStorage.getAllKeys()))).not.toContain('nuevo');
   await dashboardCache.set('u1', { dashboard: makeDashboard(), blocks: [] });
 
   await act(() => result.current.logout());
   expect(await dashboardCache.get('u1')).toBeNull();
+  expect(await sessionUserStorage.get()).toBeNull();
   expect(await lastEmailStorage.get()).toBe('ana@correo.com');
 });
 
