@@ -170,16 +170,17 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const userId = getUserId(res);
     const { proposal, me } = await ctx.loadForMember(req.params.id, userId);
     const input = incidenceInputSchema.parse(req.body);
-    if (!isActivePlan(proposal)) {
-      throw new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
-    }
+    const notActive = () => new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
+    if (!isActivePlan(proposal)) throw notActive();
     // Contrato + G5: si falta un imprescindible, el plan confirmado pasa a re-coordinarse.
     const escalate = input.type === 'FALTA' && me.isEssential && proposal.state === 'CONFIRMADO';
-    await ctx.proposals.reportIncidence(
+    const saved = await ctx.proposals.reportIncidence(
       proposal.id,
       { userId, ...input, criticality: criticalityFor(input.type, me.isEssential, input.delayMinutes), createdAt: ctx.now().toISOString() },
       escalate,
     );
+    // Otra petición lo canceló (o resolvió) entre la comprobación y el guardado.
+    if (!saved) throw notActive();
     res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });
 

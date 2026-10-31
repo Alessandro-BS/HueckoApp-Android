@@ -263,7 +263,7 @@ Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = **la próxima vez que 
 Solo quien gestiona el plan (`403 NOT_MANAGER`). Desde cualquier estado salvo `CANCELADO` (`409 INVALID_STATE`). Pasa a `CANCELADO`. `200 Proposal`
 
 ### `POST /proposals/:id/incidences`
-Reportar un imprevisto sobre un plan `CONFIRMADO` o `EN_RECOORDINACION` (si no, `409 INVALID_STATE` «Solo se pueden reportar imprevistos de un plan confirmado.»). Cualquier miembro.
+Reportar un imprevisto sobre un plan `CONFIRMADO` o `EN_RECOORDINACION` (si no, `409 INVALID_STATE` «Solo se pueden reportar imprevistos de un plan confirmado.»). Cualquier miembro El estado se vuelve a comprobar al guardar, con el plan bloqueado: si otra petición lo cancela justo antes, también `409` y no se guarda nada; si lo cancela justo después, espera a que la incidencia quede guardada.
 ```json
 { "type": "TARDANZA", "reason": "Tráfico", "delayMinutes": 20 }
 ```

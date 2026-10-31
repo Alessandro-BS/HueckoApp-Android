@@ -13,6 +13,7 @@ import {
   makeClock,
   makeTestApp,
   NOW,
+  recordQueries,
   registerUser,
   setupSeedGroup,
   voteFor,
@@ -394,6 +395,26 @@ describe('cambios de estado a la vez (M4)', () => {
     expect(await stateOf(p)).toBe('CANCELADO');
     expect(await db.many('SELECT resolved FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([{ resolved: false }]);
     expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
+  });
+
+  it('reportar un imprevisto en un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y no se guarda', async () => {
+    const p = await confirmedPlan();
+    // Se cuela justo antes de que se guarde la incidencia (o de que se bloquee el plan para guardarla).
+    interleave(db, /^(INSERT INTO incidences|SELECT state FROM proposals WHERE id = \$1 FOR UPDATE)/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await stateOf(p)).toBe('CANCELADO');
+    expect(await db.many('SELECT id FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([]);
+  });
+
+  it('lo primero, dentro de su transacción, es bloquear el plan (FOR UPDATE): una cancelación a la vez espera a la incidencia', async () => {
+    // PGlite tiene una sola conexión y no puede reproducir la carrera: este test impide que un cambio quite el bloqueo.
+    const p = await confirmedPlan();
+    const calls = recordQueries(db);
+    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
+    expect(calls.find((c) => c.inTransaction)).toEqual({
+      sql: 'SELECT state FROM proposals WHERE id = $1 FOR UPDATE', params: [p.id], inTransaction: true,
+    });
   });
 
   it('la FALTA de un imprescindible no reabre como EN_RECOORDINACION un plan que otra petición acaba de cancelar', async () => {
