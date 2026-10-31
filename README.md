@@ -462,7 +462,28 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 |---|---|---|
 | 🏷️ **v1.0.0** | ✅ Publicada | App nativa en Kotlin + Jetpack Compose ([`legacy-android/`](legacy-android/)) |
 | 🏷️ **v2.0.0** | ✅ Esta versión | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
-| 📦 **v3.0.0** | 🔜 Planificada | **APK** instalable con EAS Build |
+| 📦 **v3.0.0** | 🚧 En curso | **APK** instalable con EAS Build y backend en Render + Neon ([guía](docs/despliegue.md)) |
+
+### 🎓 Requisitos de la tercera entrega (v3.0.0)
+
+| Requisito | Estado | Cómo se cumple |
+|---|---|---|
+| 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
+| 🌐 **Volley** (equivalente en React Native) | ❌ Falta | **TanStack Query** (`@tanstack/react-query`): cola de peticiones con caché, reintentos y deduplicación. Empieza por Inicio y Grupos; sus reintentos además evitan que la primera petición falle mientras Render despierta |
+| 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
+| 📡 **Sensor de proximidad** | ❌ Falta | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go |
+| 🌀 **Giroscopio** | ❌ Falta | `expo-sensors` (`Gyroscope`, funciona en Expo Go): confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
+| 🧭 Magnetómetro (opcional) | ❌ Falta | `expo-sensors` (`Magnetometer`) |
+| 💡 Sensor de luz (opcional) | ❌ Falta | `expo-sensors` (`LightSensor`, solo Android) |
+
+**📡 Unirse a un grupo acercando el celular**
+
+El sensor de proximidad detecta que hay algo a ~5 cm de la pantalla, pero no qué celular es. Por eso los **dos** celulares lo usan y el servidor los empareja por la hora:
+
+1. Quien invita abre «Agregar personas» → **Acercar para invitar**; quien se une abre **Unirse acercando**.
+2. Juntan los celulares **pantalla con pantalla** (el sensor está arriba, junto al auricular).
+3. Cada celular avisa al servidor del momento en que detectó algo cerca.
+4. Si llegan dos avisos casi a la vez (una invitación y una unión), el servidor une a esa persona al grupo y los dos vibran. Si hay coincidencias dudosas, no une a nadie y pide repetir o usar el código.
 
 **🔜 Pendientes conocidos**
 
