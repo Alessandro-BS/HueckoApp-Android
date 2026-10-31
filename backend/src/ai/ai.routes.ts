@@ -10,7 +10,8 @@ import { proposalsRepository } from '../proposals/proposals.repository';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { aiCallRecorder, aiCallsRepository } from './ai-calls.repository';
 import { askAi } from './ask-ai';
-import { commonWindows, draftWindows, earliestWindow, pickWindow } from './plan-context';
+import { groupWindows } from '../availability/group-availability';
+import { commonWindows, draftCandidates, draftWindows, earliestWindow, MAX_AI_WINDOWS, pickWindow } from './plan-context';
 import {
   DRAFT_JSON_SCHEMA, draftDeadline, draftPrompt, draftResponseSchema, proposalDraftInputSchema,
   SUGGESTIONS_JSON_SCHEMA, suggestionsPrompt, suggestionsResponseSchema,
@@ -59,15 +60,16 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
     const userId = getUserId(res);
     const { group } = await loadGroupForMember(groups, String(req.params.id), userId);
     const { text } = proposalDraftInputSchema.parse(req.body);
-    const windows = await commonWindows(group, blocks);
     const at = now();
+    // El hueco de hoy partido en lo que aún sirve hoy y lo que ya es la semana que viene.
+    const windows = draftCandidates(await groupWindows(group, blocks), at).slice(0, MAX_AI_WINDOWS);
     const answer = await askAi(
       ai,
       { task: 'proposal-draft', prompt: draftPrompt({ text, group, windows, now: at }), schema: DRAFT_JSON_SCHEMA },
       draftResponseSchema,
       aiCallRecorder(calls, userId, at),
     );
-    const options = draftWindows(windows, [answer, ...answer.alternatives]);
+    const options = draftWindows(windows, [answer, ...answer.alternatives], at);
     const draft: ProposalDraft = {
       title: answer.title,
       category: answer.category,
