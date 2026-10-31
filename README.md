@@ -464,6 +464,19 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | 🏷️ **v2.0.0** | ✅ Esta versión | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
 | 📦 **v3.0.0** | 🚧 En curso | **APK** instalable con EAS Build y backend en Render + Neon ([guía](docs/despliegue.md)) |
 
+### 🎓 Requisitos de la tercera entrega (v3.0.0)
+
+| Requisito | Estado | Dónde está o qué falta |
+|---|---|---|
+| 🌐 **Volley y Retrofit** | ❌ Falta | Son librerías nativas de Android (Java/Kotlin): la app Expo no puede usarlas desde JavaScript, hoy las peticiones van con `axios` ([`client.ts`](mobile/src/api/client.ts)). Retrofit solo está declarado en [`legacy-android/`](legacy-android/app/build.gradle.kts), sin usarse; Volley no aparece. Para integrarlas hace falta un **módulo nativo propio en Kotlin** (Expo Modules) que las use, y eso exige un *development build*: no funciona en Expo Go |
+| 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`, permiso de cámara en [`app.json`](mobile/app.json)). Usa la cámara del sistema; si se pide una vista de cámara dentro de la app, `expo-camera` (funciona en Expo Go) |
+| 📡 **Sensor de proximidad** | ❌ Falta | Idea: unirse a un grupo acercando el celular en «Agregar personas». `expo-sensors` no trae proximidad: hace falta un módulo nativo (el mismo de Volley/Retrofit), con *development build* |
+| 🌀 **Giroscopio** | ❌ Falta | Disponible en `expo-sensors` (`Gyroscope`), funciona en Expo Go. Falta decidir para qué se usa |
+| 🧭 Magnetómetro (opcional) | ❌ Falta | `expo-sensors` (`Magnetometer`), Android e iOS, Expo Go |
+| 💡 Sensor de luz (opcional) | ❌ Falta | `expo-sensors` (`LightSensor`), solo Android, Expo Go |
+
+> 💡 **Sobre la idea de proximidad:** el sensor de proximidad solo detecta si algo está a unos centímetros de la pantalla del **propio** celular (es el que apaga la pantalla en una llamada). No detecta otro celular ni puede pasarle datos, así que no basta para unir a alguien al grupo. Lo que sí funciona: quien invita muestra el código del grupo como **QR** en «Agregar personas» y la otra persona lo escanea con la **cámara**. El sensor de proximidad puede ser el gatillo, por ejemplo mostrar el QR a pantalla completa al acercar el celular.
+
 **🔜 Pendientes conocidos**
 
 - 🗺️ **«Elegir en el mapa» (en curso):** el mapa de OpenStreetMap ya funciona ([`OsmMap.tsx`](mobile/src/components/OsmMap.tsx)), pero el botón está desactivado (`features.mapPicker` en [`config.ts`](mobile/src/config.ts)) hasta tener un buscador con sugerencias mientras se escribe. El mapa de Google no se usa porque en Expo Go sale negro: Google rechaza la clave que trae Expo Go.
