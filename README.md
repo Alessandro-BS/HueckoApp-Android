@@ -467,9 +467,7 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 **🔜 Pendientes conocidos**
 
 - 🗺️ **«Elegir en el mapa» (en curso):** el mapa de OpenStreetMap ya funciona ([`OsmMap.tsx`](mobile/src/components/OsmMap.tsx)), pero el botón está desactivado (`features.mapPicker` en [`config.ts`](mobile/src/config.ts)) hasta tener un buscador con sugerencias mientras se escribe. El mapa de Google no se usa porque en Expo Go sale negro: Google rechaza la clave que trae Expo Go.
-- 🤖 **Borrador con IA para «hoy»:** si se pide un plan para hoy a una hora que ya pasó, la franja se agenda la semana siguiente; y si la franja empieza en menos de 2 h, la votación puede cerrar después de su inicio. El borrador siempre se revisa antes de crear la propuesta.
 - 📆 La agenda de huecos va de **08:00 a 20:00**; un plan fuera de ese rango se agrega como franja a mano.
-- ⚠️ Un imprevisto reportado justo cuando otro cancela el plan queda guardado en el plan cancelado.
 
 ---
 
