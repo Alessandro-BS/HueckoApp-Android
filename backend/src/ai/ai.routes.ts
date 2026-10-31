@@ -11,7 +11,7 @@ import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { aiCallRecorder, aiCallsRepository } from './ai-calls.repository';
 import { askAi } from './ask-ai';
 import { groupWindows } from '../availability/group-availability';
-import { commonWindows, draftCandidates, draftWindows, earliestWindow, MAX_AI_WINDOWS, pickWindow } from './plan-context';
+import { commonWindows, draftCandidates, draftWindows, earliestWindow, pickWindow } from './plan-context';
 import {
   DRAFT_JSON_SCHEMA, draftDeadline, draftPrompt, draftResponseSchema, proposalDraftInputSchema,
   SUGGESTIONS_JSON_SCHEMA, suggestionsPrompt, suggestionsResponseSchema,
@@ -62,7 +62,7 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
     const { text } = proposalDraftInputSchema.parse(req.body);
     const at = now();
     // El hueco de hoy partido en lo que aún sirve hoy y lo que ya es la semana que viene.
-    const windows = draftCandidates(await groupWindows(group, blocks), at).slice(0, MAX_AI_WINDOWS);
+    const windows = draftCandidates(await groupWindows(group, blocks), at);
     const answer = await askAi(
       ai,
       { task: 'proposal-draft', prompt: draftPrompt({ text, group, windows, now: at }), schema: DRAFT_JSON_SCHEMA },

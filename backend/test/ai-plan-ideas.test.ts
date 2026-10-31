@@ -21,10 +21,11 @@ const E3 = [
   mw(5, '08:00', '09:00'), mw(5, '11:00', '20:00'), mw(6, '08:00', '20:00'), mw(7, '08:00', '20:00'),
 ];
 
-// NOW es martes 10:00: lo que queda del martes empieza a las 12:00 (ahora + 2 h, para que dé tiempo a votar) y lo
-// anterior a las 10:00 ya es el martes que viene. Así ve el borrador los huecos de E3 (el de la próxima semana, al final).
+// NOW es martes 10:00: lo que queda del martes empieza a las 12:00 (ahora + 2 h, para que dé tiempo a votar), y el
+// hueco entero, empezando antes de las 10:00, es el martes que viene. Así ve el borrador los huecos de E3 (el de la
+// próxima semana, al final).
 const HOY = mw(2, '12:00', '20:00');
-const MARTES_QUE_VIENE = mw(2, '08:00', '10:00');
+const MARTES_QUE_VIENE = mw(2, '08:00', '20:00');
 const E3_BORRADOR = [E3[0], HOY, ...E3.slice(2), MARTES_QUE_VIENE];
 
 // Fecha local de 2026 (mes 0-based) en ISO, como la devuelve el servidor.
@@ -71,7 +72,7 @@ describe('draftCandidates: los huecos de hoy en el borrador', () => {
 
   it('con minutos, lo de hoy empieza en la hora en punto siguiente a ahora + 2 h', () => {
     expect(draftCandidates([mw(2, '08:00', '20:00')], new Date(2026, 8, 29, 10, 25))).toEqual([
-      mw(2, '13:00', '20:00'), mw(2, '08:00', '10:00'),
+      mw(2, '13:00', '20:00'), mw(2, '08:00', '20:00'),
     ]);
   });
 
@@ -84,14 +85,21 @@ describe('draftCandidates: los huecos de hoy en el borrador', () => {
   });
 
   it('de noche ya no queda nada para hoy', () => {
-    expect(draftCandidates([mw(2, '12:00', '20:00')], new Date(2026, 8, 29, 19, 0))).toEqual([mw(2, '12:00', '19:00')]);
+    expect(draftCandidates([mw(2, '12:00', '20:00')], new Date(2026, 8, 29, 19, 0))).toEqual([mw(2, '12:00', '20:00')]);
+  });
+
+  it('el límite de 30 se aplica a los huecos antes de partir: la parte de la próxima semana no se pierde', () => {
+    const huecos = [mw(2, '08:00', '20:00'), ...Array.from({ length: 30 }, (_, i) => mw(3, `${String(8 + (i % 12)).padStart(2, '0')}:00`, '20:00'))];
+    const candidates = draftCandidates(huecos, NOW);
+    expect(candidates).toHaveLength(31);
+    expect(candidates.at(-1)).toEqual(mw(2, '08:00', '20:00'));
   });
 
   it('con la hora, la lista del prompt marca qué es hoy y qué es la próxima semana', () => {
     expect(numberedWindows([HOY, mw(3, '08:00', '14:00'), MARTES_QUE_VIENE], NOW)).toBe(
       '1. martes (hoy) 12:00-20:00 · 100 % del grupo libre (2 personas)\n' +
         '2. miércoles 08:00-14:00 · 100 % del grupo libre (2 personas)\n' +
-        '3. martes (la próxima semana) 08:00-10:00 · 100 % del grupo libre (2 personas)',
+        '3. martes (la próxima semana, empezando antes de las 10:00) 08:00-20:00 · 100 % del grupo libre (2 personas)',
     );
   });
 
@@ -99,6 +107,17 @@ describe('draftCandidates: los huecos de hoy en el borrador', () => {
     const windows = [mw(2, '10:00', '12:00'), mw(2, '12:00', '14:00'), E3[2]];
     const choice = (windowIndex: number, startTime: string | null = null, endTime: string | null = null) => ({ windowIndex, startTime, endTime });
     expect(draftWindows(windows, [choice(1, '11:00', '12:00'), choice(2), choice(3)], NOW)).toEqual([mw(2, '12:00', '14:00'), E3[2]]);
+  });
+
+  it('en el hueco de la próxima semana vale cualquier recorte que empiece antes de la hora actual (aunque acabe después)', () => {
+    const choice = (startTime: string, endTime: string) => ({ windowIndex: 10, startTime, endTime });
+    expect(draftWindows(E3_BORRADOR, [choice('09:00', '12:00')], NOW)).toEqual([mw(2, '09:00', '12:00')]);
+  });
+
+  it('un recorte del hueco de la próxima semana que empieza a la hora actual o después caería hoy: queda el hueco entero', () => {
+    const choice = (startTime: string, endTime: string) => ({ windowIndex: 10, startTime, endTime });
+    expect(draftWindows(E3_BORRADOR, [choice('14:00', '16:00')], NOW)).toEqual([MARTES_QUE_VIENE]);
+    expect(draftWindows(E3_BORRADOR, [choice('10:00', '12:00')], NOW)).toEqual([MARTES_QUE_VIENE]);
   });
 });
 

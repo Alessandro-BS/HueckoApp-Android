@@ -33,12 +33,14 @@ export async function commonWindows(group: Group, blocks: TimeBlocksRepository):
 
 /**
  * Los huecos tal como los ve el borrador. Las franjas son de una semana tipo y se agendan en su próxima ocurrencia
- * (nextOccurrence), así que el hueco de hoy se parte en dos:
+ * (nextOccurrence), así que el hueco de hoy se ofrece dos veces:
  * - lo que aún sirve hoy: desde ahora + 2 h, redondeado a la hora en punto (da tiempo a votar y cerrar antes);
- * - lo que empieza antes de la hora actual: ya pasó hoy, así que es el mismo día de la semana que viene (va al final).
- * Lo que queda entre las dos no se ofrece: hoy no da tiempo a votarlo y no hay forma de agendarlo la semana que viene.
+ * - si empieza antes de la hora actual, el hueco entero como el mismo día de la semana que viene (va al final). Ahí
+ *   solo valen horas de inicio anteriores a la hora actual (las demás caerían hoy): lo hace cumplir draftWindows.
+ * El límite de huecos (MAX_AI_WINDOWS) se aplica antes de partir, así la parte de la semana que viene no se pierde.
  */
 export function draftCandidates(windows: readonly MatchWindow[], now: Date): MatchWindow[] {
+  windows = windows.slice(0, MAX_AI_WINDOWS);
   const today = isoDayOf(now);
   const earliest = new Date(now.getTime() + MIN_DRAFT_LEAD_MS);
   const roundUp = earliest.getMinutes() + earliest.getSeconds() + earliest.getMilliseconds() > 0 ? 1 : 0;
@@ -56,7 +58,7 @@ export function draftCandidates(windows: readonly MatchWindow[], now: Date): Mat
     }
     // «HH:mm» con ceros a la izquierda: comparar el texto es comparar la hora.
     if (todayFrom && w.endTime > todayFrom) thisWeek.push({ ...w, startTime: w.startTime > todayFrom ? w.startTime : todayFrom });
-    if (w.startTime < passedUntil) nextWeek.push({ ...w, endTime: w.endTime < passedUntil ? w.endTime : passedUntil });
+    if (w.startTime < passedUntil) nextWeek.push(w);
   }
   return [...thisWeek, ...nextWeek];
 }
@@ -70,7 +72,7 @@ export function numberedWindows(windows: readonly MatchWindow[], now?: Date): st
   const nowTime = now ? hhmm(now.getHours(), now.getMinutes()) : null;
   const when = (w: MatchWindow) => {
     if (!now || !nowTime || w.dayOfWeek !== isoDayOf(now)) return '';
-    return w.startTime > nowTime ? ' (hoy)' : ' (la próxima semana)';
+    return w.startTime > nowTime ? ' (hoy)' : ` (la próxima semana, empezando antes de las ${hhmm(now.getHours())})`;
   };
   return windows
     .map(
@@ -104,13 +106,18 @@ type WindowChoice = { windowIndex: number | null; startTime: string | null; endT
 
 /**
  * Las opciones de franja de un borrador: cada una validada y recortada, sin repetidas, como máximo 3. Las que empiezan
- * en menos de 2 h se descartan: la votación no podría cerrar antes de su inicio.
+ * en menos de 2 h se descartan: la votación no podría cerrar antes de su inicio. En un hueco de la semana que viene
+ * (ver draftCandidates), un recorte que empieza a la hora actual o después caería hoy: queda el hueco entero.
  */
 export function draftWindows(windows: readonly MatchWindow[], choices: readonly WindowChoice[], now: Date): MatchWindow[] {
   const result: MatchWindow[] = [];
   const minStart = now.getTime() + MIN_DRAFT_LEAD_MS;
+  const today = isoDayOf(now);
+  const passedUntil = hhmm(now.getHours());
   for (const choice of choices) {
-    const w = narrowWindow(pickWindow(windows, choice.windowIndex), choice.startTime, choice.endTime);
+    const picked = pickWindow(windows, choice.windowIndex);
+    let w = narrowWindow(picked, choice.startTime, choice.endTime);
+    if (picked && w && picked.dayOfWeek === today && picked.startTime < passedUntil && w.startTime >= passedUntil) w = picked;
     if (!w || nextOccurrence(w.dayOfWeek, w.startTime, now).getTime() < minStart) continue;
     if (result.some((r) => r.dayOfWeek === w.dayOfWeek && r.startTime === w.startTime && r.endTime === w.endTime)) continue;
     result.push(w);

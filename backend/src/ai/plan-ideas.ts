@@ -111,9 +111,9 @@ export function draftPrompt({ text, group, windows, now }: { text: string; group
     'Cómo leer lo que pide:',
     '- Las franjas son de una semana tipo y se repiten cada semana. Si nombra un día ("el viernes", "hoy", "mañana" = el día ' +
       'siguiente a hoy), elige una franja de ESE día de la semana; si ese día no tiene franjas, "windowIndex" null.',
-    '- Las franjas del día de hoy dicen "(hoy)" (lo que todavía da tiempo a votar) o "(la próxima semana)" (lo que hoy ya pasó). ' +
+    '- Las franjas del día de hoy dicen "(hoy)" (lo que todavía da tiempo a votar) o "(la próxima semana, empezando antes de las ...)". ' +
       'Si pide "hoy", elige solo una "(hoy)"; si no hay ninguna, "windowIndex" null. Si pide ese día de la semana que viene, ' +
-      'elige una "(la próxima semana)".',
+      'elige la "(la próxima semana ...)" con un "startTime" anterior a la hora que indica.',
     '- Momentos del día: "en la mañana" = 08:00-12:00, "en la tarde" = 12:00-18:00, "en la noche" = desde las 18:00. ' +
       'Si acepta varios ("mañana o tarde"), elige el que tenga franja ese día, el más cercano a ahora.',
     '- Si el plan es pronto (hoy o mañana), que la votación cierre antes de que empiece: "deadlineHours" menor que las horas que faltan.',
