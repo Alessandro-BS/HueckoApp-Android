@@ -468,7 +468,6 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 
 - 🗺️ **«Elegir en el mapa» (en curso):** el mapa de OpenStreetMap ya funciona ([`OsmMap.tsx`](mobile/src/components/OsmMap.tsx)), pero el botón está desactivado (`features.mapPicker` en [`config.ts`](mobile/src/config.ts)) hasta tener un buscador con sugerencias mientras se escribe. El mapa de Google no se usa porque en Expo Go sale negro: Google rechaza la clave que trae Expo Go.
 - 📆 La agenda de huecos va de **08:00 a 20:00**; un plan fuera de ese rango se agrega como franja a mano.
-- ⚠️ Un imprevisto reportado justo cuando otro cancela el plan queda guardado en el plan cancelado.
 
 ---
 

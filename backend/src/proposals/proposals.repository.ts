@@ -263,15 +263,22 @@ export function proposalsRepository(db: Db) {
       return rowCount > 0;
     },
 
-    // La incidencia y, si falta un imprescindible, el paso a EN_RECOORDINACION (solo si sigue CONFIRMADO): todo o nada.
-    reportIncidence(proposalId: string, input: NewIncidence, escalate: boolean): Promise<void> {
+    // La incidencia y, si falta un imprescindible (`escalate`), el paso a EN_RECOORDINACION si el plan está CONFIRMADO
+    // (según el estado bloqueado): todo o nada.
+    // Solo sobre un plan activo; false, sin guardar nada, si otra petición lo canceló (o resolvió) mientras tanto.
+    reportIncidence(proposalId: string, input: NewIncidence, escalate: boolean): Promise<boolean> {
       return db.transaction(async () => {
+        // Bloquea el plan hasta el final: una cancelación o una votación exprés a la vez espera a que la incidencia
+        // quede guardada (y la ve); si llegó antes, aquí se ve el plan ya cancelado y no se guarda nada.
+        const row = await db.one<{ state: ProposalState }>('SELECT state FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
+        if (!row || !ACTIVE_STATES.includes(row.state)) return false;
         await db.query(
           `INSERT INTO incidences (id, proposal_id, user_id, type, reason, delay_minutes, criticality, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [randomUUID(), proposalId, input.userId, input.type, input.reason, input.delayMinutes, input.criticality, input.createdAt],
         );
         if (escalate) await db.query("UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
+        return true;
       });
     },
 
