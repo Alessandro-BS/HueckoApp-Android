@@ -263,7 +263,8 @@ export function proposalsRepository(db: Db) {
       return rowCount > 0;
     },
 
-    // La incidencia y, si falta un imprescindible, el paso a EN_RECOORDINACION (solo si sigue CONFIRMADO): todo o nada.
+    // La incidencia y, si falta un imprescindible (`escalate`), el paso a EN_RECOORDINACION si el plan está CONFIRMADO
+    // (según el estado bloqueado): todo o nada.
     // Solo sobre un plan activo; false, sin guardar nada, si otra petición lo canceló (o resolvió) mientras tanto.
     reportIncidence(proposalId: string, input: NewIncidence, escalate: boolean): Promise<boolean> {
       return db.transaction(async () => {

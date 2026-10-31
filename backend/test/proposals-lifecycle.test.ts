@@ -417,6 +417,15 @@ describe('cambios de estado a la vez (M4)', () => {
     });
   });
 
+  it('la FALTA de un imprescindible re-coordina el plan aunque otra petición lo acabe de volver a CONFIRMADO', async () => {
+    const p = await recoordinatingPlan();
+    // La ruta lo leyó EN_RECOORDINACION; una votación exprés «Mantener» se cuela antes de que se bloquee el plan.
+    interleave(db, /^SELECT state FROM proposals WHERE id = \$1 FOR UPDATE/, "UPDATE proposals SET state = 'CONFIRMADO' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Sigo enferma' });
+    expect(res.status).toBe(201);
+    expect(await stateOf(p)).toBe('EN_RECOORDINACION');
+  });
+
   it('la FALTA de un imprescindible no reabre como EN_RECOORDINACION un plan que otra petición acaba de cancelar', async () => {
     const p = await confirmedPlan();
     await makeEssential();

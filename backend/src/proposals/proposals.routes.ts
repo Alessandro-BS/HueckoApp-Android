@@ -172,8 +172,9 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const input = incidenceInputSchema.parse(req.body);
     const notActive = () => new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
     if (!isActivePlan(proposal)) throw notActive();
-    // Contrato + G5: si falta un imprescindible, el plan confirmado pasa a re-coordinarse.
-    const escalate = input.type === 'FALTA' && me.isEssential && proposal.state === 'CONFIRMADO';
+    // Contrato + G5: si falta un imprescindible, el plan confirmado pasa a re-coordinarse. Si está CONFIRMADO lo
+    // decide reportIncidence con el plan bloqueado, no esta lectura (otra petición pudo cambiarlo mientras tanto).
+    const escalate = input.type === 'FALTA' && me.isEssential;
     const saved = await ctx.proposals.reportIncidence(
       proposal.id,
       { userId, ...input, criticality: criticalityFor(input.type, me.isEssential, input.delayMinutes), createdAt: ctx.now().toISOString() },
