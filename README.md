@@ -462,7 +462,7 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 |---|---|---|
 | 🏷️ **v1.0.0** | ✅ Publicada | App nativa en Kotlin + Jetpack Compose ([`legacy-android/`](legacy-android/)) |
 | 🏷️ **v2.0.0** | ✅ Esta versión | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
-| 📦 **v3.0.0** | 🔜 Planificada | **APK** instalable con EAS Build |
+| 📦 **v3.0.0** | 🚧 En curso | **APK** instalable con EAS Build y backend en Render + Neon ([guía](docs/despliegue.md)) |
 
 **🔜 Pendientes conocidos**
 

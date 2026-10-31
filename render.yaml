@@ -1,0 +1,33 @@
+# Blueprint de Render para el backend (ver docs/despliegue.md).
+# En Render: New → Blueprint → este repositorio. Pide los valores marcados con sync: false.
+services:
+  - type: web
+    name: hueckoapp-api
+    runtime: node
+    plan: free
+    # Misma región que Neon (AWS US East 1, N. Virginia): cada consulta es un viaje de red.
+    region: virginia
+    branch: main
+    # Node 22: Render lo toma de .nvmrc.
+    # --include=dev: con NODE_ENV=production npm se saltaría typescript (devDependency) y el build fallaría.
+    # Solo el backend y los tipos compartidos: no hace falta descargar Expo.
+    buildCommand: npm ci --include=dev --workspace backend --workspace shared && npm run build -w backend
+    startCommand: npm start -w backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Los planes confirmados se calculan en esta zona; sin ella, UTC.
+      - key: TZ
+        value: America/Lima
+      # Render pone un proxy delante: sin esto el límite de intentos bloquearía a todos a la vez.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: JWT_SECRET
+        generateValue: true
+      # Cadena de Neon con sslmode=verify-full. Nunca en el repo.
+      - key: DATABASE_URL
+        sync: false
+      # Opcional: vacía = Huecko IA en modo demostración.
+      - key: GEMINI_API_KEY
+        sync: false
