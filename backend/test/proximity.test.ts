@@ -1,8 +1,8 @@
 import type { Express } from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Db } from '../src/db/db';
+import type { Db, SqlParam } from '../src/db/db';
 import { bearer, createGroup, joinGroup, makeClock, makeTestApp, NOW, registerUser } from './helpers';
 
 const clock = makeClock(NOW);
@@ -150,14 +150,65 @@ describe('proximidad', () => {
     expect(res.body.status).toBe('ACCEPTED');
   });
 
-  it('si el grupo se borró antes de aceptar → 404 PROXIMITY_NOT_FOUND (el borrado en cascada se llevó el aviso de quien invita)', async () => {
+  it('si el grupo se borró antes de aceptar, la pareja vence: accept → 404 y GET de quien se une → EXPIRED', async () => {
     const { luis, ana, group, invite, join } = await pair();
     await db.query('DELETE FROM groups WHERE id = $1', [group.id]);
     clock.set(at(5000));
+    // El borrado en cascada se llevó el aviso de quien invita.
     const res = await post(`/${invite.id}/accept`, luis.token);
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('PROXIMITY_NOT_FOUND');
-    expect((await get(`/${join.id}`, ana.token)).body.status).toBe('MATCHED');
+    expect((await get(`/${join.id}`, ana.token)).body).toMatchObject({ status: 'EXPIRED', peer: null, group: null, expiresAt: null });
+  });
+
+  it('si el grupo se borra justo al aceptar (falla la clave foránea) → 404 GROUP_NOT_FOUND y la pareja queda EXPIRED', async () => {
+    const { luis, ana, invite, join } = await pair();
+    clock.set(at(5000));
+    const original = db.query.bind(db);
+    vi.spyOn(db, 'query').mockImplementation((async (text: string, values?: readonly SqlParam[]) => {
+      if (/INSERT INTO group_members/.test(text)) {
+        throw Object.assign(new Error('violates foreign key'), { code: '23503', constraint: 'group_members_group_id_fkey' });
+      }
+      return original(text, values);
+    }) as Db['query']);
+    const res = await post(`/${invite.id}/accept`, luis.token);
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('GROUP_NOT_FOUND');
+    vi.restoreAllMocks();
+    expect((await get(`/${invite.id}`, luis.token)).body.status).toBe('EXPIRED');
+    expect((await get(`/${join.id}`, ana.token)).body.status).toBe('EXPIRED');
+  });
+
+  it('el vencimiento por grupo borrado no pisa un estado más nuevo de la otra mitad', async () => {
+    const { luis, ana, invite, join } = await pair();
+    clock.set(at(5000));
+    const original = db.query.bind(db);
+    let failed = false;
+    let cancelled = false;
+    vi.spyOn(db, 'query').mockImplementation((async (text: string, values?: readonly SqlParam[]) => {
+      if (/INSERT INTO group_members/.test(text)) {
+        failed = true;
+        throw Object.assign(new Error('violates foreign key'), { code: '23503', constraint: 'group_members_group_id_fkey' });
+      }
+      // Otra petición cancela a Ana justo antes de que la segunda transacción tome el candado.
+      if (failed && !cancelled && /pg_advisory_xact_lock/.test(text)) {
+        cancelled = true;
+        await original("UPDATE proximity_requests SET status = 'CANCELLED' WHERE id = $1", [join.id]);
+      }
+      return original(text, values);
+    }) as Db['query']);
+    expect((await post(`/${invite.id}/accept`, luis.token)).status).toBe(404);
+    vi.restoreAllMocks();
+    expect((await get(`/${join.id}`, ana.token)).body.status).toBe('CANCELLED');
+    expect((await get(`/${invite.id}`, luis.token)).body.status).toBe('EXPIRED');
+  });
+
+  it('si el usuario que se une se borra, quien invita ve EXPIRED y no puede aceptar', async () => {
+    const { luis, ana, invite } = await pair();
+    await db.query('DELETE FROM users WHERE id = $1', [ana.user.id]);
+    clock.set(at(5000));
+    expect((await get(`/${invite.id}`, luis.token)).body).toMatchObject({ status: 'EXPIRED', peer: null });
+    expect((await post(`/${invite.id}/accept`, luis.token)).status).toBe(409);
   });
 
   it('AMBIGUOUS no filtra al peer ni el grupo', async () => {

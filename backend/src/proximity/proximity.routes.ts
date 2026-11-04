@@ -28,9 +28,12 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
   const lock = () => db.query('SELECT pg_advisory_xact_lock($1)', [PROXIMITY_LOCK_ID]);
 
   const toDto = async (row: ProximityRow, at: Date): Promise<ProximityRequest> => {
-    const status = effectiveStatus(row, at);
+    let status = effectiveStatus(row, at);
+    let peerRow = PEER_VISIBLE.includes(status) ? await proximity.findPeer(row) : undefined;
+    // La otra mitad se borró (su grupo o su usuario, en cascada): la pareja ya no existe, aunque esta mitad siga en MATCHED.
+    if (status === 'MATCHED' && !peerRow) status = 'EXPIRED';
     const peerVisible = PEER_VISIBLE.includes(status);
-    const peerRow = peerVisible ? await proximity.findPeer(row) : undefined;
+    if (!peerVisible) peerRow = undefined;
     // INVITE: su propio grupo; JOIN: el de la otra persona, solo cuando ya hay pareja.
     const groupId = row.role === 'INVITE' ? row.group_id : peerVisible ? (peerRow?.group_id ?? null) : null;
     const group = groupId ? await groups.findById(groupId) : undefined;
@@ -51,18 +54,28 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
     const { groupId } = inviteProximitySchema.parse(req.body);
     const userId = getUserId(res);
     await loadGroupForMember(groups, groupId, userId);
-    const at = now();
-    const row = await proximity.create(userId, 'INVITE', groupId, at).catch((error: unknown) => {
-      // El grupo se borró justo ahora.
-      throw isForeignKeyViolation(error, 'proximity_requests_group_id_fkey') ? groupNotFound() : error;
-    });
+    // La hora se toma con el candado ya puesto: quien esperó turno no usa una hora vieja (create lo vuelve a pedir, es reentrante).
+    const { row, at } = await db
+      .transaction(async () => {
+        await lock();
+        const at = now();
+        return { row: await proximity.create(userId, 'INVITE', groupId, at), at };
+      })
+      .catch((error: unknown) => {
+        // El grupo se borró justo ahora.
+        throw isForeignKeyViolation(error, 'proximity_requests_group_id_fkey') ? groupNotFound() : error;
+      });
     res.status(201).json(await toDto(row, at));
   });
 
   router.post('/join', async (req, res) => {
     joinProximitySchema.parse(req.body);
-    const at = now();
-    const row = await proximity.create(getUserId(res), 'JOIN', null, at);
+    const userId = getUserId(res);
+    const { row, at } = await db.transaction(async () => {
+      await lock();
+      const at = now();
+      return { row: await proximity.create(userId, 'JOIN', null, at), at };
+    });
     res.status(201).json(await toDto(row, at));
   });
 
@@ -73,14 +86,15 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
   });
 
   // Responder: solo quien invita, con la pareja vigente y pasados los 3 s (estrictamente: el milisegundo +3000 aún
-  // puede ser anulado por otro aviso, ver proximity.repository).
+  // puede ser anulado por otro aviso; ver proximity-rules.ts y docs/api.md).
   const respond = (verdict: 'ACCEPTED' | 'REJECTED') => async (req: { params: { id: string } }, res: Parameters<typeof getUserId>[0]) => {
     const userId = getUserId(res);
-    const at = now();
     let groupGone: ProximityRow | undefined;
+    let at = now();
     try {
       const row = await db.transaction(async () => {
         await lock();
+        at = now();
         const own = await proximity.findOwn(req.params.id, userId);
         if (!own) throw notFound();
         if (
@@ -91,7 +105,8 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
           throw notPending();
         }
         if (verdict === 'ACCEPTED') {
-          const peer = (await proximity.findPeer(own))!;
+          const peer = await proximity.findPeer(own);
+          if (!peer) throw notPending(); // la otra mitad ya no existe (su usuario se borró)
           // Si ya era miembro (se unió con el código), la pareja queda ACCEPTED igual.
           await groups.addMember(own.group_id!, peer.user_id).catch((error: unknown) => {
             if (isForeignKeyViolation(error, 'group_members_group_id_fkey')) groupGone = own;
@@ -107,9 +122,10 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
       // El grupo se borró: Postgres deshizo la transacción, así que la pareja se marca aparte.
       await db.transaction(async () => {
         await lock();
-        const current = await proximity.findOwn(groupGone!.id, userId);
-        // La mitad de quien invita se borró con el grupo (ON DELETE CASCADE); queda la de quien se une.
-        await proximity.setPairStatus(current ?? groupGone!, 'EXPIRED');
+        // Solo pasan a EXPIRED las mitades que siguen en MATCHED: otra petición pudo cancelarlas mientras tanto.
+        // (La de quien invita puede haberse borrado con el grupo, ON DELETE CASCADE.)
+        const ids = [groupGone!.id, ...(groupGone!.peer_id ? [groupGone!.peer_id] : [])];
+        await db.query("UPDATE proximity_requests SET status = 'EXPIRED' WHERE id = ANY($1::text[]) AND status = 'MATCHED'", [ids]);
       });
       throw groupNotFound();
     }
@@ -120,9 +136,9 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
 
   router.delete('/:id', async (req, res) => {
     const userId = getUserId(res);
-    const at = now();
     await db.transaction(async () => {
       await lock();
+      const at = now();
       const own = await proximity.findOwn(req.params.id, userId);
       if (!own) throw notFound();
       const status = effectiveStatus(own, at);

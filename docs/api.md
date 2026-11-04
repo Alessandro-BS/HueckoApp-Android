@@ -373,7 +373,7 @@ Cada aviso es una mitad de la pareja; las dos mitades comparten estado. `group` 
 | `MATCHED` | pareja formada; quien invita decide; vence a los 30 s | `matched_at + 30 s` | `matched_at + 3 s` |
 | `ACCEPTED` | quien invita aceptó y la otra persona ya es miembro | `null` | `null` |
 | `REJECTED` | quien invita rechazó | `null` | `null` |
-| `EXPIRED` | venció sin respuesta (se calcula al leer) | `null` | `null` |
+| `EXPIRED` | venció sin respuesta, o la otra mitad dejó de existir (se borró el grupo o el usuario); se calcula al leer | `null` | `null` |
 | `AMBIGUOUS` | llegaron más de dos avisos casi a la vez y no se sabe cuál era el celular de verdad | `null` | `null` |
 | `CANCELLED` | alguien salió o empezó otro intento | `null` | `null` |
 
@@ -389,7 +389,7 @@ Cuerpo `{}`. `201 ProximityRequest` (rol `JOIN`).
 La app lo consulta cada ~1 s. Solo su dueño: `200 ProximityRequest` · `404 PROXIMITY_NOT_FOUND` (también si es de otra persona).
 
 ### `POST /proximity/:id/accept`
-Solo quien invita, con la pareja en `MATCHED` vigente y pasados los 3 s. Añade a la otra persona al grupo (si ya era miembro, la pareja queda `ACCEPTED` igual). `200 ProximityRequest` con `ACCEPTED` · `409 PROXIMITY_NOT_PENDING` «Esta solicitud ya no se puede responder.» (rol `JOIN`, otro estado, vencida o antes de los 3 s) · `404 PROXIMITY_NOT_FOUND` · `404 GROUP_NOT_FOUND` (el grupo se borró justo ahora; la pareja pasa a `EXPIRED`).
+Solo quien invita, con la pareja en `MATCHED` vigente y pasados los 3 s. Añade a la otra persona al grupo (si ya era miembro, la pareja queda `ACCEPTED` igual). `200 ProximityRequest` con `ACCEPTED` · `409 PROXIMITY_NOT_PENDING` «Esta solicitud ya no se puede responder.» (rol `JOIN`, otro estado, vencida o antes de los 3 s) · `404 PROXIMITY_NOT_FOUND` (también si el grupo ya se había borrado: el borrado se lleva el aviso de quien invita) · `404 GROUP_NOT_FOUND` (el grupo se borra justo mientras se acepta; la pareja pasa a `EXPIRED`).
 
 ### `POST /proximity/:id/reject`
 Mismas reglas que `accept`, pero las dos mitades pasan a `REJECTED` y nadie entra al grupo. `200 ProximityRequest` · `409 PROXIMITY_NOT_PENDING` · `404 PROXIMITY_NOT_FOUND`.
