@@ -346,3 +346,19 @@ export type AdminReport = {
   popularHours: HourCount[];
   topGroups: TopGroup[];           // hasta 5, por propuestas creadas en el periodo
 };
+
+// ---- Unirse a un grupo acercando el celular (docs/api.md, «Proximidad») ----
+
+export type ProximityRole = 'INVITE' | 'JOIN';
+
+export type ProximityStatus = 'WAITING' | 'MATCHED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'AMBIGUOUS' | 'CANCELLED';
+
+export type ProximityRequest = {
+  id: string;
+  role: ProximityRole;
+  status: ProximityStatus;
+  group: { id: string; name: string } | null; // en JOIN, solo se conoce a partir de MATCHED
+  peer: { id: string; name: string } | null;  // a partir de MATCHED
+  expiresAt: string | null;      // ISO, en WAITING y MATCHED (cuenta atrás de la app); null en estados finales
+  acceptableFrom: string | null; // ISO; en MATCHED, matched_at + 3 s; null en otros estados
+};

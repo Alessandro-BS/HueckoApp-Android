@@ -227,3 +227,29 @@ describe('esquema: administración (Fase 4.5)', () => {
     expect(columns.map((c) => c.column_name)).toEqual(['id', 'user_id', 'task', 'ok', 'duration_ms', 'created_at']);
   });
 });
+
+describe('esquema: intentos por proximidad', () => {
+  it('solo la invitación lleva grupo, rechaza roles y estados desconocidos, y se borra con su usuario o su grupo', async () => {
+    const db = await openTestDatabase();
+    await db.exec(`
+      INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x'), ('u2', 'Beto', 'beto@correo.com', 'x');
+      INSERT INTO groups (id, name, invite_code) VALUES ('g1', 'Grupo', 'ABCDEFGH');
+    `);
+    const insert = (id: string, user: string, role: string, group: string | null, status = 'WAITING') =>
+      db.query(
+        "INSERT INTO proximity_requests (id, user_id, role, group_id, status, created_at) VALUES ($1, $2, $3, $4, $5, '2026-09-29T15:00:00.000Z')",
+        [id, user, role, group, status],
+      );
+    await insert('p1', 'u1', 'INVITE', 'g1');
+    await insert('p2', 'u2', 'JOIN', null);
+    await failsWith(insert('p3', 'u1', 'INVITE', null), '23514');
+    await failsWith(insert('p4', 'u2', 'JOIN', 'g1'), '23514');
+    await failsWith(insert('p5', 'u2', 'MIRAR', null), '23514');
+    await failsWith(insert('p6', 'u2', 'JOIN', null, 'PERDIDO'), '23514');
+    await failsWith(insert('p7', 'nadie', 'JOIN', null), '23503');
+    await db.query("DELETE FROM groups WHERE id = 'g1'");
+    expect(await count(db, 'proximity_requests')).toBe(1);
+    await db.query("DELETE FROM users WHERE id = 'u2'");
+    expect(await count(db, 'proximity_requests')).toBe(0);
+  });
+});

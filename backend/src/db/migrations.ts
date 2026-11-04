@@ -148,4 +148,21 @@ export const migrations: string[] = [
      created_at  TEXT COLLATE "C" NOT NULL
    );
    CREATE INDEX ai_calls_created_idx ON ai_calls (created_at);`,
+
+  // 5 — Tercera entrega: unirse a un grupo acercando el celular. Cada fila es un aviso (una mitad de la pareja).
+  // peer_id no lleva FK: las dos mitades se apuntan entre sí (un ciclo al insertar); lo garantiza el código.
+  // Las fechas son las del reloj del servidor; los vencimientos se calculan al leer (proximity-rules.ts).
+  `CREATE TABLE proximity_requests (
+     id         TEXT COLLATE "C" PRIMARY KEY,
+     user_id    TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     role       TEXT COLLATE "C" NOT NULL CHECK (role IN ('INVITE', 'JOIN')),
+     group_id   TEXT COLLATE "C" REFERENCES groups(id) ON DELETE CASCADE,
+     status     TEXT COLLATE "C" NOT NULL
+                CHECK (status IN ('WAITING', 'MATCHED', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'AMBIGUOUS', 'CANCELLED')),
+     peer_id    TEXT COLLATE "C",
+     created_at TEXT COLLATE "C" NOT NULL,
+     matched_at TEXT COLLATE "C",
+     CHECK ((role = 'INVITE') = (group_id IS NOT NULL))
+   );
+   CREATE INDEX proximity_requests_status_idx ON proximity_requests (status, created_at);`,
 ];
