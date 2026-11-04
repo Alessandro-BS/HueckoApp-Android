@@ -356,6 +356,49 @@ Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recom
 
 `200` · `403` · `404` · `409` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
+## Proximidad
+
+Unirse a un grupo acercando dos celulares: quien ya es miembro pulsa «Invitar» y quien quiere entrar pulsa «Unirse»; cuando los dos sensores de proximidad detectan el otro celular, cada app envía un aviso y el servidor los empareja. Todo se calcula con el reloj **del servidor**, nunca con una hora enviada por el celular. Todas las rutas piden token. Responden `ProximityRequest`:
+
+```json
+{ "id": "…", "role": "JOIN", "status": "MATCHED", "group": { "id": "…", "name": "Equipo" },
+  "peer": { "id": "…", "name": "Luis" }, "expiresAt": "2026-10-05T18:00:31.000Z", "acceptableFrom": "2026-10-05T18:00:04.000Z" }
+```
+
+Cada aviso es una mitad de la pareja; las dos mitades comparten estado. `group` es el grupo de la invitación (en `JOIN`, solo a partir de `MATCHED`); `peer` es la otra persona y solo se muestra en `MATCHED`, `ACCEPTED` y `REJECTED`.
+
+| Estado | Significado | `expiresAt` | `acceptableFrom` |
+|---|---|---|---|
+| `WAITING` | aviso enviado, sin pareja; vence a los 5 s | `created_at + 5 s` | `null` |
+| `MATCHED` | pareja formada; quien invita decide; vence a los 30 s | `matched_at + 30 s` | `matched_at + 3 s` |
+| `ACCEPTED` | quien invita aceptó y la otra persona ya es miembro | `null` | `null` |
+| `REJECTED` | quien invita rechazó | `null` | `null` |
+| `EXPIRED` | venció sin respuesta (se calcula al leer) | `null` | `null` |
+| `AMBIGUOUS` | llegaron más de dos avisos casi a la vez y no se sabe cuál era el celular de verdad | `null` | `null` |
+| `CANCELLED` | alguien salió o empezó otro intento | `null` | `null` |
+
+**Regla de los 3 s:** dos avisos de rol opuesto se emparejan si llegan como mucho a 3 s uno del otro. Si hay más de un candidato, o llega otro aviso que hubiera podido emparejarse con alguien ya emparejado hace 3 s o menos, todos quedan `AMBIGUOUS`. Por eso quien invita **no puede aceptar ni rechazar hasta pasados 3 s de `matched_at`** (estrictamente: el milisegundo `matched_at + 3 s` aún no vale). Cada usuario tiene un solo intento activo: uno nuevo cancela el anterior. No se empareja con quien ya es miembro del grupo ni con uno mismo.
+
+### `POST /proximity/invite`
+Cuerpo `{ "groupId": "…" }`. `201 ProximityRequest` (rol `INVITE`, normalmente `WAITING`; ya `MATCHED` si el aviso de la otra persona llegó antes) · `400 VALIDATION_ERROR` · `404 GROUP_NOT_FOUND` · `403 NOT_A_MEMBER`.
+
+### `POST /proximity/join`
+Cuerpo `{}`. `201 ProximityRequest` (rol `JOIN`).
+
+### `GET /proximity/:id`
+La app lo consulta cada ~1 s. Solo su dueño: `200 ProximityRequest` · `404 PROXIMITY_NOT_FOUND` (también si es de otra persona).
+
+### `POST /proximity/:id/accept`
+Solo quien invita, con la pareja en `MATCHED` vigente y pasados los 3 s. Añade a la otra persona al grupo (si ya era miembro, la pareja queda `ACCEPTED` igual). `200 ProximityRequest` con `ACCEPTED` · `409 PROXIMITY_NOT_PENDING` «Esta solicitud ya no se puede responder.» (rol `JOIN`, otro estado, vencida o antes de los 3 s) · `404 PROXIMITY_NOT_FOUND` · `404 GROUP_NOT_FOUND` (el grupo se borró justo ahora; la pareja pasa a `EXPIRED`).
+
+### `POST /proximity/:id/reject`
+Mismas reglas que `accept`, pero las dos mitades pasan a `REJECTED` y nadie entra al grupo. `200 ProximityRequest` · `409 PROXIMITY_NOT_PENDING` · `404 PROXIMITY_NOT_FOUND`.
+
+### `DELETE /proximity/:id`
+Cancela: un `WAITING` o `MATCHED` aún vigente pasa a `CANCELLED` en las dos mitades; en otro estado no cambia nada. `204` siempre que el intento sea suyo · `404 PROXIMITY_NOT_FOUND`.
+
+---
+
 ## Administración
 
 Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: sin token (o con uno inválido) → `401 UNAUTHORIZED`; cuenta suspendida → `403 ACCOUNT_SUSPENDED`; si no es `ADMIN` → `403 NOT_ADMIN`. Reglas comunes:

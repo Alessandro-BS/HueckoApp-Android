@@ -15,6 +15,7 @@ import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
+import { proximityRouter } from './proximity/proximity.routes';
 import { timeBlocksRouter } from './schedule/time-blocks.routes';
 
 export type AppDeps = {
@@ -73,6 +74,7 @@ export function createApp(appDeps: AppDeps) {
   api.use('/proposals', auth, proposalsRouter(deps));
   api.use('/proposals', auth, proposalAiRouter(deps));
   api.use('/ai', auth, aiRouter(deps));
+  api.use('/proximity', auth, proximityRouter(deps));
   // Administración de la app (Fase 4.5): además del token, rol ADMIN leído de la base (D2).
   api.use('/admin', auth, requireAdmin, adminRouter(deps));
 

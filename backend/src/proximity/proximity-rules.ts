@@ -3,7 +3,7 @@ import type { ProximityStatus } from '@hueckoapp/shared';
 import type { ProximityRow } from './proximity.repository';
 
 // Tiempos de «unirse acercando el celular», siempre con el reloj del servidor.
-/** Dos avisos de rol opuesto se emparejan si llegan con menos de esto entre sí. */
+/** Dos avisos de rol opuesto se emparejan si llegan como mucho a 3 s uno del otro. */
 export const MATCH_WINDOW_MS = 3000;
 /** Un aviso sin pareja vence a los 5 s de created_at. */
 export const WAITING_TTL_MS = 5000;
