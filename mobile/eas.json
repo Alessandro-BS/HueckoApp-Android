@@ -1,0 +1,21 @@
+{
+  "cli": {
+    "version": ">= 27.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://hueckoapp-api.onrender.com/api"
+      }
+    },
+    "production": {
+      "extends": "preview",
+      "autoIncrement": true
+    }
+  }
+}

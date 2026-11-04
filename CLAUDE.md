@@ -15,7 +15,7 @@ Monorepo con npm workspaces. Instala siempre desde la raíz (`npm install`); hay
 - **Git flow:** `feature/*` sale de `develop` y vuelve por PR; `release/*` va a `main` con tag semver; nunca commits directos en `main`/`develop`.
 - Commits convencionales en español: `feat(mobile): ...`, `fix(backend): ...`.
 - Antes de dar algo por terminado: `npm run typecheck` y `npm test` desde la raíz.
-- Ningún secreto en la app: la clave de Gemini, el `JWT_SECRET` y la `DATABASE_URL` (Neon) viven solo en `backend/.env`.
+- Ningún secreto en la app ni en el repo: la clave de Gemini, el `JWT_SECRET` y la `DATABASE_URL` (Neon) viven solo en `backend/.env` (desarrollo) y en las variables de entorno del servicio en Render (producción; `render.yaml` solo las declara, sin valores).
 
 ## mobile/ (Expo)
 
