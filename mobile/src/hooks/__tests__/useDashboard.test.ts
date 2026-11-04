@@ -9,6 +9,7 @@ import * as scheduleApi from '../../api/schedule';
 import { dashboardCache } from '../../storage/appStorage';
 import { makeDashboard, makeProposal } from '../../testing/fixtures';
 import { useDashboard } from '../useDashboard';
+import { withQueryClient } from '../../testing/queryClient';
 
 jest.mock('../../api/dashboard');
 jest.mock('../../api/proposals');
@@ -30,7 +31,7 @@ beforeEach(async () => {
 });
 
 const load = async () => {
-  const hook = await renderHook(() => useDashboard());
+  const hook = await renderHook(() => useDashboard(), withQueryClient());
   await waitFor(() => expect(hook.result.current.loaded).toBe(true));
   return hook;
 };
@@ -82,7 +83,7 @@ it('si el voto falla, no lanza: expone voteError y el resumen no cambia', async 
 
 it('si falla una de las dos cargas queda el error', async () => {
   dashboard.getDashboard.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.'));
-  const { result } = await renderHook(() => useDashboard());
+  const { result } = await renderHook(() => useDashboard(), withQueryClient());
   await waitFor(() => expect(result.current.error).toBe('No se pudo conectar con el servidor. Revisa tu conexión.'));
   expect(result.current.loaded).toBe(false);
 });
@@ -92,7 +93,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
   const offline = () => new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.');
 
   it('cada carga buena se guarda para ese usuario', async () => {
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.loaded).toBe(true));
     await waitFor(async () => expect(await dashboardCache.get('u1')).toEqual({ dashboard: makeDashboard(), blocks: [block] }));
     expect(result.current.stale).toBe(false);
@@ -101,7 +102,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
   it('sin red muestra la última copia, marcada como desactualizada y sin poder votar', async () => {
     await dashboardCache.set('u1', saved);
     dashboard.getDashboard.mockRejectedValue(offline());
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.error).not.toBeNull());
     await waitFor(() => expect(result.current.stale).toBe(true));
     expect(result.current.loaded).toBe(true);
@@ -111,7 +112,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
 
   it('cuando llega la respuesta del servidor reemplaza a la copia', async () => {
     await dashboardCache.set('u1', saved);
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.dashboard).toEqual(makeDashboard()));
     expect(result.current.stale).toBe(false);
     await waitFor(async () => expect((await dashboardCache.get('u1'))?.dashboard).toEqual(makeDashboard()));
@@ -120,7 +121,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
   it('no muestra la copia de otro usuario', async () => {
     await dashboardCache.set('u2', saved);
     dashboard.getDashboard.mockRejectedValue(offline());
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.loaded).toBe(false);
   });

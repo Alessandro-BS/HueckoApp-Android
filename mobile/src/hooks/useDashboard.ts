@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 
 import { getDashboard } from '../api/dashboard';
 import { removeVote, voteWindow } from '../api/proposals';
+import { queryKeys } from '../api/queryClient';
 import { listTimeBlocks } from '../api/schedule';
 import { dashboardCache } from '../storage/appStorage';
-import { useResource } from './useResource';
+import { useApiQuery } from './useApiQuery';
 import { useVoteToggle } from './useVoteToggle';
 
 export type DashboardData = { dashboard: Dashboard; blocks: TimeBlock[] };
@@ -22,7 +23,7 @@ const loadDashboard = async (): Promise<DashboardData> => {
 // `userId` activa la copia local (AsyncStorage): al abrir Inicio se muestra la última copia mientras llega la del
 // servidor, o en su lugar si no hay red (`stale`). Cada carga buena reemplaza la copia.
 export function useDashboard(userId?: string) {
-  const { data: fresh, loading, refreshing, error, failedLoads, reload, mutate } = useResource(loadDashboard);
+  const { data: fresh, loading, refreshing, error, failedLoads, reload, mutate } = useApiQuery(queryKeys.dashboard(userId), loadDashboard);
   const [cached, setCached] = useState<{ userId: string; data: DashboardData }>();
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 
 import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../api/auth';
 import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
+import { queryClient } from '../api/queryClient';
 import { tokenStorage } from '../auth/tokenStorage';
 import { dashboardCache, lastEmailStorage, sessionUserStorage } from '../storage/appStorage';
 import { showToast } from '../utils/toast';
@@ -28,11 +29,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');
+    queryClient.clear(); // la caché de TanStack Query es de esta cuenta
     await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll()]);
   }, []);
 
   const startSession = useCallback(async ({ token, user }: AuthResponse) => {
     await Promise.all([tokenStorage.set(token), lastEmailStorage.set(user.email), sessionUserStorage.set(user)]);
+    queryClient.clear();
     setAuthToken(token);
     setUser(user);
     setStatus('signedIn');

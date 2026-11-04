@@ -469,7 +469,7 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | Requisito | Estado | Cómo se cumple |
 |---|---|---|
 | 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
-| 🌐 **Volley** (equivalente en React Native) | ❌ Falta | **TanStack Query** (`@tanstack/react-query`): cola de peticiones con caché, reintentos y deduplicación. Empieza por Inicio y Grupos; sus reintentos además evitan que la primera petición falle mientras Render despierta |
+| 🌐 **Volley** (equivalente en React Native) | ✅ Integrado | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio y Grupos. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
 | 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
 | 📡 **Sensor de proximidad** | ❌ Falta | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go |
 | 🌀 **Giroscopio** | ❌ Falta | `expo-sensors` (`Gyroscope`, funciona en Expo Go): confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
