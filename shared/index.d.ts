@@ -63,7 +63,8 @@ export type Location = {
 
 export type TimeWindow = {
   id: string;
-  dayOfWeek: number;
+  date: string;                    // "YYYY-MM-DD" en America/Lima: el día concreto de la franja
+  dayOfWeek: number;               // 1 = lunes … 7 = domingo, siempre el de `date`
   startTime: string;
   endTime: string;
   availabilityPercentage: number;
@@ -92,7 +93,7 @@ export type Proposal = {
   createdBy: User;
   votingDeadline: string;          // ISO 8601 (UTC); solo se vota antes de esta hora
   state: ProposalState;
-  windows: TimeWindow[];           // ordenadas por día y hora
+  windows: TimeWindow[];           // ordenadas por fecha y hora
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
   canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
@@ -142,7 +143,8 @@ export type DashboardGroup = {
   id: string;
   name: string;
   memberCount: number;
-  nextWindow: Omit<TimeWindow, 'id' | 'voteCount'> | null;
+  // TODO(franjas-con-fecha Task 6): nextWindow pasa a incluir `date`.
+  nextWindow: Omit<TimeWindow, 'id' | 'voteCount' | 'date'> | null;
 };
 
 export type DashboardMetrics = { activeGroups: number; openVotes: number; matchingHours: number; totalBlocks: number };

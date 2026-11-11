@@ -5,8 +5,9 @@ import { randomUUID } from 'node:crypto';
 
 import type { BlockType } from '@hueckoapp/shared';
 
+import { addDays, instant, isoDay, today } from '../common/zone';
 import { proposalsRepository } from '../proposals/proposals.repository';
-import { criticalityFor, scheduleFor } from '../proposals/rules';
+import { criticalityFor } from '../proposals/rules';
 import type { Db } from './db';
 
 export const DEMO_PASSWORD = 'password123';
@@ -46,8 +47,8 @@ const BLOCKS: { user: UserKey; label: string; type: BlockType; dayOfWeek: number
 
 const HOUR = 3_600_000;
 
-/** Día ISO (1 = lunes … 7 = domingo) de una fecha en hora local. */
-const isoDayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1;
+/** Primera fecha con ese día de la semana (1 = lunes … 7 = domingo) a partir de `from` (incluida). */
+const onOrAfter = (from: string, dayOfWeek: number) => addDays(from, (dayOfWeek - isoDay(from) + 7) % 7);
 
 // Los porcentajes son los fijos de la semilla Kotlin (el viernes figura con 50 % aunque el cruce dé 100 %, B15).
 async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): Promise<number> {
@@ -63,22 +64,22 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
   await db.query(remove, [groupId, reviewTitle, ids.ana]);
 
   // «Reunión de avance del proyecto»: confirmada para dentro de 2 días a las 11:00, votada por los dos y con el
-  // imprevisto de Ana sin resolver (aviso en Inicio).
-  const inTwoDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+  // imprevisto de Ana sin resolver (aviso en Inicio). Las fechas son días de Lima (common/zone).
+  const day = today(now);
+  const inTwoDays = addDays(day, 2);
   const meetingId = await proposals.create({
     groupId,
     createdBy: ids.test,
     title: meetingTitle,
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: ago(24),
-    windows: [{ dayOfWeek: isoDayOf(inTwoDays), startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
+    windows: [{ date: inTwoDays, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
     createdAt: ago(48),
   });
   const [meetingWindow] = (await proposals.findById(meetingId, ids.test))!.windows;
   await proposals.vote(meetingId, ids.test, meetingWindow.id, ago(30));
   await proposals.vote(meetingId, ids.ana, meetingWindow.id, ago(30));
-  const { scheduledAt, scheduledDate } = scheduleFor(meetingWindow.dayOfWeek, meetingWindow.startTime, now);
-  await proposals.confirm(meetingId, meetingWindow.id, scheduledAt, scheduledDate);
+  await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date);
   await proposals.reportIncidence(
     meetingId,
     {
@@ -93,16 +94,18 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
   );
 
   // «Repaso antes de la entrega»: en votación hasta mañana a las 20:00 (siempre en el futuro), con el voto de Ana.
+  // Sus franjas (martes, jueves y viernes) son las primeras desde pasado mañana: empiezan después del plazo y caen en
+  // esta semana o la siguiente (dentro de las semanas válidas).
   const reviewId = await proposals.create({
     groupId,
     createdBy: ids.ana,
     title: reviewTitle,
     location: { name: 'Google Meet', latitude: null, longitude: null },
-    votingDeadline: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 20, 0).toISOString(),
+    votingDeadline: instant(addDays(day, 1), '20:00').toISOString(),
     windows: [
-      { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
-      { dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 },
-      { dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 50 },
+      { date: onOrAfter(inTwoDays, 2), startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
+      { date: onOrAfter(inTwoDays, 4), startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 },
+      { date: onOrAfter(inTwoDays, 5), startTime: '16:00', endTime: '18:00', availabilityPercentage: 50 },
     ],
     createdAt: ago(1),
   });

@@ -4,8 +4,12 @@ import type { Dashboard, PlanSuggestion, Proposal, ProposalDraft, TimeWindow, Us
 export const TEST_USER: User = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com' };
 export const ANA: User = { id: 'u2', name: 'Ana', email: 'ana@test.com' };
 
+// Sin `date`, la franja cae ese día de la semana de hoy (lunes 28/09 … domingo 04/10).
+const dateInTestWeek = (dayOfWeek: number) => new Date(Date.UTC(2026, 8, 27 + dayOfWeek)).toISOString().slice(0, 10);
+
 export const makeWindow = (over: Partial<TimeWindow> = {}): TimeWindow => ({
-  id: 'w_21', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0, ...over,
+  id: 'w_21', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0,
+  date: dateInTestWeek(over.dayOfWeek ?? 2), ...over,
 });
 
 // prop_2: en votación, creada por Ana, cierra hoy a las 20:00; Ana votó el martes.

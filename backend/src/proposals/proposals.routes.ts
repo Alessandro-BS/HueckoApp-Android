@@ -4,6 +4,7 @@ import { Router } from 'express';
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { groupAvailability, windowAvailability } from '../availability/group-availability';
+import { addDays, instant, isoDay, today } from '../common/zone';
 import { isForeignKeyViolation } from '../db/errors';
 import { groupNotFound, loadGroupForMember } from '../groups/group-access';
 import { groupsRepository } from '../groups/groups.repository';
@@ -12,6 +13,16 @@ import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { proposalsRepository } from './proposals.repository';
 import { confirmSchema, createProposalSchema, incidenceInputSchema, resolveIncidencesSchema, timeWindowInputSchema, voteSchema } from './proposals.schemas';
 import { bestWindows, canCancel, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
+
+// TODO(franjas-con-fecha Task 4): las franjas aún llegan como día de la semana. Mientras tanto se guardan con la fecha
+// de la próxima vez que ocurren en Lima (hoy si la hora aún no llegó), la misma regla que usaba confirmar.
+// `dayOfWeek` (1–7) y `startTime` ya vienen validados por zod.
+function nextDateOf(dayOfWeek: number, startTime: string, now: Date): string {
+  const day = today(now);
+  const offset = (dayOfWeek - isoDay(day) + 7) % 7;
+  if (offset === 0 && instant(day, startTime).getTime() <= now.getTime()) return addDays(day, 7);
+  return addDays(day, offset);
+}
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
 function proposalsContext({ db, now }: ResolvedDeps) {
@@ -63,9 +74,15 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
     // Con franjas: el % lo calcula el servidor (G2). Sin franjas: las 3 mejores del cruce del grupo (C5).
     const windows =
       input.windows.length > 0
-        ? input.windows.map((w) => ({ ...w, availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, w) }))
+        ? input.windows.map((w) => ({
+            date: nextDateOf(w.dayOfWeek, w.startTime, now),
+            startTime: w.startTime,
+            endTime: w.endTime,
+            availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, w),
+          }))
         : bestWindows(groupAvailability(matcherGroup, groupBlocks)).map(({ dayOfWeek, startTime, endTime, availabilityPercentage }) => ({
-            dayOfWeek, startTime, endTime, availabilityPercentage,
+            date: nextDateOf(dayOfWeek, startTime, now),
+            startTime, endTime, availabilityPercentage,
           }));
     // Sin franjas y sin ningún hueco en común no se crea un plan vacío (sin nada que votar).
     if (windows.length === 0) {
@@ -130,7 +147,12 @@ export function proposalsRouter(deps: ResolvedDeps) {
     );
     if (exists) throw new ApiError(409, 'WINDOW_EXISTS', 'Esa franja ya está propuesta.');
     const { matcherGroup, groupBlocks } = await ctx.matcherInput(group);
-    await ctx.proposals.addWindow(proposal.id, { ...input, availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, input) });
+    await ctx.proposals.addWindow(proposal.id, {
+      date: nextDateOf(input.dayOfWeek, input.startTime, ctx.now()),
+      startTime: input.startTime,
+      endTime: input.endTime,
+      availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, input),
+    });
     res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });
 

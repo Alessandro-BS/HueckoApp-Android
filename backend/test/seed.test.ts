@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { instant, isoDay, mondayOf, validWeeks } from '../src/common/zone';
 import { buildDashboard, upcomingPlans } from '../src/dashboard/dashboard';
 import type { Db } from '../src/db/db';
 import { seedDemoData } from '../src/db/demo-data';
@@ -108,7 +109,7 @@ describe('semilla de datos de ejemplo (D8)', () => {
       title: 'Plan propio',
       location: null,
       votingDeadline: new Date(NOW.getTime() + DAY).toISOString(),
-      windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }],
+      windows: [{ date: '2026-09-29', startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }],
       createdAt: NOW.toISOString(),
     });
     await groupsRepository(db).leave(groupId, anaId);
@@ -141,5 +142,14 @@ describe('semilla de datos de ejemplo (D8)', () => {
     const open = all.find((p) => p.state === 'PROPUESTO')!;
     expect(open.votingDeadline).toBe(deadline.toISOString());
     expect(new Date(open.votingDeadline).getTime()).toBeGreaterThan(now.getTime());
+    // Franjas con fecha: la elegida es la fecha del plan; las de la votación empiezan después del plazo y caen en las
+    // semanas válidas.
+    expect(chosen.date).toBe(confirmed.scheduledDate);
+    const weeks = validWeeks(now);
+    for (const w of open.windows) {
+      expect(isoDay(w.date)).toBe(w.dayOfWeek);
+      expect(weeks).toContain(mondayOf(w.date));
+      expect(instant(w.date, w.startTime).getTime()).toBeGreaterThan(new Date(open.votingDeadline).getTime());
+    }
   });
 });

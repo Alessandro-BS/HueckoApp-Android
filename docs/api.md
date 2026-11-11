@@ -65,7 +65,7 @@ Resumen de las entidades:
 | `GroupMember` | Usuario + `role` (`OWNER`/`MEMBER`) + `isEssential` |
 | `MatchWindow` | Franja libre en común con su % de coincidencia |
 | `Proposal` | Propuesta de plan con ventanas, votos, ubicación e incidencias |
-| `TimeWindow` | Ventana horaria votable dentro de una propuesta |
+| `TimeWindow` | Ventana horaria votable dentro de una propuesta: fecha concreta (`date` `YYYY-MM-DD` en `America/Lima`) y su `dayOfWeek` |
 | `Incidence` | Imprevisto reportado sobre un plan confirmado |
 | `Location` | Lugar con nombre y coordenadas opcionales |
 | `ProposalWithGroup` | `Proposal` + `groupName` |
@@ -220,14 +220,14 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 - `title` obligatorio, 1–80 caracteres tras `trim` («El título no puede estar vacío.»).
 - `location` opcional (`null` u omitido = sin lugar). `name` 1–100 tras `trim`; `latitude` (−90…90) y `longitude` (−180…180) van **juntas** o ambas `null`/omitidas.
 - `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura»). Se guarda y se devuelve en UTC.
-- `windows` opcional, hasta 10 y sin repetir; cada una `{ dayOfWeek 1–7, startTime, endTime }` en `HH:mm` con `startTime < endTime` (`TimeWindowInput`). El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`).
+- `windows` opcional, hasta 10 y sin repetir; cada una `{ dayOfWeek 1–7, startTime, endTime }` en `HH:mm` con `startTime < endTime` (`TimeWindowInput`). El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`). Cada franja se guarda con la `date` de la próxima vez que ocurre ese día a esa hora (en `America/Lima`; hoy si aún no llegó la hora); lo mismo en `POST /proposals/:id/windows`.
 - Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability`: mayor `availabilityPercentage`, luego mayor duración, luego día y hora más tempranos. Si el grupo no tiene ningún hueco en común, **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
 - Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
 
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
 
 ### `GET /proposals/:id`
-`200 Proposal`. `windows` van por día y hora; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»).
+`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»).
 `404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
 
 **Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.

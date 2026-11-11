@@ -28,7 +28,7 @@ describe('scheduleFor (C11)', () => {
 });
 
 const w = (id: string, over: Partial<TimeWindow> = {}): TimeWindow => ({
-  id, dayOfWeek: 1, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100, voteCount: 0, ...over,
+  id, date: '2026-09-28', dayOfWeek: 1, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100, voteCount: 0, ...over,
 });
 
 describe('pickWinner (C2)', () => {

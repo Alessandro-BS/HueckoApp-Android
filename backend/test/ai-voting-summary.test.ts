@@ -44,9 +44,10 @@ describe('summaryData', () => {
       votacionAbierta: true,
       votosEmitidos: 1,
       franjas: [
-        { franja: 'Mar 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
+        // TODO(franjas-con-fecha Task 4): ordenadas por fecha; el martes 08:00 ya pasó (NOW) y cae la semana siguiente.
         { franja: 'Jue 08:00-20:00', votos: 1, disponibilidad: '100 %', elegida: false },
         { franja: 'Sáb 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
+        { franja: 'Mar 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
       ],
       imprevistos: [],
     });

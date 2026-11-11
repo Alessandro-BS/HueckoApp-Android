@@ -1,6 +1,7 @@
 import type { GroupMember, GroupSummary, Incidence, ProposalWithGroup, TimeWindow, User } from '@hueckoapp/shared';
 import { describe, expect, it } from 'vitest';
 
+import { addDays } from '../src/common/zone';
 import { buildDashboard, matchingHours, upcomingPlans } from '../src/dashboard/dashboard';
 import { NOW } from './helpers';
 
@@ -12,8 +13,9 @@ const members: GroupMember[] = [
 ];
 const groups: GroupSummary[] = [{ id: 'g1', name: 'Proyecto Integrador', description: '', memberCount: 2, availabilityThreshold: 80 }];
 
+// La fecha es la de ese día de la semana en la semana de NOW (lunes 28/09): aquí solo cuenta el día.
 const win = (id: string, dayOfWeek: number, startTime: string, endTime: string, availabilityPercentage: number, voteCount: number): TimeWindow => ({
-  id, dayOfWeek, startTime, endTime, availabilityPercentage, voteCount,
+  id, date: addDays('2026-09-28', dayOfWeek - 1), dayOfWeek, startTime, endTime, availabilityPercentage, voteCount,
 });
 const incidence = (over: Partial<Incidence> = {}): Incidence => ({
   id: 'inc_1', user: ana, type: 'IMPREVISTO', reason: 'Cruce con un examen de laboratorio a última hora.',

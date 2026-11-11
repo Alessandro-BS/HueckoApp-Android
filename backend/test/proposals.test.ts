@@ -51,7 +51,7 @@ const prop2 = () =>
 const counts = (p: Proposal) => p.windows.map((w) => w.voteCount);
 
 describe('POST /api/groups/:id/proposals', () => {
-  it('con franjas: 201, PROPUESTO, % calculado por el servidor y franjas por día y hora', async () => {
+  it('con franjas: 201, PROPUESTO, % calculado por el servidor y franjas por fecha y hora', async () => {
     const res = await post({
       title: '  Repaso antes de la entrega ',
       location: { name: '  Google Meet ' },
@@ -71,9 +71,11 @@ describe('POST /api/groups/:id/proposals', () => {
       votingDeadline: DEADLINE,
       state: 'PROPUESTO',
       windows: [
-        { id: expect.any(String), dayOfWeek: 1, startTime: '10:00', endTime: '12:00', availabilityPercentage: 50, voteCount: 0 },
-        { id: expect.any(String), dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
-        { id: expect.any(String), dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
+        // TODO(franjas-con-fecha Task 4): aún llegan por día de la semana y toman la próxima fecha (NOW = martes 29/09
+        // 10:00): el lunes ya pasó esta semana y cae el 5/10.
+        { id: expect.any(String), date: '2026-09-29', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
+        { id: expect.any(String), date: '2026-10-02', dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
+        { id: expect.any(String), date: '2026-10-05', dayOfWeek: 1, startTime: '10:00', endTime: '12:00', availabilityPercentage: 50, voteCount: 0 },
       ],
       myVoteWindowId: null,
       canManage: true,
@@ -88,10 +90,11 @@ describe('POST /api/groups/:id/proposals', () => {
   it('sin franjas: propone las 3 mejores del cruce del grupo (C5)', async () => {
     const res = await post({});
     expect(res.status).toBe(201);
-    expect(res.body.windows.map((w: Proposal['windows'][number]) => [w.dayOfWeek, w.startTime, w.endTime, w.availabilityPercentage])).toEqual([
-      [2, '08:00', '20:00', 100],
-      [4, '08:00', '20:00', 100],
-      [6, '08:00', '20:00', 100],
+    // TODO(franjas-con-fecha Task 4): el martes 08:00 ya empezó (NOW = martes 10:00) y toma el martes siguiente.
+    expect(res.body.windows.map((w: Proposal['windows'][number]) => [w.date, w.dayOfWeek, w.startTime, w.endTime, w.availabilityPercentage])).toEqual([
+      ['2026-10-01', 4, '08:00', '20:00', 100],
+      ['2026-10-03', 6, '08:00', '20:00', 100],
+      ['2026-10-06', 2, '08:00', '20:00', 100],
     ]);
   });
 
