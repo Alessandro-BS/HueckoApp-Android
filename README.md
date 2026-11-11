@@ -471,8 +471,8 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
 | 🌐 **Volley** (equivalente en React Native) | ✅ Integrado | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio y Grupos. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
 | 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
-| 📡 **Sensor de proximidad** | ❌ Falta | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go |
-| 🌀 **Giroscopio** | ❌ Falta | `expo-sensors` (`Gyroscope`, funciona en Expo Go): confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
+| 📡 **Sensor de proximidad** | ✅ Integrado | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go |
+| 🌀 **Giroscopio** | ✅ Integrado | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
 | 🧭 Magnetómetro (opcional) | ❌ Falta | `expo-sensors` (`Magnetometer`) |
 | 💡 Sensor de luz (opcional) | ❌ Falta | `expo-sensors` (`LightSensor`, solo Android) |
 
@@ -484,6 +484,15 @@ El sensor de proximidad detecta que hay algo a ~5 cm de la pantalla, pero no qu�
 2. Juntan los celulares **pantalla con pantalla** (el sensor está arriba, junto al auricular).
 3. Cada celular avisa al servidor del momento en que detectó algo cerca.
 4. Si llegan dos avisos casi a la vez (una invitación y una unión), el servidor une a esa persona al grupo y los dos vibran. Si hay coincidencias dudosas, no une a nadie y pide repetir o usar el código.
+
+**🛠️ Probarlo: development build**
+
+El módulo nativo no está en Expo Go (allí las pantallas muestran «Usar el código»), así que hace falta un *development build*:
+
+1. Desde `mobile/`: `npx eas-cli@latest build --profile development --platform android` (perfil en [`eas.json`](mobile/eas.json); usa el backend de Render).
+2. Al terminar, abre el enlace o QR de EAS en cada celular, descarga el `.apk` e instálalo.
+3. En tu PC: `npx expo start --dev-client` y abre la app instalada (no Expo Go) para cargar el código desde Metro.
+4. Para probar contra tu backend local, pon `EXPO_PUBLIC_API_URL` en `mobile/.env` con la IP de tu PC (el perfil `development` apunta a Render).
 
 **🔜 Pendientes conocidos**
 

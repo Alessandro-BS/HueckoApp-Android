@@ -72,5 +72,6 @@ La app se compila en los servidores de Expo; no hace falta Android Studio. La UR
 
 | Perfil | Para qué | Versión |
 |---|---|---|
+| `development` | APK con *development client* (`expo-dev-client`) para probar módulos nativos, como unirse acercando el celular. Se genera con `--profile development` y se usa con `npx expo start --dev-client` | Igual que `preview` (`appVersionSource: remote`) |
 | `preview` | APK para probar y entregar | `versionCode` lo lleva EAS (`appVersionSource: remote`) |
 | `production` | Igual, pero sube el `versionCode` solo (`autoIncrement`) | Para cada versión publicada |
