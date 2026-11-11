@@ -18,9 +18,9 @@ beforeEach(() => {
 
 it('useProximity refleja near al emitir', async () => {
   const { result } = await renderHook(() => useProximity(true));
-  expect(result.current).toEqual({ available: true, near: false });
+  expect(result.current).toEqual({ available: true, near: false, readings: 0 });
   await act(async () => emit(true));
-  expect(result.current.near).toBe(true);
+  expect(result.current).toEqual({ available: true, near: true, readings: 1 });
   await act(async () => emit(false));
   expect(result.current.near).toBe(false);
 });
@@ -58,6 +58,6 @@ it('available=false sin módulo nativo', async () => {
 
   mocked.isAvailable.mockReturnValue(false);
   const { result } = await renderHook(() => useProximity(true));
-  expect(result.current).toEqual({ available: false, near: false });
+  expect(result.current).toEqual({ available: false, near: false, readings: 0 });
   expect(mocked.addProximityListener).not.toHaveBeenCalled();
 });
