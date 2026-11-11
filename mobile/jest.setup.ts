@@ -127,3 +127,20 @@ jest.mock('./modules/proximity', () => {
     __emit: (near: boolean) => mockListeners.forEach((listener) => listener({ near })),
   };
 });
+
+// Giroscopio (expo-sensors): cada test fija isAvailableAsync y avisa con __emit({x,y,z}) a los listeners activos.
+type MockGyroscopeListener = (reading: { x: number; y: number; z: number }) => void;
+jest.mock('expo-sensors', () => {
+  const mockGyroListeners = new Set<MockGyroscopeListener>();
+  return {
+    Gyroscope: {
+      isAvailableAsync: jest.fn(async () => true),
+      setUpdateInterval: jest.fn(),
+      addListener: jest.fn((listener: MockGyroscopeListener) => {
+        mockGyroListeners.add(listener);
+        return { remove: jest.fn(() => void mockGyroListeners.delete(listener)) };
+      }),
+      __emit: (reading: { x: number; y: number; z: number }) => mockGyroListeners.forEach((listener) => listener(reading)),
+    },
+  };
+});
