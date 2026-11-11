@@ -6,6 +6,7 @@ import * as groupsApi from '../../../api/groups';
 import { pingServer } from '../../../api/proximity';
 import { useProximitySession } from '../../../hooks/useProximitySession';
 import { useProximityTrigger } from '../../../hooks/useProximityTrigger';
+import { queryKeys } from '../../../api/queryClient';
 import { withQueryClient } from '../../../testing/queryClient';
 import { ProximityJoinScreen } from '../ProximityJoinScreen';
 
@@ -24,7 +25,10 @@ const request = (over: Partial<ProximityRequest>): ProximityRequest => ({
 });
 const setSession = (over: Record<string, unknown>) =>
   jest.mocked(useProximitySession).mockReturnValue({ request: undefined, phase: 'idle', error: null, ...session, ...over } as any);
-const renderScreen = () => render(<ProximityJoinScreen navigation={navigation} route={{ key: 'k', name: 'ProximityJoin' } as any} />, { wrapper: withQueryClient().wrapper });
+const testClient = withQueryClient();
+const invalidate = jest.spyOn(testClient.client, 'invalidateQueries');
+const renderScreen = () =>
+  render(<ProximityJoinScreen navigation={navigation} route={{ key: 'k', name: 'ProximityJoin' } as any} />, { wrapper: testClient.wrapper });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -57,6 +61,16 @@ it('ACCEPTED navega al detalle del grupo', async () => {
   setSession({ phase: 'done', request: request({ status: 'ACCEPTED', acceptableFrom: null }) });
   await renderScreen();
   expect(navigation.replace).toHaveBeenCalledWith('GroupDetail', { groupId: 'g1', name: 'Estudio' });
+  expect(navigation.replace).toHaveBeenCalledTimes(1);
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.groups });
+});
+
+it.each(['REJECTED', 'EXPIRED'] as const)('%s muestra «No se completó» e «Intentar de nuevo»', async (status) => {
+  setSession({ phase: 'done', request: request({ status, acceptableFrom: null }) });
+  await renderScreen();
+  expect(screen.getByText('No se completó')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Intentar de nuevo'));
+  expect(session.reset).toHaveBeenCalled();
 });
 
 it('«Usar el código» abre el diálogo de código y al unirse abre el grupo', async () => {
@@ -68,6 +82,7 @@ it('«Usar el código» abre el diálogo de código y al unirse abre el grupo', 
   await fireEvent.press(screen.getByText('Unirse'));
   await act(async () => undefined);
   expect(groupsApi.joinGroup).toHaveBeenCalledWith('ABC123');
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.groups });
   expect(navigation.replace).toHaveBeenCalledWith('GroupDetail', { groupId: 'g7', name: 'Amigos' });
 });
 

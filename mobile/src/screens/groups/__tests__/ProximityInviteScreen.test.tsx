@@ -5,6 +5,7 @@ import { Vibration } from 'react-native';
 import { pingServer } from '../../../api/proximity';
 import { useProximitySession } from '../../../hooks/useProximitySession';
 import { useProximityTrigger } from '../../../hooks/useProximityTrigger';
+import { queryKeys } from '../../../api/queryClient';
 import { withQueryClient } from '../../../testing/queryClient';
 import { ProximityInviteScreen } from '../ProximityInviteScreen';
 
@@ -22,7 +23,9 @@ const request = (over: Partial<ProximityRequest>): ProximityRequest => ({
 });
 const setSession = (over: Record<string, unknown>) =>
   jest.mocked(useProximitySession).mockReturnValue({ request: undefined, phase: 'idle', error: null, ...session, ...over } as any);
-const renderScreen = () => render(<ProximityInviteScreen navigation={navigation} route={route} />, { wrapper: withQueryClient().wrapper });
+const testClient = withQueryClient();
+const invalidate = jest.spyOn(testClient.client, 'invalidateQueries');
+const renderScreen = () => render(<ProximityInviteScreen navigation={navigation} route={route} />, { wrapper: testClient.wrapper });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -96,6 +99,23 @@ it('vibra una vez al llegar acceptableFrom, y no antes', async () => {
   await view.rerender(<ProximityInviteScreen navigation={navigation} route={route} />);
   await act(async () => jest.advanceTimersByTime(5000));
   expect(Vibration.vibrate).toHaveBeenCalledTimes(1);
+
+  // Un intento nuevo (otro id) vuelve a vibrar al llegar su acceptableFrom.
+  setSession({ phase: 'active', request: request({ id: 'r2', acceptableFrom: new Date(Date.now() + 3000).toISOString() }) });
+  await view.rerender(<ProximityInviteScreen navigation={navigation} route={route} />);
+  await act(async () => jest.advanceTimersByTime(3000));
+  expect(Vibration.vibrate).toHaveBeenCalledTimes(2);
+});
+
+it('muestra la cuenta atrás hasta expiresAt junto a Aceptar/Rechazar', async () => {
+  setSession({
+    phase: 'active',
+    request: request({ acceptableFrom: new Date(NOW - 1).toISOString(), expiresAt: new Date(NOW + 30000).toISOString() }),
+  });
+  await renderScreen();
+  expect(screen.getByText('Quedan 30 s')).toBeTruthy();
+  await act(async () => jest.advanceTimersByTime(3000));
+  expect(screen.getByText('Quedan 27 s')).toBeTruthy();
 });
 
 it('un error de consulta con el intento activo no reemplaza el estado actual', async () => {
@@ -110,6 +130,7 @@ it('ACCEPTED muestra que ya es parte del grupo y vuelve atrás a los 2 s', async
   setSession({ phase: 'done', request: request({ status: 'ACCEPTED', acceptableFrom: null }) });
   await renderScreen();
   expect(screen.getByText('Ana ya es parte del grupo')).toBeTruthy();
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.group('g1') });
   expect(navigation.goBack).not.toHaveBeenCalled();
   await act(async () => jest.advanceTimersByTime(2000));
   expect(navigation.goBack).toHaveBeenCalledTimes(1);

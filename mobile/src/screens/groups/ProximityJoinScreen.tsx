@@ -28,11 +28,13 @@ export function ProximityJoinScreen({ navigation }: AppStackScreen<'ProximityJoi
   const acceptable = useAcceptable(request);
 
   const acceptedGroup = request?.status === 'ACCEPTED' ? request.group : null;
+  const acceptedId = acceptedGroup?.id;
+  const acceptedName = acceptedGroup?.name;
   useEffect(() => {
-    if (!acceptedGroup) return;
+    if (!acceptedId || !acceptedName) return;
     void client.invalidateQueries({ queryKey: queryKeys.groups });
-    navigation.replace('GroupDetail', { groupId: acceptedGroup.id, name: acceptedGroup.name });
-  }, [acceptedGroup, client, navigation]);
+    navigation.replace('GroupDetail', { groupId: acceptedId, name: acceptedName });
+  }, [acceptedId, acceptedName, client, navigation]);
 
   // «Usar el código» reutiliza el diálogo de GroupListScreen aquí mismo (sin navegar de vuelta con parámetros).
   const joinWithCode = async (code: string) => {

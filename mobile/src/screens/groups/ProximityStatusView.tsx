@@ -40,6 +40,24 @@ export function useAcceptable(request: ProximityRequest | undefined): boolean {
   return ready;
 }
 
+// Segundos que quedan hasta `expiresAt` (hora del servidor), actualizados cada segundo.
+function useSecondsLeft(expiresAt: string | null | undefined): number | null {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!expiresAt) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+  return expiresAt ? Math.max(0, Math.ceil((Date.parse(expiresAt) - now) / 1000)) : null;
+}
+
+function Countdown({ expiresAt }: { expiresAt: string | null | undefined }) {
+  const seconds = useSecondsLeft(expiresAt);
+  if (seconds === null) return null;
+  return <Text style={[typography.labelMedium, styles.waiting]}>{`Quedan ${seconds} s`}</Text>;
+}
+
 type Props = {
   role: ProximityRole;
   request: ProximityRequest | undefined;
@@ -57,8 +75,8 @@ type Props = {
 };
 
 const FINAL_MESSAGES: Record<string, (role: ProximityRole) => string> = {
-  REJECTED: (role) => (role === 'JOIN' ? 'Te rechazaron la solicitud.' : 'Rechazaste la solicitud.'),
-  EXPIRED: () => 'Se acabó el tiempo. Vuelvan a intentarlo.',
+  REJECTED: (role) => (role === 'JOIN' ? 'No se completó' : 'Rechazaste la solicitud.'),
+  EXPIRED: (role) => (role === 'JOIN' ? 'No se completó' : 'Se acabó el tiempo. Vuelvan a intentarlo.'),
   AMBIGUOUS: () => 'Hubo otro intento cerca. Repitan o usen el código',
   CANCELLED: () => 'El intento se canceló.',
 };
@@ -96,10 +114,13 @@ export function ProximityStatusView({ role, request, phase, error, available, ac
       </Message>
     );
     actions = acceptable ? (
-      <View style={styles.row}>
-        <SecondaryButton title="Rechazar" style={styles.flex} onPress={onReject} />
-        <PrimaryButton title="Aceptar" style={styles.flex} onPress={onAccept} />
-      </View>
+      <>
+        <Countdown expiresAt={request?.expiresAt} />
+        <View style={styles.row}>
+          <SecondaryButton title="Rechazar" style={styles.flex} onPress={onReject} />
+          <PrimaryButton title="Aceptar" style={styles.flex} onPress={onAccept} />
+        </View>
+      </>
     ) : (
       <Text style={[typography.labelLarge, styles.waiting]}>Confirmando…</Text>
     );

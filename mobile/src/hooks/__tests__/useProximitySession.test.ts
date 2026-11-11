@@ -126,14 +126,28 @@ describe('useProximitySession', () => {
     expect(result.current.request?.status).toBe('REJECTED');
   });
 
-  it('un error al aceptar deja el mensaje en error', async () => {
+  it('aceptar antes de tiempo (409 con la pareja aún MATCHED) pide «Espera un momento…», vuelve a consultar y lo borra con la siguiente consulta', async () => {
     mocked.sendInvite.mockResolvedValue(req('MATCHED'));
     mocked.getProximity.mockResolvedValue(req('MATCHED'));
     mocked.acceptProximity.mockRejectedValue(new ApiError(409, 'PROXIMITY_NOT_PENDING', 'Esta solicitud ya no se puede responder.', null));
     const { result } = await renderHook(() => useProximitySession(invite), withQueryClient());
     await act(async () => result.current.send());
     await act(async () => result.current.accept());
-    expect(result.current.error).toBe('Esta solicitud ya no se puede responder.');
+    expect(result.current.error).toBe('Espera un momento…');
+    expect(mocked.getProximity).toHaveBeenCalledTimes(1); // la consulta que pidió el error
+    await tick(3000);
+    expect(mocked.getProximity.mock.calls.length).toBeGreaterThan(1);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('un error al aceptar deja el mensaje en error', async () => {
+    mocked.sendInvite.mockResolvedValue(req('MATCHED'));
+    mocked.getProximity.mockResolvedValue(req('MATCHED'));
+    mocked.acceptProximity.mockRejectedValue(new ApiError(500, 'INTERNAL', 'Algo falló.', null));
+    const { result } = await renderHook(() => useProximitySession(invite), withQueryClient());
+    await act(async () => result.current.send());
+    await act(async () => result.current.accept());
+    expect(result.current.error).toBe('Algo falló.');
     expect(result.current.phase).toBe('active');
   });
 

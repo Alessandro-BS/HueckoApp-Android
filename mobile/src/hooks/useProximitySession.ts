@@ -2,7 +2,7 @@ import type { ProximityRequest, ProximityStatus } from '@hueckoapp/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { errorMessage } from '../api/client';
+import { ApiError, errorMessage } from '../api/client';
 import { acceptProximity, cancelProximity, getProximity, rejectProximity, sendInvite, sendJoin } from '../api/proximity';
 import { queryKeys } from '../api/queryClient';
 
@@ -28,6 +28,7 @@ export function useProximitySession(target: Target) {
   const [id, setId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const sending = useRef(false);
+  const skipUpdates = useRef(0);
   const mounted = useRef(true);
   const live = useRef<{ id: string | null; status: ProximityStatus | undefined }>({ id: null, status: undefined });
   const targetRef = useRef(target);
@@ -63,6 +64,15 @@ export function useProximitySession(target: Target) {
 
   live.current = { id, status: request?.status };
 
+  // Un error de aceptar/rechazar se borra cuando llega la siguiente consulta (salvo la que él mismo pidió).
+  useEffect(() => {
+    if (skipUpdates.current > 0) {
+      skipUpdates.current -= 1;
+      return;
+    }
+    setActionError(null);
+  }, [query.dataUpdatedAt]);
+
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -87,7 +97,15 @@ export function useProximitySession(target: Target) {
       try {
         client.setQueryData(queryKeys.proximity(current), await action(current));
       } catch (e) {
-        if (mounted.current) setActionError(errorMessage(e));
+        if (!mounted.current) return;
+        // Reloj del celular adelantado: tocó Aceptar antes de que el servidor lo permita. Se pide el estado de nuevo.
+        if (e instanceof ApiError && e.code === 'PROXIMITY_NOT_PENDING' && live.current.status === 'MATCHED') {
+          setActionError('Espera un momento…');
+          skipUpdates.current = 1;
+          void client.invalidateQueries({ queryKey: queryKeys.proximity(current) });
+          return;
+        }
+        setActionError(errorMessage(e));
       }
     },
     [client],
