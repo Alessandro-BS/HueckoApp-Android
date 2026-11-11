@@ -165,4 +165,7 @@ export const migrations: string[] = [
      CHECK ((role = 'INVITE') = (group_id IS NOT NULL))
    );
    CREATE INDEX proximity_requests_status_idx ON proximity_requests (status, created_at);`,
+
+  // 6 — El emparejamiento hacia adelante busca parejas MATCHED de los últimos 3 s por matched_at (la tabla no se vacía).
+  `CREATE INDEX proximity_requests_matched_idx ON proximity_requests (status, matched_at);`,
 ];

@@ -72,6 +72,26 @@ describe('proximityRepository.create — emparejamiento', () => {
     expect([await statusOf(a), await statusOf(b)]).toEqual(['AMBIGUOUS', 'AMBIGUOUS']);
   });
 
+  it('una invitación nueva que llega ≤ 3 s después de una pareja también la anula (hacia adelante, rol INVITE)', async () => {
+    const { repo, statusOf, ana, beto, dani, group, otherGroup } = await setup();
+    const a = await repo.create(ana.id, 'INVITE', group.id, NOW);
+    const b = await repo.create(beto.id, 'JOIN', null, at(400));
+    expect(b.status).toBe('MATCHED'); // control
+    const d = await repo.create(dani.id, 'INVITE', otherGroup.id, at(800));
+    expect(d.status).toBe('AMBIGUOUS');
+    expect([await statusOf(a), await statusOf(b)]).toEqual(['AMBIGUOUS', 'AMBIGUOUS']);
+  });
+
+  it('una invitación nueva no anula una pareja cuyo JOIN ya es miembro de su grupo', async () => {
+    const { db, repo, statusOf, ana, beto, dani, group, otherGroup } = await setup();
+    await groupsRepository(db).addMember(otherGroup.id, beto.id);
+    const a = await repo.create(ana.id, 'INVITE', group.id, NOW);
+    const b = await repo.create(beto.id, 'JOIN', null, at(400));
+    const d = await repo.create(dani.id, 'INVITE', otherGroup.id, at(800));
+    expect(d.status).toBe('WAITING');
+    expect([await statusOf(a), await statusOf(b)]).toEqual(['MATCHED', 'MATCHED']);
+  });
+
   it('un aviso que llega 3,1 s después de una pareja no la toca', async () => {
     const { repo, statusOf, ana, beto, carla, group } = await setup();
     const a = await repo.create(ana.id, 'INVITE', group.id, NOW);

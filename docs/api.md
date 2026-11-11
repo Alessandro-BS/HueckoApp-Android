@@ -36,7 +36,7 @@ Todos los errores tienen la misma forma:
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
-| 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario) |
+| 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
 | 500 | Error inesperado del servidor |
 | 502 | `AI_BAD_RESPONSE`: la IA respondió algo que no cumple el formato esperado |
 | 503 | `AI_UNAVAILABLE`: la IA no respondió (proveedor caído o más de 30 s) |
@@ -373,23 +373,25 @@ Cada aviso es una mitad de la pareja; las dos mitades comparten estado. `group` 
 | `MATCHED` | pareja formada; quien invita decide; vence a los 30 s | `matched_at + 30 s` | `matched_at + 3 s` |
 | `ACCEPTED` | quien invita aceptó y la otra persona ya es miembro | `null` | `null` |
 | `REJECTED` | quien invita rechazó | `null` | `null` |
-| `EXPIRED` | venció sin respuesta, o la otra mitad dejó de existir (se borró el grupo o el usuario); se calcula al leer | `null` | `null` |
+| `EXPIRED` | venció sin respuesta (se calcula al leer), la otra mitad dejó de existir (se borró el grupo o el usuario) o quien invita salió del grupo antes de aceptar | `null` | `null` |
 | `AMBIGUOUS` | llegaron más de dos avisos casi a la vez y no se sabe cuál era el celular de verdad | `null` | `null` |
 | `CANCELLED` | alguien salió o empezó otro intento | `null` | `null` |
 
 **Regla de los 3 s:** dos avisos de rol opuesto se emparejan si llegan como mucho a 3 s uno del otro. Si hay más de un candidato, o llega otro aviso que hubiera podido emparejarse con alguien ya emparejado hace 3 s o menos, todos quedan `AMBIGUOUS`. Por eso quien invita **no puede aceptar ni rechazar hasta pasados 3 s de `matched_at`** (estrictamente: el milisegundo `matched_at + 3 s` aún no vale). Cada usuario tiene un solo intento activo: uno nuevo cancela el anterior. No se empareja con quien ya es miembro del grupo ni con uno mismo.
 
+**Límite:** `POST /proximity/invite` y `POST /proximity/join` comparten un límite de **10 avisos por minuto por usuario**; pasado, `429 TOO_MANY_REQUESTS` «Demasiados intentos. Espera un momento.». Consultar, responder y cancelar no cuentan.
+
 ### `POST /proximity/invite`
-Cuerpo `{ "groupId": "…" }`. `201 ProximityRequest` (rol `INVITE`, normalmente `WAITING`; ya `MATCHED` si el aviso de la otra persona llegó antes) · `400 VALIDATION_ERROR` · `404 GROUP_NOT_FOUND` · `403 NOT_A_MEMBER`.
+Cuerpo `{ "groupId": "…" }`. `201 ProximityRequest` (rol `INVITE`, normalmente `WAITING`; ya `MATCHED` si el aviso de la otra persona llegó antes) · `400 VALIDATION_ERROR` · `404 GROUP_NOT_FOUND` · `403 NOT_A_MEMBER` · `429 TOO_MANY_REQUESTS`.
 
 ### `POST /proximity/join`
-Cuerpo `{}`. `201 ProximityRequest` (rol `JOIN`).
+Cuerpo `{}`. `201 ProximityRequest` (rol `JOIN`) · `429 TOO_MANY_REQUESTS`.
 
 ### `GET /proximity/:id`
-La app lo consulta cada ~1 s. Solo su dueño: `200 ProximityRequest` · `404 PROXIMITY_NOT_FOUND` (también si es de otra persona).
+La app lo consulta cada 1,5 s. Solo su dueño: `200 ProximityRequest` · `404 PROXIMITY_NOT_FOUND` (también si es de otra persona).
 
 ### `POST /proximity/:id/accept`
-Solo quien invita, con la pareja en `MATCHED` vigente y pasados los 3 s. Añade a la otra persona al grupo (si ya era miembro, la pareja queda `ACCEPTED` igual). `200 ProximityRequest` con `ACCEPTED` · `409 PROXIMITY_NOT_PENDING` «Esta solicitud ya no se puede responder.» (rol `JOIN`, otro estado, vencida o antes de los 3 s) · `404 PROXIMITY_NOT_FOUND` (también si el grupo ya se había borrado: el borrado se lleva el aviso de quien invita) · `404 GROUP_NOT_FOUND` (el grupo se borra justo mientras se acepta; la pareja pasa a `EXPIRED`).
+Solo quien invita, con la pareja en `MATCHED` vigente y pasados los 3 s. Añade a la otra persona al grupo (si ya era miembro, la pareja queda `ACCEPTED` igual). `200 ProximityRequest` con `ACCEPTED` · `409 PROXIMITY_NOT_PENDING` «Esta solicitud ya no se puede responder.» (rol `JOIN`, otro estado, vencida o antes de los 3 s) · `404 PROXIMITY_NOT_FOUND` (también si el grupo ya se había borrado: el borrado se lleva el aviso de quien invita) · `404 GROUP_NOT_FOUND` (el grupo se borra justo mientras se acepta; la pareja pasa a `EXPIRED`) · `403 NOT_A_MEMBER` «No perteneces a este grupo.» (quien invita salió del grupo después de invitar; nadie entra y la pareja pasa a `EXPIRED`).
 
 ### `POST /proximity/:id/reject`
 Mismas reglas que `accept`, pero las dos mitades pasan a `REJECTED` y nadie entra al grupo. `200 ProximityRequest` · `409 PROXIMITY_NOT_PENDING` · `404 PROXIMITY_NOT_FOUND`.

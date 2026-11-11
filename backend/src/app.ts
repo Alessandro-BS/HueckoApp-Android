@@ -33,6 +33,8 @@ export type AppDeps = {
   ai?: AiClient;
   // Llamadas a la IA por usuario cada 15 min (20 si se omite); las pruebas lo suben.
   aiRateLimit?: number;
+  // Avisos de proximidad (invite + join) por usuario y minuto (10 si se omite); las pruebas lo suben.
+  proximityRateLimit?: number;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.

@@ -59,6 +59,15 @@ describe('migrate', () => {
   });
 });
 
+describe('esquema: proximidad', () => {
+  it('proximity_requests tiene índices por (status, created_at) y por (status, matched_at)', async () => {
+    const db = await openTestDatabase();
+    const rows = await db.many<{ indexdef: string }>("SELECT indexdef FROM pg_indexes WHERE tablename = 'proximity_requests'");
+    const defs = rows.map((r) => r.indexdef);
+    expect(defs).toEqual(expect.arrayContaining([expect.stringMatching(/\(status, created_at\)/), expect.stringMatching(/\(status, matched_at\)/)]));
+  });
+});
+
 describe('esquema: usuarios', () => {
   it('email único, claves foráneas activas y created_at por defecto en ISO UTC con milisegundos', async () => {
     const db = await openTestDatabase();

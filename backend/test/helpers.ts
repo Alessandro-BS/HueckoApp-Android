@@ -30,6 +30,7 @@ export async function makeTestApp(options?: {
   now?: () => Date;
   ai?: AiClient;
   aiRateLimit?: number;
+  proximityRateLimit?: number;
 }): Promise<{ app: Express; db: Db }> {
   const db = await makeTestDb();
   const app = createApp({
@@ -43,6 +44,7 @@ export async function makeTestApp(options?: {
     // Sin `ai`, createApp usa el cliente de demostración (como un servidor sin GEMINI_API_KEY).
     ai: options?.ai,
     aiRateLimit: options?.aiRateLimit ?? 10_000,
+    proximityRateLimit: options?.proximityRateLimit ?? 10_000,
   });
   return { app, db };
 }

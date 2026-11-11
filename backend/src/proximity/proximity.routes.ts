@@ -1,5 +1,6 @@
 import type { ProximityRequest, ProximityStatus } from '@hueckoapp/shared';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
@@ -15,13 +16,30 @@ import { inviteProximitySchema, joinProximitySchema } from './proximity.schemas'
 const PEER_VISIBLE: ProximityStatus[] = ['MATCHED', 'ACCEPTED', 'REJECTED'];
 
 const notFound = () => new ApiError(404, 'PROXIMITY_NOT_FOUND', 'Intento no encontrado.');
+const notAMember = () => new ApiError(403, 'NOT_A_MEMBER', 'No perteneces a este grupo.');
 const notPending = () => new ApiError(409, 'PROXIMITY_NOT_PENDING', 'Esta solicitud ya no se puede responder.');
+
+export const PROXIMITY_RATE_LIMIT_DEFAULT = 10;
+
+// Avisos (invite + join, mismo contador) por usuario y minuto. Un intento normal es un aviso; con 10 se puede repetir
+// de sobra y se frena a quien los manda en bucle para colarse en emparejamientos ajenos. Va detrás de requireAuth.
+function proximityLimiter(limit: number) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    limit,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (_req, res) => `user:${getUserId(res)}`,
+    handler: (_req, _res, next) => next(new ApiError(429, 'TOO_MANY_REQUESTS', 'Demasiados intentos. Espera un momento.')),
+  });
+}
 
 const plus = (iso: string, ms: number) => new Date(new Date(iso).getTime() + ms).toISOString();
 
 // Se monta detrás de requireAuth.
-export function proximityRouter({ db, now }: ResolvedDeps) {
+export function proximityRouter({ db, now, proximityRateLimit = PROXIMITY_RATE_LIMIT_DEFAULT }: ResolvedDeps) {
   const router = Router();
+  const limiter = proximityLimiter(proximityRateLimit);
   const proximity = proximityRepository(db);
   const groups = groupsRepository(db);
 
@@ -50,7 +68,7 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
     };
   };
 
-  router.post('/invite', async (req, res) => {
+  router.post('/invite', limiter, async (req, res) => {
     const { groupId } = inviteProximitySchema.parse(req.body);
     const userId = getUserId(res);
     await loadGroupForMember(groups, groupId, userId);
@@ -68,7 +86,7 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
     res.status(201).json(await toDto(row, at));
   });
 
-  router.post('/join', async (req, res) => {
+  router.post('/join', limiter, async (req, res) => {
     joinProximitySchema.parse(req.body);
     const userId = getUserId(res);
     const { row, at } = await db.transaction(async () => {
@@ -107,6 +125,12 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
         if (verdict === 'ACCEPTED') {
           const peer = await proximity.findPeer(own);
           if (!peer) throw notPending(); // la otra mitad ya no existe (su usuario se borró)
+          // Quien invita salió del grupo después de invitar: ya no puede meter a nadie. La pareja vence.
+          const member = await db.one('SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2', [own.group_id, userId]);
+          if (!member) {
+            await proximity.setPairStatus(own, 'EXPIRED');
+            return null;
+          }
           // Si ya era miembro (se unió con el código), la pareja queda ACCEPTED igual.
           await groups.addMember(own.group_id!, peer.user_id).catch((error: unknown) => {
             if (isForeignKeyViolation(error, 'group_members_group_id_fkey')) groupGone = own;
@@ -116,6 +140,7 @@ export function proximityRouter({ db, now }: ResolvedDeps) {
         await proximity.setPairStatus(own, verdict);
         return (await proximity.findOwn(own.id, userId))!;
       });
+      if (!row) throw notAMember();
       res.json(await toDto(row, at));
     } catch (error) {
       if (!groupGone) throw error;

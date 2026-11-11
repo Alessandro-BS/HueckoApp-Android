@@ -227,8 +227,38 @@ describe('proximidad', () => {
     expect((await get(`/${luisRes!.id}`, luis.token)).body).toMatchObject({ status: 'AMBIGUOUS', peer: null });
   });
 
+  it('si quien invita ya no es miembro del grupo, accept → 403 NOT_A_MEMBER, nadie entra y la pareja queda EXPIRED', async () => {
+    const { luis, ana, group, invite, join } = await pair();
+    await db.query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [group.id, luis.user.id]);
+    clock.set(at(5000));
+    const res = await post(`/${invite.id}/accept`, luis.token);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('NOT_A_MEMBER');
+    expect((await groupsOf(ana.token)).map((g) => g.id)).not.toContain(group.id);
+    expect((await get(`/${invite.id}`, luis.token)).body.status).toBe('EXPIRED');
+    expect((await get(`/${join.id}`, ana.token)).body.status).toBe('EXPIRED');
+  });
+
   it('sin token → 401', async () => {
     expect((await request(app).post('/api/proximity/join').send({})).status).toBe(401);
     expect((await request(app).get('/api/proximity/x')).status).toBe(401);
+  });
+});
+
+describe('proximidad: límite de avisos', () => {
+  it('invite y join comparten un límite por usuario → 429 TOO_MANY_REQUESTS con la forma del contrato', async () => {
+    ({ app, db } = await makeTestApp({ now: clock.now, proximityRateLimit: 2 }));
+    const luis = await registerUser(app, { name: 'Luis' });
+    const ana = await registerUser(app, { name: 'Ana' });
+    const group = await createGroup(app, luis.token);
+    expect((await post('/invite', luis.token, { groupId: group.id })).status).toBe(201);
+    expect((await post('/join', luis.token)).status).toBe(201);
+    const limited = await post('/invite', luis.token, { groupId: group.id });
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: expect.any(String), details: null } });
+    // Otro usuario tiene su propio contador; consultar no cuenta.
+    expect((await post('/join', ana.token)).status).toBe(201);
+    const own = await db.one<{ id: string }>('SELECT id FROM proximity_requests WHERE user_id = $1 LIMIT 1', [luis.user.id]);
+    expect((await get(`/${own!.id}`, luis.token)).status).toBe(200);
   });
 });
