@@ -14,7 +14,7 @@
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1060%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1195%20%E2%9C%94-2EA44F)
 
 [🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
 [🚀 Instalación](#-instalación-paso-a-paso) ·
@@ -412,7 +412,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 | | Qué | Cómo |
 |---|---|---|
-| ✅ | **1060 tests** | 560 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 500 de la app (Jest + Testing Library) |
+| ✅ | **1195 tests** | 617 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 578 de la app (Jest + Testing Library) |
 | 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
 | 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
 | 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |
@@ -471,8 +471,8 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
 | 🌐 **Volley** (equivalente en React Native) | ✅ Integrado | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio y Grupos. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
 | 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
-| 📡 **Sensor de proximidad** | ✅ Integrado | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go |
-| 🌀 **Giroscopio** | ✅ Integrado | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
+| 📡 **Sensor de proximidad** | 🚧 Pendiente de probar en dos celulares | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go; el módulo Kotlin aún no se ha compilado en un build |
+| 🌀 **Giroscopio** | 🚧 Pendiente de probar en dos celulares | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
 | 🧭 Magnetómetro (opcional) | ❌ Falta | `expo-sensors` (`Magnetometer`) |
 | 💡 Sensor de luz (opcional) | ❌ Falta | `expo-sensors` (`LightSensor`, solo Android) |
 
@@ -485,14 +485,17 @@ El sensor de proximidad detecta que hay algo a ~5 cm de la pantalla, pero no qu�
 3. Cada celular avisa al servidor del momento en que detectó algo cerca.
 4. Si llegan dos avisos casi a la vez (una invitación y una unión), el servidor une a esa persona al grupo y los dos vibran. Si hay coincidencias dudosas, no une a nadie y pide repetir o usar el código.
 
-**🛠️ Probarlo: development build**
+**🛠️ Probarlo: development build y backend local**
 
-El módulo nativo no está en Expo Go (allí las pantallas muestran «Usar el código»), así que hace falta un *development build*:
+El módulo nativo no está en Expo Go (allí las pantallas muestran «Usar el código»), así que hace falta un *development build*. Ese APK solo trae el código nativo: el JavaScript lo carga de Metro en tu PC y la URL del backend sale de **tu** `mobile/.env` (el `EXPO_PUBLIC_API_URL` del perfil `development` en [`eas.json`](mobile/eas.json) no se usa en ese caso). Y mientras esta función no esté desplegada, Render no tiene las rutas `/proximity`: se prueba con el backend local.
 
-1. Desde `mobile/`: `npx eas-cli@latest build --profile development --platform android` (perfil en [`eas.json`](mobile/eas.json); usa el backend de Render).
-2. Al terminar, abre el enlace o QR de EAS en cada celular, descarga el `.apk` e instálalo.
-3. En tu PC: `npx expo start --dev-client` y abre la app instalada (no Expo Go) para cargar el código desde Metro.
-4. Para probar contra tu backend local, pon `EXPO_PUBLIC_API_URL` en `mobile/.env` con la IP de tu PC (el perfil `development` apunta a Render).
+1. Desde `mobile/`: `npx eas-cli@latest build --profile development --platform android`. Al terminar, abre el enlace o QR de EAS en **cada** celular, descarga el `.apk` e instálalo.
+2. En tu PC, levanta el backend local: `npm run backend` (desde la raíz).
+3. Conecta los **dos** celulares a la **misma Wi-Fi** que tu PC y pon la IP de tu PC en `mobile/.env`: `EXPO_PUBLIC_API_URL=http://<IP-de-tu-PC>:3000/api` (sin `.env`, la app usa `10.0.2.2`, que solo funciona en el emulador). Comprueba en el navegador de cada celular que `http://<IP-de-tu-PC>:3000/api/health` dice `ok`.
+4. En `mobile/`: `npx expo start --dev-client --clear` y abre en cada celular la app instalada (no Expo Go) para cargar el código desde Metro.
+5. Entra con una cuenta distinta en cada celular (p. ej. `test@test.com` invita a «Proyecto Integrador» y `carlos@test.com` se une).
+
+Para probarlo contra Render, primero tiene que estar desplegada esta rama (o apuntar el servicio a ella un rato): entonces basta con `EXPO_PUBLIC_API_URL=https://hueckoapp-api.onrender.com/api` en `mobile/.env`.
 
 **🔜 Pendientes conocidos**
 

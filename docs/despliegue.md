@@ -53,7 +53,7 @@
 
 ## 📦 APK (EAS Build)
 
-La app se compila en los servidores de Expo; no hace falta Android Studio. La URL del backend va en `mobile/eas.json` (`EXPO_PUBLIC_API_URL`) y queda **dentro del APK**: si cambia, hay que generar otro.
+La app se compila en los servidores de Expo; no hace falta Android Studio. La URL del backend va en `mobile/eas.json` (`EXPO_PUBLIC_API_URL`) y queda **dentro del APK** (`preview` y `production`): si cambia, hay que generar otro. El APK `development` es distinto: carga el JavaScript desde Metro en tu PC y toma la URL de `mobile/.env`.
 
 1. 🔑 Crea una cuenta en [expo.dev](https://expo.dev) e inicia sesión (una vez por PC):
    ```bash
@@ -72,6 +72,6 @@ La app se compila en los servidores de Expo; no hace falta Android Studio. La UR
 
 | Perfil | Para qué | Versión |
 |---|---|---|
-| `development` | APK con *development client* (`expo-dev-client`) para probar módulos nativos, como unirse acercando el celular. Se genera con `--profile development` y se usa con `npx expo start --dev-client` | Igual que `preview` (`appVersionSource: remote`) |
+| `development` | APK con *development client* (`expo-dev-client`) para probar módulos nativos, como unirse acercando el celular. Se genera con `--profile development` y se usa con `npx expo start --dev-client`: el código y `EXPO_PUBLIC_API_URL` salen de Metro y de `mobile/.env` (no de `eas.json`). Mientras la función no esté desplegada, contra el backend local (`npm run backend`, celulares en la misma Wi-Fi; ver «Probarlo» en el [README](../README.md)) | `versionCode` lo lleva EAS (`appVersionSource: remote`), como en `preview` |
 | `preview` | APK para probar y entregar | `versionCode` lo lleva EAS (`appVersionSource: remote`) |
 | `production` | Igual, pero sube el `versionCode` solo (`autoIncrement`) | Para cada versión publicada |
