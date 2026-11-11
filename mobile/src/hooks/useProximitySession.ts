@@ -58,6 +58,8 @@ export function useProximitySession(target: Target) {
     queryFn: () => getProximity(id as string),
     enabled: id !== null,
     staleTime: POLL_MS, // el POST ya trajo el estado: no se vuelve a pedir al montar la consulta
+    // Sin los reintentos de la app (2/4/8 s): la consulta ya se repite cada 1,5 s y con ellos el estado se congelaría.
+    retry: false,
     refetchInterval: (q) => (isActive(q.state.data?.status) ? POLL_MS : false),
   });
   const request = id === null ? undefined : query.data;

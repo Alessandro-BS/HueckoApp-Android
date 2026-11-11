@@ -1,8 +1,11 @@
 import type { ProximityRequest, ProximityStatus } from '@hueckoapp/shared';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
+import { createElement, type ReactNode } from 'react';
 
 import { ApiError } from '../../api/client';
 import * as proximityApi from '../../api/proximity';
+import { createQueryClient } from '../../api/queryClient';
 import { withQueryClient } from '../../testing/queryClient';
 import { useProximitySession } from '../useProximitySession';
 
@@ -83,6 +86,38 @@ describe('useProximitySession', () => {
     await act(async () => result.current.send());
     await unmount();
     expect(mocked.cancelProximity).toHaveBeenCalledWith('r1');
+  });
+
+  it('al desmontar con el POST en vuelo, cancela el intento que llega después', async () => {
+    let resolve!: (r: ProximityRequest) => void;
+    mocked.sendInvite.mockReturnValue(new Promise((r) => (resolve = r)));
+    const { result, unmount } = await renderHook(() => useProximitySession(invite), withQueryClient());
+    await act(async () => result.current.send());
+    expect(result.current.phase).toBe('sending');
+    await unmount();
+    expect(mocked.cancelProximity).not.toHaveBeenCalled();
+    await act(async () => resolve(req('WAITING')));
+    expect(mocked.cancelProximity).toHaveBeenCalledWith('r1');
+    expect(mocked.getProximity).not.toHaveBeenCalled();
+  });
+
+  it('la consulta no usa los reintentos de la app (2/4/8 s): un fallo se ve y la siguiente consulta va a los 1,5 s', async () => {
+    // El QueryClient real de la app, con reintentos para las demás pantallas.
+    const client = createQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+    mocked.sendInvite.mockResolvedValue(req('WAITING'));
+    mocked.getProximity.mockRejectedValueOnce(new ApiError(0, 'NETWORK_ERROR', 'Sin conexión.', null)).mockResolvedValue(req('MATCHED'));
+    const { result, unmount } = await renderHook(() => useProximitySession(invite), { wrapper });
+    await act(async () => result.current.send());
+    await tick(1500);
+    expect(mocked.getProximity).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe('Sin conexión.');
+    await tick(1500);
+    expect(mocked.getProximity).toHaveBeenCalledTimes(2);
+    expect(result.current.request?.status).toBe('MATCHED');
+    expect(result.current.error).toBeNull();
+    await unmount();
+    client.clear();
   });
 
   it('al desmontar, si cancelProximity falla no hay promesa sin atender', async () => {

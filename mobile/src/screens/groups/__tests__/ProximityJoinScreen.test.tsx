@@ -50,11 +50,47 @@ it('el disparador llama a send', async () => {
   expect(screen.getByText('Junta los celulares pantalla con pantalla')).toBeTruthy();
 });
 
-it('en MATCHED espera a que el otro lo acepte, sin botones de aceptar', async () => {
+it('en MATCHED muestra «Confirmando…» sin nombres hasta acceptableFrom; después espera a que el otro lo acepte', async () => {
   setSession({ phase: 'active', request: request({}) });
   await renderScreen();
+  // Los primeros 3 s la pareja aún puede anularse (AMBIGUOUS): no se muestra a quién ni a qué grupo.
+  expect(screen.getByText('Confirmando…')).toBeTruthy();
+  expect(screen.queryByText(/Esperando a que/)).toBeNull();
+  expect(screen.queryByText(/Ana|Estudio/)).toBeNull();
+  await act(async () => jest.advanceTimersByTime(3000));
+  expect(screen.queryByText('Confirmando…')).toBeNull();
   expect(screen.getByText(/Esperando a que/)).toBeTruthy();
+  expect(screen.getByText('Ana')).toBeTruthy();
+  expect(screen.getByText('Estudio')).toBeTruthy();
   expect(screen.queryByText('Aceptar')).toBeNull();
+});
+
+it('WAITING muestra «Buscando…» sin «Intentar de nuevo»', async () => {
+  setSession({ phase: 'active', request: request({ status: 'WAITING', group: null, peer: null, acceptableFrom: null }) });
+  await renderScreen();
+  expect(screen.getByText('Buscando…')).toBeTruthy();
+  expect(screen.queryByText('Intentar de nuevo')).toBeNull();
+});
+
+it.each([
+  ['AMBIGUOUS', 'Hubo otro intento cerca. Repitan o usen el código'],
+  ['CANCELLED', 'El intento se canceló.'],
+] as const)('%s muestra su texto e «Intentar de nuevo»', async (status, text) => {
+  setSession({ phase: 'done', request: request({ status, group: null, peer: null, acceptableFrom: null }) });
+  await renderScreen();
+  expect(screen.getByText(text)).toBeTruthy();
+  await fireEvent.press(screen.getByText('Intentar de nuevo'));
+  expect(session.reset).toHaveBeenCalled();
+});
+
+it('un error al enviar muestra el mensaje e «Intentar de nuevo», no «Buscando…»', async () => {
+  setSession({ error: 'Sin conexión.' });
+  await renderScreen();
+  expect(screen.getByText('Sin conexión.')).toBeTruthy();
+  expect(screen.queryByText('Buscando…')).toBeNull();
+  expect(useProximityTrigger).toHaveBeenLastCalledWith(false, session.send);
+  await fireEvent.press(screen.getByText('Intentar de nuevo'));
+  expect(session.reset).toHaveBeenCalled();
 });
 
 it('ACCEPTED navega al detalle del grupo', async () => {

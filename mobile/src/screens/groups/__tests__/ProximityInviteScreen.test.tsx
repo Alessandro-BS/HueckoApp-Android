@@ -143,3 +143,15 @@ it('AMBIGUOUS muestra el texto y «Intentar de nuevo» llama a reset', async () 
   await fireEvent.press(screen.getByText('Intentar de nuevo'));
   expect(session.reset).toHaveBeenCalled();
 });
+
+it.each([
+  ['REJECTED', 'Rechazaste la solicitud.'],
+  ['EXPIRED', 'Se acabó el tiempo. Vuelvan a intentarlo.'],
+  ['CANCELLED', 'El intento se canceló.'],
+] as const)('%s muestra su texto e «Intentar de nuevo» llama a reset', async (status, text) => {
+  setSession({ phase: 'done', request: request({ status, acceptableFrom: null }) });
+  await renderScreen();
+  expect(screen.getByText(text)).toBeTruthy();
+  await fireEvent.press(screen.getByText('Intentar de nuevo'));
+  expect(session.reset).toHaveBeenCalled();
+});

@@ -124,6 +124,9 @@ export function ProximityStatusView({ role, request, phase, error, available, ac
     ) : (
       <Text style={[typography.labelLarge, styles.waiting]}>Confirmando…</Text>
     );
+  } else if (status === 'MATCHED' && !acceptable) {
+    // Quien se une: los primeros 3 s la pareja aún puede anularse por otro aviso, así que no se muestra con quién.
+    body = <Message icon="hourglass-top">Confirmando…</Message>;
   } else if (status === 'MATCHED') {
     body = (
       <Message icon="hourglass-top">
