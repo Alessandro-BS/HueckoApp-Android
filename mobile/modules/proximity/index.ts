@@ -17,7 +17,8 @@ export function isAvailable(): boolean {
   return native?.isAvailable() ?? false;
 }
 
-// El sensor se enciende con el primer listener y se apaga al quitar el último (OnStartObserving/OnStopObserving).
+// El sensor se enciende con el primer listener y se apaga al quitar el último (OnStartObserving/OnStopObserving), y
+// también mientras la app está en segundo plano (OnActivityEntersBackground/Foreground).
 // Solo avisa cuando cambia `near`. Sin módulo nativo devuelve un `remove` que no hace nada.
 export function addProximityListener(listener: (event: ProximityChangeEvent) => void): ProximitySubscription {
   if (!native) return { remove: () => {} };

@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 import { Gyroscope } from 'expo-sensors';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { useStillness } from '../useStillness';
 
@@ -17,9 +18,17 @@ async function readFor(ms: number, x = 0.1) {
   }
 }
 
+const appStateListeners = new Set<(state: AppStateStatus) => void>();
+const setAppState = (state: AppStateStatus) => appStateListeners.forEach((listener) => listener(state));
+
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  appStateListeners.clear();
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+    appStateListeners.add(listener);
+    return { remove: () => void appStateListeners.delete(listener) };
+  });
   mocked.isAvailableAsync.mockResolvedValue(true);
 });
 afterEach(() => jest.useRealTimers());
@@ -61,4 +70,19 @@ it('no escucha con enabled=false y deja de escuchar al desmontar', async () => {
   const subscription = mocked.addListener.mock.results[0].value;
   await act(async () => on.unmount());
   expect(subscription.remove).toHaveBeenCalledTimes(1);
+});
+
+it('en segundo plano deja de escuchar y no se queda en true', async () => {
+  const { result } = await renderHook(() => useStillness(true));
+  await readFor(500);
+  expect(result.current).toBe(true);
+  const subscription = mocked.addListener.mock.results[0].value;
+  await act(async () => setAppState('background'));
+  expect(subscription.remove).toHaveBeenCalledTimes(1);
+  expect(result.current).toBe(false);
+  await act(async () => setAppState('active'));
+  expect(mocked.addListener).toHaveBeenCalledTimes(2);
+  expect(result.current).toBe(false); // hay que volver a ver 400 ms quieto
+  await readFor(500);
+  expect(result.current).toBe(true);
 });

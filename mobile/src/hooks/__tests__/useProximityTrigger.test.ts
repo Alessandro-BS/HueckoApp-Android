@@ -1,9 +1,10 @@
 import { useIsFocused } from '@react-navigation/native';
 import { act, renderHook } from '@testing-library/react-native';
 import { Gyroscope } from 'expo-sensors';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import * as Proximity from '../../../modules/proximity';
-import { useProximityTrigger } from '../useProximityTrigger';
+import { ARM_WINDOW_MS, useProximityTrigger } from '../useProximityTrigger';
 
 jest.mock('@react-navigation/native', () => ({ useIsFocused: jest.fn(() => true) }));
 
@@ -20,9 +21,17 @@ async function readFor(ms: number, x = 0.1) {
   }
 }
 
+const appStateListeners = new Set<(state: AppStateStatus) => void>();
+const setAppState = (state: AppStateStatus) => appStateListeners.forEach((listener) => listener(state));
+
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  appStateListeners.clear();
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+    appStateListeners.add(listener);
+    return { remove: () => void appStateListeners.delete(listener) };
+  });
   jest.mocked(Proximity.isAvailable).mockReturnValue(true);
   jest.mocked(Gyroscope.isAvailableAsync).mockResolvedValue(true);
   jest.mocked(useIsFocused).mockReturnValue(true);
@@ -107,5 +116,55 @@ it('con enabled=false no dispara', async () => {
   await renderHook(() => useProximityTrigger(false, onTrigger));
   await readFor(600);
   await act(async () => emitNear(true));
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('quieto poco después de juntarlos (dentro de 1,5 s) dispara una sola vez', async () => {
+  expect(ARM_WINDOW_MS).toBe(1500);
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(300, 1); // aún se mueve
+  await act(async () => emitNear(false)); // lectura inicial
+  await act(async () => emitNear(true));
+  expect(onTrigger).not.toHaveBeenCalled();
+  await readFor(600); // se queda quieto, todavía cerca
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+  await readFor(1000, 1);
+  await readFor(600);
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+});
+
+it('quieto pasados 1,5 s de juntarlos no dispara', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  await readFor(1200, 1);
+  await readFor(600);
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('si se aleja antes de quedarse quieto no dispara', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  await readFor(100, 1);
+  await act(async () => emitNear(false));
+  await readFor(600);
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('con la app en segundo plano no dispara, ni al volver con el sensor tapado', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600);
+  await act(async () => emitNear(false)); // lectura inicial: lejos y quieto
+  await act(async () => setAppState('background')); // se bloquea la pantalla
+  await act(async () => emitNear(true)); // al bolsillo
+  expect(onTrigger).not.toHaveBeenCalled();
+  await act(async () => setAppState('active'));
+  await readFor(600);
+  await act(async () => emitNear(true)); // lectura inicial de la nueva suscripción
   expect(onTrigger).not.toHaveBeenCalled();
 });

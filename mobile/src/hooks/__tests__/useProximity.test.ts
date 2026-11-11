@@ -1,5 +1,6 @@
 import { useIsFocused } from '@react-navigation/native';
 import { act, renderHook } from '@testing-library/react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import * as Proximity from '../../../modules/proximity';
 import { useProximity } from '../useProximity';
@@ -10,8 +11,17 @@ jest.mock('@react-navigation/native', () => ({ useIsFocused: jest.fn(() => true)
 const mocked = jest.mocked(Proximity);
 const emit = (near: boolean) => (Proximity as unknown as { __emit(near: boolean): void }).__emit(near);
 
+// Cambios de AppState: los listeners se guardan y setAppState los avisa a todos.
+const appStateListeners = new Set<(state: AppStateStatus) => void>();
+const setAppState = (state: AppStateStatus) => appStateListeners.forEach((listener) => listener(state));
+
 beforeEach(() => {
   jest.clearAllMocks();
+  appStateListeners.clear();
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+    appStateListeners.add(listener);
+    return { remove: () => void appStateListeners.delete(listener) };
+  });
   mocked.isAvailable.mockReturnValue(true);
   jest.mocked(useIsFocused).mockReturnValue(true);
 });
@@ -48,6 +58,21 @@ it('deja de escuchar al perder el foco y vuelve a lejos', async () => {
   await rerender({});
   expect(subscription.remove).toHaveBeenCalledTimes(1);
   expect(result.current.near).toBe(false);
+});
+
+it('en segundo plano deja de escuchar; al volver se suscribe de nuevo con readings=0', async () => {
+  const { result } = await renderHook(() => useProximity(true));
+  await act(async () => emit(false));
+  const subscription = mocked.addProximityListener.mock.results[0].value;
+  await act(async () => setAppState('background'));
+  expect(subscription.remove).toHaveBeenCalledTimes(1);
+  expect(result.current).toEqual({ available: true, near: false, readings: 0 });
+  await act(async () => emit(true)); // pantalla bloqueada, en el bolsillo: no llega
+  expect(result.current.readings).toBe(0);
+  await act(async () => setAppState('active'));
+  expect(mocked.addProximityListener).toHaveBeenCalledTimes(2);
+  await act(async () => emit(true));
+  expect(result.current).toEqual({ available: true, near: true, readings: 1 });
 });
 
 it('available=false sin módulo nativo', async () => {
