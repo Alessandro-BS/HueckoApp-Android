@@ -6,6 +6,8 @@ import { AdminUserDetailScreen } from '../screens/admin/AdminUserDetailScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
+import { ProximityInviteScreen } from '../screens/groups/ProximityInviteScreen';
+import { ProximityJoinScreen } from '../screens/groups/ProximityJoinScreen';
 import { CreateProposalScreen } from '../screens/proposals/CreateProposalScreen';
 import { PlanDetailScreen } from '../screens/proposals/PlanDetailScreen';
 import { VotingScreen } from '../screens/proposals/VotingScreen';
@@ -47,6 +49,8 @@ export function RootNavigator() {
       <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
       <AppStack.Screen name="OcrReview" component={OcrReviewScreen} options={{ title: 'Revisar escaneo' }} />
       <AppStack.Screen name="GroupDetail" component={GroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+      <AppStack.Screen name="ProximityInvite" component={ProximityInviteScreen} options={{ title: 'Acercar para invitar' }} />
+      <AppStack.Screen name="ProximityJoin" component={ProximityJoinScreen} options={{ title: 'Unirse acercando' }} />
       <AppStack.Screen name="CreateProposal" component={CreateProposalScreen} options={{ title: 'Nueva propuesta' }} />
       <AppStack.Screen name="Voting" component={VotingScreen} options={{ title: 'Votar' }} />
       <AppStack.Screen name="PlanDetail" component={PlanDetailScreen} options={{ title: 'Detalle del plan' }} />
