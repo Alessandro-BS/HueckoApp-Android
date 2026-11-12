@@ -67,7 +67,7 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
       makeSuggestion({ title: 'Almuerzo del grupo', category: 'COMIDA', placeIdea: null, window: null, reason: 'Un plan corto.' }),
       makeSuggestion({
         title: 'Partido de fulbito', category: 'DEPORTE', placeIdea: 'Losa del campus',
-        window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+        window: { date: '2026-11-19', dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
       }),
     ],
   });

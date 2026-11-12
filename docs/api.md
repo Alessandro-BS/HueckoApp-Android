@@ -190,15 +190,17 @@ Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_
 Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y pasa a gestionarlas el `OWNER` (ver «Quién gestiona un plan»).
 
 ### `GET /groups/:id/availability`
-Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`).
-`200 MatchWindow[]`, ordenadas por día (lunes a domingo) y hora · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+Cruce de horarios de todos los miembros **en una semana concreta**, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`, aplicado día a día).
+Query `?week=YYYY-MM-DD` (opcional): cualquier día se normaliza a su lunes; por defecto, la semana actual (zona America/Lima). Solo valen esta semana y las 3 siguientes: otra → `400 VALIDATION_ERROR` («Elige una semana entre esta y las próximas 3»).
+`200 MatchWindow[]`, cada una con su `date` (`YYYY-MM-DD`), ordenadas por fecha y hora · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
 
 Reglas:
 - La agenda va de **08:00 a 20:00** en horas enteras; cada hora `h` es la franja `[h:00, h+1:00)`.
 - Un bloque ocupa **entera** cualquier hora que toque: el inicio trunca minutos (`10:30` → 10) y el fin redondea hacia arriba (`10:30` → 11).
 - Por hora: `libres = miembros − personas ocupadas` (una persona cuenta una vez aunque tenga bloques solapados); `% = round(libres × 100 / miembros)`.
 - Una hora vale si `% ≥ availabilityThreshold` (inclusivo). Las horas válidas seguidas se fusionan en una franja, que muestra el **peor** `%` y el **menor** `freeMembers` de sus horas.
-- Solo cuentan los bloques **recurrentes**; los puntuales no entran en esta vista semanal (un filtro `?weekOf=YYYY-MM-DD` queda pendiente).
+- Cada día cuenta los bloques **recurrentes** de ese día de la semana y los **puntuales** de esa fecha.
+- No se ofrecen franjas que ya empezaron (en la semana actual); se descartan enteras, sin recortarlas.
 - Los bloques de tipo **`LIBRE` no ocupan**.
 - Grupo sin miembros → `[]`.
 

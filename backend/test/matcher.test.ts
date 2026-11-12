@@ -1,14 +1,14 @@
-import type { MatchWindow, TimeBlock } from '@hueckoapp/shared';
+import type { TimeBlock } from '@hueckoapp/shared';
 import { describe, expect, it } from 'vitest';
 
 import { groupAvailability } from '../src/availability/group-availability';
-import { endHour, startHour, weeklyWindows, windowsFor, type MatcherBlock } from '../src/availability/matcher';
+import { endHour, startHour, weeklyWindows, windowsFor, type DayWindow, type MatcherBlock } from '../src/availability/matcher';
 
 const b = (userId: string, dayOfWeek: number | null, startTime: string, endTime: string): MatcherBlock => ({
   userId, dayOfWeek, startTime, endTime,
 });
 const hh = (h: number) => `${String(h).padStart(2, '0')}:00`;
-const w = (dayOfWeek: number, start: number, end: number, availabilityPercentage: number, freeMembers: number): MatchWindow => ({
+const w = (dayOfWeek: number, start: number, end: number, availabilityPercentage: number, freeMembers: number): DayWindow => ({
   dayOfWeek, startTime: hh(start), endTime: hh(end), availabilityPercentage, freeMembers,
 });
 

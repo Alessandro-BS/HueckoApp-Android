@@ -10,9 +10,11 @@ import { draftDeadline } from '../src/ai/plan-ideas';
 import {
   bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup,
 } from './helpers';
+import { addDays } from '../src/common/zone';
 
+// La IA aún usa la semana actual (la del lunes 28 de sep. de 2026, la de NOW): la fecha sale del día de la semana.
 const mw = (dayOfWeek: number, startTime: string, endTime: string, availabilityPercentage = 100, freeMembers = 2): MatchWindow => ({
-  dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers,
+  date: addDays('2026-09-28', dayOfWeek - 1), dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers,
 });
 
 // Huecos de la semilla (ejemplo E3, domain spec §1.2) en el orden de GET /availability: el número de la lista = índice + 1.

@@ -1,6 +1,6 @@
 import type { Group, MatchWindow } from '@hueckoapp/shared';
 
-import { groupWindows } from '../availability/group-availability';
+import { groupWeekWindows, parseWeek } from '../availability/group-availability';
 import type { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { nextOccurrence } from '../proposals/rules';
 import { TIME_REGEX } from '../schedule/time-blocks.schemas';
@@ -26,9 +26,14 @@ export const MIN_DRAFT_LEAD_MS = 2 * 60 * 60 * 1000;
 const isoDayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1;
 const hhmm = (hours: number, minutes = 0) => `${pad(hours)}:${pad(minutes)}`;
 
+// TODO(franjas-con-fecha Task 6): la IA aún trabaja con una semana tipo (como antes, sin descartar franjas pasadas:
+// draftCandidates ya parte el hueco de hoy); mientras tanto usa los huecos de la semana actual.
+export const currentWeekWindows = (group: Group, blocks: TimeBlocksRepository, now: Date): Promise<MatchWindow[]> =>
+  groupWeekWindows(group, blocks, parseWeek(undefined, now), new Date(0));
+
 /** Huecos en común reales del grupo (los mismos que GET /groups/:id/availability), limitados para el prompt. */
-export async function commonWindows(group: Group, blocks: TimeBlocksRepository): Promise<MatchWindow[]> {
-  return (await groupWindows(group, blocks)).slice(0, MAX_AI_WINDOWS);
+export async function commonWindows(group: Group, blocks: TimeBlocksRepository, now: Date): Promise<MatchWindow[]> {
+  return (await currentWeekWindows(group, blocks, now)).slice(0, MAX_AI_WINDOWS);
 }
 
 /**

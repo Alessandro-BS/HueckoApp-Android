@@ -48,10 +48,10 @@ export function pickWinner(windows: readonly TimeWindow[]): TimeWindow | null {
   )[0];
 }
 
-const wholeHours = (w: MatchWindow) => Number(w.endTime.slice(0, 2)) - Number(w.startTime.slice(0, 2));
+const wholeHours = (w: Omit<MatchWindow, 'date'>) => Number(w.endTime.slice(0, 2)) - Number(w.startTime.slice(0, 2));
 
 /** C5: «las 3 mejores franjas» = mayor %, después mayor duración, después día y hora más tempranos. */
-export function bestWindows(windows: readonly MatchWindow[], count = 3): MatchWindow[] {
+export function bestWindows<T extends Omit<MatchWindow, 'date'>>(windows: readonly T[], count = 3): T[] {
   return [...windows]
     .sort(
       (a, b) =>

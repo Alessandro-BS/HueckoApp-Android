@@ -73,5 +73,15 @@ export function timeBlocksRepository(db: Db) {
       );
       return rows.map(toTimeBlock);
     },
+
+    // Recurrentes + puntuales con fecha en [from, to] (YYYY-MM-DD, inclusivos) de varias personas.
+    async listForUsersInRange(userIds: readonly string[], from: string, to: string): Promise<TimeBlock[]> {
+      const rows = await db.many<TimeBlockRow>(
+        `SELECT * FROM time_blocks
+         WHERE user_id = ANY($1::text[]) AND (is_recurring OR (date >= $2 AND date <= $3)) ${ORDER}`,
+        [userIds, from, to],
+      );
+      return rows.map(toTimeBlock);
+    },
   };
 }

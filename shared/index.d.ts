@@ -46,6 +46,7 @@ export type Group = GroupSummary & {
 };
 
 export type MatchWindow = {
+  date: string;                  // YYYY-MM-DD (America/Lima) del día concreto de la franja
   dayOfWeek: number;
   startTime: string;
   endTime: string;

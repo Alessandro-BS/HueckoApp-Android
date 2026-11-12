@@ -11,9 +11,9 @@ beforeEach(() => jest.clearAllMocks());
 
 it('muestra las franjas agrupadas por día con su % y los libres', async () => {
   mocked.getAvailability.mockResolvedValue([
-    { dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
-    { dayOfWeek: 3, startTime: '08:00', endTime: '14:00', availabilityPercentage: 100, freeMembers: 2 },
-    { dayOfWeek: 3, startTime: '19:00', endTime: '20:00', availabilityPercentage: 50, freeMembers: 1 },
+    { date: '2026-11-16', dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+    { date: '2026-11-18', dayOfWeek: 3, startTime: '08:00', endTime: '14:00', availabilityPercentage: 100, freeMembers: 2 },
+    { date: '2026-11-18', dayOfWeek: 3, startTime: '19:00', endTime: '20:00', availabilityPercentage: 50, freeMembers: 1 },
   ]);
   await render(<AvailabilityTab groupId="g1" threshold={50} memberCount={2} />);
   expect(await screen.findByText('Lunes')).toBeTruthy();
@@ -35,7 +35,7 @@ it('sin franjas explica el umbral', async () => {
 it('si falla sin datos muestra el error y Reintentar recupera las franjas', async () => {
   mocked.getAvailability.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'Algo falló.'));
   mocked.getAvailability.mockResolvedValueOnce([
-    { dayOfWeek: 2, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100, freeMembers: 2 },
+    { date: '2026-11-17', dayOfWeek: 2, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100, freeMembers: 2 },
   ]);
   await render(<AvailabilityTab groupId="g1" threshold={80} memberCount={2} />);
   expect(await screen.findByText('Algo falló.')).toBeTruthy();

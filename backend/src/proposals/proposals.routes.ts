@@ -78,7 +78,7 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
             date: nextDateOf(w.dayOfWeek, w.startTime, now),
             startTime: w.startTime,
             endTime: w.endTime,
-            availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, w),
+            availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, { ...w, date: nextDateOf(w.dayOfWeek, w.startTime, now) }),
           }))
         : bestWindows(groupAvailability(matcherGroup, groupBlocks)).map(({ dayOfWeek, startTime, endTime, availabilityPercentage }) => ({
             date: nextDateOf(dayOfWeek, startTime, now),
@@ -147,11 +147,12 @@ export function proposalsRouter(deps: ResolvedDeps) {
     );
     if (exists) throw new ApiError(409, 'WINDOW_EXISTS', 'Esa franja ya está propuesta.');
     const { matcherGroup, groupBlocks } = await ctx.matcherInput(group);
+    const date = nextDateOf(input.dayOfWeek, input.startTime, ctx.now());
     await ctx.proposals.addWindow(proposal.id, {
-      date: nextDateOf(input.dayOfWeek, input.startTime, ctx.now()),
+      date,
       startTime: input.startTime,
       endTime: input.endTime,
-      availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, input),
+      availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, { ...input, date }),
     });
     res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });

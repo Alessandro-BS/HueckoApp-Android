@@ -267,7 +267,7 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
 });
 
 it('un borrador con varias opciones las carga todas en «Elegir yo las franjas» y las envía', async () => {
-  const viernes = (startTime: string, endTime: string) => ({ dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
+  const viernes = (startTime: string, endTime: string) => ({ date: '2026-11-20', dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
   mockedAi.draftProposal.mockResolvedValue(
     makeDraft({ window: viernes('15:00', '17:00'), windows: [viernes('15:00', '17:00'), viernes('09:00', '11:00'), viernes('13:00', '15:00')] }),
   );

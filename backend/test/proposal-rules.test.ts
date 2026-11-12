@@ -58,7 +58,7 @@ describe('pickWinner (C2)', () => {
 });
 
 const mw = (dayOfWeek: number, startTime: string, endTime: string, availabilityPercentage = 100): MatchWindow => ({
-  dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers: 2,
+  date: '2026-11-16', dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers: 2,
 });
 
 // Semana completa del ejemplo E3 (domain spec §1.2).

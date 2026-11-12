@@ -90,7 +90,7 @@ export const makeDraft = (over: Partial<ProposalDraft> = {}): ProposalDraft => {
     title: 'Estudiar para el parcial',
     category: 'ESTUDIO' as const,
     placeName: 'Biblioteca central',
-    window: { dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+    window: { date: '2026-11-17', dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
     votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
     ...over,
   };
@@ -101,7 +101,7 @@ export const makeSuggestion = (over: Partial<PlanSuggestion> = {}): PlanSuggesti
   title: 'Sesión de estudio antes del parcial',
   category: 'ESTUDIO',
   placeIdea: 'Biblioteca central',
-  window: { dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+  window: { date: '2026-11-16', dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
   reason: 'Todo el grupo está libre el lunes por la tarde.',
   ...over,
 });

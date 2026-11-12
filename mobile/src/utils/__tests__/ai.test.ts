@@ -25,7 +25,7 @@ it('prefill desde un borrador: solo día y horas de la franja', () => {
 });
 
 it('las franjas del formulario: todas las opciones del borrador, o solo `window` si no vienen', () => {
-  const viernes = (startTime: string, endTime: string) => ({ dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
+  const viernes = (startTime: string, endTime: string) => ({ date: '2026-11-20', dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
   const draft = makeDraft({ window: viernes('15:00', '17:00'), windows: [viernes('15:00', '17:00'), viernes('09:00', '11:00')] });
   expect(prefillWindows(prefillFromDraft(draft))).toEqual([
     { dayOfWeek: 5, startTime: '15:00', endTime: '17:00' },
