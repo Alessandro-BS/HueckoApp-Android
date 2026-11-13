@@ -269,9 +269,10 @@ describe('GET /api/groups/:id/proposals', () => {
 
 describe('GET /api/proposals/:id', () => {
   it('200 a un miembro, 403 a quien no lo es, 404 si no existe', async () => {
+    // yo es organizador del grupo: gestiona la propuesta de Ana aunque no la creara.
     const p = await prop2();
     const got = (await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body;
-    expect(got).toEqual({ ...p, canManage: false });
+    expect(got).toEqual({ ...p, canManage: true });
     expect(got.expressVote).toBeNull();
     expect(got.incidences).toEqual([]);
     const otra = await registerUser(app);

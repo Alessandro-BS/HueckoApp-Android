@@ -188,7 +188,7 @@ Solo un `ORGANIZER` (`403 NOT_ORGANIZER` «Solo un organizador del grupo puede h
 Solo un `ORGANIZER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. Un `ORGANIZER` puede marcarse a sí mismo.
 
 ### `DELETE /groups/:id/members/me`
-Salir del grupo. `204`. Si sale el último `ORGANIZER` y quedan miembros, pasa a `ORGANIZER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y pasa a gestionarlas el `ORGANIZER` (ver «Quién gestiona un plan»).
+Salir del grupo. `204`. Si sale el último `ORGANIZER` y quedan miembros, pasa a `ORGANIZER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y las gestionan los `ORGANIZER` (ver «Quién gestiona un plan»).
 
 ### `GET /groups/:id/availability`
 Cruce de horarios de todos los miembros **en una semana concreta**, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`, aplicado día a día).
@@ -243,10 +243,11 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 **Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.
 
 ### Quién gestiona un plan
-Confirmar, cancelar y replantear lo decide **una sola persona** (qué hacer ante una ausencia crítica lo vota el grupo: ver «Votación exprés»), y ningún plan se queda sin ella:
+Confirmar, cancelar y replantear lo deciden (qué hacer ante una ausencia crítica lo vota el grupo: ver «Votación exprés»):
 1. quien creó la propuesta, mientras siga en el grupo (si sale y vuelve, la recupera);
-2. si se fue, el `ORGANIZER` del grupo (quien lo creó; si también se fue, el rol ya pasó a quien lleva más tiempo, ver `DELETE /groups/:id/members/me`);
-3. si no hubiera `ORGANIZER`, quien lleva más tiempo en el grupo (fecha de entrada más antigua; quien sale y vuelve cuenta desde su nueva entrada).
+2. cualquier `ORGANIZER` del grupo, la haya creado o no.
+
+Siempre hay al menos un `ORGANIZER` (`409 LAST_ORGANIZER` y la herencia al salir, ver `DELETE /groups/:id/members/me`), así que ningún plan se queda sin quien lo gestione.
 
 Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra los botones con él (no comparando ids). Si lo intenta alguien que no gestiona el plan: `403 NOT_MANAGER` «Solo quien organiza el plan puede hacer esto.»
 

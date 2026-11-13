@@ -188,7 +188,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
     res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  // Solo quien gestiona la propuesta decide sobre ella (canManageProposal: su creador; si se fue, el organizador; si no, el más antiguo).
+  // Solo quien gestiona la propuesta decide sobre ella (canManageProposal: su creador mientras siga en el grupo, o cualquier organizador).
   const loadForManager = async (proposalId: string, userId: string) => {
     const loaded = await ctx.loadForMember(proposalId, userId);
     if (!loaded.proposal.canManage) {
