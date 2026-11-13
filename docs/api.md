@@ -34,7 +34,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo; `NOT_ORGANIZER`: la acción es solo de organizadores del grupo; `NOT_A_VOTER`: no está entre quienes votan la votación exprés de un plan de su grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`), quitarle el rol al último organizador de un grupo (`LAST_ORGANIZER`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`), quitarle el rol al último organizador de un grupo (`LAST_ORGANIZER`), un bloque del horario que se solapa con otro (`TIME_BLOCK_OVERLAP`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
 | 500 | Error inesperado del servidor |
@@ -136,11 +136,15 @@ Cuerpo = `TimeBlockInput` de `shared`. Reglas:
 - Recurrente (`isRecurring: true`): `dayOfWeek` 1–7 obligatorio; `date` `null` u omitido.
 - Puntual (`isRecurring: false`): `date` `YYYY-MM-DD` real obligatorio; `dayOfWeek` `null` u omitido.
 - `userId` lo pone el servidor desde el token (si viene en el cuerpo, se ignora).
+- **Sin solapes:** un bloque no puede cruzarse con otro del mismo usuario (de cualquier tipo, `LIBRE` incluido). Las horas se cruzan de forma estricta (08:00–10:00 y 10:00–12:00 no se solapan). Chocan dos recurrentes del mismo día, dos puntuales de la misma fecha, y un puntual con un recurrente si la fecha cae en el día de la semana del recurrente. Se comprueba al guardar, con el usuario bloqueado, así que dos guardados a la vez no se cuelan. Los solapes ya guardados antes de esta regla siguen funcionando (`GET` no cambia).
 
-`201 TimeBlock` · `400 VALIDATION_ERROR` (`details[].path` indica el campo)
+`201 TimeBlock` · `400 VALIDATION_ERROR` (`details[].path` indica el campo) · `409 TIME_BLOCK_OVERLAP` «Se solapa con «Cálculo II» (lunes 08:00–11:00).» (o «… (16/11/2026 09:00–10:00).» si es puntual), con `details: { blockId }` del bloque guardado con el que choca
 
 ### `POST /me/time-blocks/bulk`
-`{ "blocks": [ ...mismo cuerpo que arriba... ] }` → `201 TimeBlock[]`. Entre 1 y 100 bloques. **Todo o nada:** si uno es inválido responde `400` (con `path` tipo `["blocks", 1, "endTime"]`) y no se guarda ninguno. Lo usa la pantalla de revisión del OCR.
+`{ "blocks": [ ...mismo cuerpo que arriba... ] }` → `201 TimeBlock[]`. Entre 1 y 100 bloques. **Todo o nada:** si uno es inválido responde `400` (con `path` tipo `["blocks", 1, "endTime"]`) y no se guarda ninguno. Lo usa la pantalla de revisión del OCR. Con solapes responde `409 TIME_BLOCK_OVERLAP` y no se guarda ninguno: si el bloque `i` choca con uno ya guardado, `details: { path: ["blocks", i], blockId }`; si choca con otro del mismo lote (anterior), el mensaje nombra ese otro bloque y `details: { path: ["blocks", i], otherIndex }`.
+
+### `PUT /me/time-blocks/:id`
+Cuerpo = `TimeBlockInput` (mismas reglas que `POST`). Reemplaza el bloque. `200 TimeBlock` · `400 VALIDATION_ERROR` · `404 TIME_BLOCK_NOT_FOUND` «Bloque no encontrado.» (no existe o no es del usuario) · `409 TIME_BLOCK_OVERLAP` (igual que en `POST`; el bloque editado no choca consigo mismo).
 
 ### `DELETE /me/time-blocks/:id`
 `204` · `404 TIME_BLOCK_NOT_FOUND` si el bloque no existe o no es del usuario.

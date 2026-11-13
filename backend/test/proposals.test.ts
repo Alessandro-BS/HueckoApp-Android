@@ -52,6 +52,17 @@ const counts = (p: Proposal) => p.windows.map((w) => w.voteCount);
 const WEDNESDAY_DEADLINE = '2026-09-30T20:00:00.000Z';
 const summary = (p: Proposal) => p.windows.map((w) => [w.date, w.dayOfWeek, w.startTime, w.endTime, w.availabilityPercentage]);
 
+// Bloques de 08:00 a 20:00 de lunes a `lastDay` junto a los que ya tiene la semilla (sin solaparse con ellos).
+async function blockWeekDays(token: string, lastDay: number) {
+  for (let day = 1; day <= lastDay; day++) {
+    if (day === 1) await addWeeklyBlock(app, token, day, '10:00', '20:00');
+    else if (day === 3) {
+      await addWeeklyBlock(app, token, day, '08:00', '14:00');
+      await addWeeklyBlock(app, token, day, '16:00', '20:00');
+    } else await addWeeklyBlock(app, token, day, '08:00', '20:00');
+  }
+}
+
 describe('POST /api/groups/:id/proposals', () => {
   it('con franjas: 201, PROPUESTO, % calculado por el servidor y franjas por fecha y hora', async () => {
     const res = await post({
@@ -166,13 +177,13 @@ describe('POST /api/groups/:id/proposals', () => {
   });
 
   it('sin franjas y con un solo hueco en común en la semana: 409 NO_COMMON_WINDOWS', async () => {
-    for (let day = 1; day <= 6; day++) await addWeeklyBlock(app, yo.token, day, '08:00', '20:00');
+    await blockWeekDays(yo.token, 6);
     const res = await post({ week: NEXT_WEEK });
     expect([res.status, res.body.error.code]).toEqual([409, 'NO_COMMON_WINDOWS']);
   });
 
   it('sin franjas y sin ningún hueco en común: 409 NO_COMMON_WINDOWS y no crea el plan', async () => {
-    for (let day = 1; day <= 7; day++) await addWeeklyBlock(app, yo.token, day, '08:00', '20:00');
+    await blockWeekDays(yo.token, 7);
     const res = await post({ week: NEXT_WEEK });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatchObject({
