@@ -1,3 +1,0 @@
-- [Progreso v3.0.0 APK](v3-apk-progreso.md) — proximidad terminada, PR #44 apilado sobre #43; falta prueba en 2 celulares; siguiente: paridad Nakusuo
-- [Requisitos tercera entrega](requisitos-tercera-entrega.md) — Retrofit≈axios (hecho), Volley≈TanStack Query, proximidad para unirse a un grupo (módulo nativo), giroscopio; cámara ya integrada
-- [Paridad con repos Nakusuo](nakusuo-paridad.md) — decisiones tomadas; fase 1 franjas con fecha en PR #45 (apilado sobre #44); falta consulta Neon pre-deploy y prueba en celulares; fase 2 (votación exprés): tasks 1-2/8 hechas, task 3 en git stash; ledger .superpowers/sdd/2026-11-13-votacion-expres-grupal
