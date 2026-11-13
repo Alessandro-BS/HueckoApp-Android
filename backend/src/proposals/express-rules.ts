@@ -4,6 +4,8 @@ import type { ExpressOption, IncidenceType } from '@hueckoapp/shared';
 
 export const EXPRESS_OPTIONS = ['CANCELAR', 'REAGENDAR', 'MANTENER'] as const satisfies readonly ExpressOption[];
 
+// Minutos que dura una votación si EXPRESS_VOTE_MINUTES no dice otra cosa.
+export const EXPRESS_VOTE_MINUTES_DEFAULT = 60;
 const MIN_WINDOW_MINUTES = 5;
 const QUORUM = 2;
 

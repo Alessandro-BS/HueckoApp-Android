@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { weekSchema } from '../availability/group-availability';
 import { instant, isRealDate, mondayOf, validWeeks } from '../common/zone';
 import { ApiError } from '../middleware/errors';
+import { EXPRESS_OPTIONS } from './express-rules';
 import { TIME_REGEX } from '../schedule/time-blocks.schemas';
 
 const time = z.string({ error: 'Formato HH:mm' }).regex(TIME_REGEX, 'Formato HH:mm');
@@ -141,50 +142,14 @@ export const confirmSchema = z.object({
   windowId: z.string({ error: 'Franja inválida' }).min(1, 'Franja inválida').optional(),
 });
 
-// G4: reprogramar (PROPUESTO) exige un plazo nuevo y futuro y franjas nuevas (2 a 5). Con los otros dos estados
-// `votingDeadline` y `windows` se ignoran por completo: ni siquiera se validan.
-type NewWindows = z.infer<ReturnType<typeof windowsSchema>>;
-export const resolveIncidencesSchema = (now: Date) =>
-  z
-    .object({
-      newState: z.enum(['CONFIRMADO', 'CANCELADO', 'PROPUESTO'], { error: 'Estado inválido: CONFIRMADO, CANCELADO o PROPUESTO' }),
-      votingDeadline: z.unknown().optional(),
-      windows: z.unknown().optional(),
-    })
-    .transform(
-      (body, ctx): { newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO'; votingDeadline: string | null; windows: NewWindows | null } => {
-        if (body.newState !== 'PROPUESTO') return { newState: body.newState, votingDeadline: null, windows: null };
-        let failed = false;
-        const fail = (path: string, message: string) => {
-          failed = true;
-          ctx.issues.push({ code: 'custom', input: body, path: [path], message });
-        };
-        let deadline = '';
-        if (body.votingDeadline === undefined) {
-          fail('votingDeadline', 'Para reprogramar indica una nueva fecha límite');
-        } else {
-          const parsed = futureDeadline(now).safeParse(body.votingDeadline);
-          if (parsed.success) deadline = new Date(parsed.data).toISOString();
-          else for (const issue of parsed.error.issues) fail('votingDeadline', issue.message);
-        }
-        let windows: NewWindows = [];
-        if (body.windows === undefined) {
-          fail('windows', 'Para reprogramar indica las franjas nuevas');
-        } else {
-          const parsed = windowsSchema(now, WINDOW_LIMITS).safeParse(body.windows);
-          if (parsed.success) windows = parsed.data;
-          else {
-            failed = true;
-            for (const issue of parsed.error.issues) ctx.issues.push({ code: 'custom', input: body, path: ['windows', ...issue.path], message: issue.message });
-          }
-        }
-        return failed ? z.NEVER : { newState: 'PROPUESTO', votingDeadline: deadline, windows };
-      },
-    );
-
 // Replantear una propuesta en votación: plazo nuevo y futuro y franjas nuevas (2 a 5).
 export const replanSchema = (now: Date) =>
   z.object({
     votingDeadline: futureDeadline(now),
     windows: windowsSchema(now, WINDOW_LIMITS),
   });
+
+// Votación exprés: una de las tres opciones.
+export const expressVoteInputSchema = z.object({
+  option: z.enum(EXPRESS_OPTIONS, { error: 'Elige CANCELAR, REAGENDAR o MANTENER' }),
+});

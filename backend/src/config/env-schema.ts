@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { THINKING_LEVELS } from '../ai/ai-client';
 import { LOGIN_RATE_LIMIT_DEFAULT, REGISTER_RATE_LIMIT_DEFAULT } from '../auth/auth.routes';
+import { EXPRESS_VOTE_MINUTES_DEFAULT } from '../proposals/express-rules';
 import { trustProxySchema } from './trust-proxy';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -64,6 +65,8 @@ const envSchema = z.object({
   TRUST_PROXY: trustProxySchema,
   LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(LOGIN_RATE_LIMIT_DEFAULT),
   REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(REGISTER_RATE_LIMIT_DEFAULT),
+  // Votación exprés: minutos que dura (sin pasar del inicio del plan y con al menos 5).
+  EXPRESS_VOTE_MINUTES: z.coerce.number().int().positive().default(EXPRESS_VOTE_MINUTES_DEFAULT),
 }).superRefine((env, ctx) => {
   // En producción (Render) el disco es efímero: una base PGlite se perdería en cada despliegue.
   if (env.NODE_ENV === 'production' && env.DATABASE_URL === '') {

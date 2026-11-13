@@ -76,6 +76,7 @@ async function main() {
     registerRateLimit: env.REGISTER_RATE_LIMIT,
     ai,
     aiRateLimit: env.AI_RATE_LIMIT,
+    expressVoteMinutes: env.EXPRESS_VOTE_MINUTES,
   }).listen(env.PORT, (error?: NodeJS.ErrnoException) => {
     // Express 5 llama a este callback también si no puede escuchar (p. ej. un puerto ocupado): sin tratarlo aquí,
     // el servidor diría que escucha y la base quedaría sin cerrar.

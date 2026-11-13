@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { BlockType } from '@hueckoapp/shared';
 
 import { addDays, instant, isoDay, today } from '../common/zone';
+import { EXPRESS_VOTE_MINUTES_DEFAULT } from '../proposals/express-rules';
 import { proposalsRepository } from '../proposals/proposals.repository';
 import { criticalityFor } from '../proposals/rules';
 import type { Db } from './db';
@@ -88,9 +89,11 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
       reason: 'Cruce con un examen de laboratorio a última hora.',
       delayMinutes: null,
       criticality: criticalityFor('IMPREVISTO', false, null),
+      // Ana no propuso el plan, no es imprescindible ni organizadora: solo informa (no abre votación exprés).
+      criticalReason: null,
       createdAt: ago(2),
     },
-    false,
+    EXPRESS_VOTE_MINUTES_DEFAULT,
   );
 
   // «Repaso antes de la entrega»: en votación hasta mañana a las 20:00 (siempre en el futuro), con el voto de Ana.
