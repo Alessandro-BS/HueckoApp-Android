@@ -55,7 +55,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
     ]);
     // D6: el grupo muestra su propuesta más reciente (prop_2, creada después), no la más antigua.
     expect(d.groups).toEqual([
-      { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
+      { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { date: '2026-09-29', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
     ]);
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2']);
     expect(d.expressAlert).toEqual({
@@ -82,7 +82,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
     const d = build([prop1({ state: 'CANCELADO', incidences: [incidence({ resolved: true })] }), prop2()]);
     expect(d.nextPlan).toBeNull();
     expect(d.expressAlert).toBeNull();
-    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 });
+    expect(d.groups[0].nextWindow).toEqual({ date: '2026-09-29', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 });
     expect(d.metrics.matchingHours).toBe(4);
   });
 
@@ -144,9 +144,13 @@ describe('matchingHours y upcomingPlans', () => {
 });
 
 describe('resumen por grupo (D6: la propuesta más reciente)', () => {
+  it('nextWindow trae date', () => {
+    expect(build([prop1()]).groups[0].nextWindow?.date).toBe('2026-09-30');
+  });
+
   it('si la más reciente está cancelada, usa la anterior', () => {
     const d = build([prop1(), prop2({ state: 'CANCELADO' })]);
-    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 });
+    expect(d.groups[0].nextWindow).toEqual({ date: '2026-09-30', dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 });
   });
 
   it('de la más reciente toma la franja elegida si está confirmada', () => {
@@ -157,7 +161,7 @@ describe('resumen por grupo (D6: la propuesta más reciente)', () => {
       chosenWindowId: 'w_92',
     });
     const d = build([prop1(), prop2(), newer]);
-    expect(d.groups[0].nextWindow).toEqual({ dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 80 });
+    expect(d.groups[0].nextWindow).toEqual({ date: '2026-10-01', dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 80 });
   });
 
   it('sin propuestas con franjas, nextWindow es null', () => {

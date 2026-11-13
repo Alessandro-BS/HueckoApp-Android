@@ -1,21 +1,8 @@
 import type { MatchWindow, TimeWindow } from '@hueckoapp/shared';
 import { describe, expect, it } from 'vitest';
 
-import { bestWindows, criticalityFor, isVotingOpen, nextOccurrence, pickWinner, scheduleFor } from '../src/proposals/rules';
+import { bestWindows, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from '../src/proposals/rules';
 import { NOW } from './helpers';
-
-describe('nextOccurrence (C11)', () => {
-  it.each([
-    [3, '11:00', new Date(2026, 8, 30, 11, 0)], // miércoles: mañana
-    [2, '16:00', new Date(2026, 8, 29, 16, 0)], // hoy, más tarde
-    [2, '09:00', new Date(2026, 9, 6, 9, 0)], // hoy ya pasó: el martes que viene
-    [2, '10:00', new Date(2026, 9, 6, 10, 0)], // justo ahora no cuenta como futuro
-    [1, '08:30', new Date(2026, 9, 5, 8, 30)],
-    [7, '20:00', new Date(2026, 9, 4, 20, 0)],
-  ])('día %i a las %s → %s', (day, time, expected) => {
-    expect(nextOccurrence(day, time, NOW)).toEqual(expected);
-  });
-});
 
 describe('scheduleFor', () => {
   it('el instante de la franja en Lima y su misma fecha, sin «próxima ocurrencia»', () => {

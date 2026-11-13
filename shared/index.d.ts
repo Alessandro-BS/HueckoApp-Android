@@ -152,8 +152,7 @@ export type DashboardGroup = {
   id: string;
   name: string;
   memberCount: number;
-  // TODO(franjas-con-fecha Task 6): nextWindow pasa a incluir `date`.
-  nextWindow: Omit<TimeWindow, 'id' | 'voteCount' | 'date'> | null;
+  nextWindow: Omit<TimeWindow, 'id' | 'voteCount'> | null;
 };
 
 export type DashboardMetrics = { activeGroups: number; openVotes: number; matchingHours: number; totalBlocks: number };
@@ -183,7 +182,10 @@ export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
 export type PlanCategory = 'ESTUDIO' | 'REUNION' | 'COMIDA' | 'DEPORTE' | 'SALIDA' | 'OTRO';
 
 // Cuerpo de POST /groups/:id/ai/proposal-draft.
-export type ProposalDraftInput = { text: string };
+export type ProposalDraftInput = {
+  text: string;
+  week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); por defecto, esta semana y la siguiente
+};
 
 // Borrador para pre-rellenar «Nueva propuesta». No se guarda nada hasta que el usuario crea la propuesta.
 export type ProposalDraft = {
@@ -191,7 +193,7 @@ export type ProposalDraft = {
   category: PlanCategory;
   placeName: string | null;
   window: MatchWindow | null;      // dentro de un hueco real del grupo (GET /groups/:id/availability), recortado a lo pedido, o null
-  windows: MatchWindow[];          // 0–3 opciones para votar (la primera = `window`), con las mismas reglas
+  windows: MatchWindow[];          // 2–5 opciones para votar (la primera = `window`), con las mismas reglas
   votingDeadline: string;          // ISO futura sugerida (antes de la opción que llega primero)
 };
 

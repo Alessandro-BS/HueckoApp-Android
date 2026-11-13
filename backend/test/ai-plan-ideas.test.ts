@@ -5,30 +5,35 @@ import { describe, expect, it } from 'vitest';
 
 import type { AiClient } from '../src/ai/ai-client';
 import { MOCK_RESPONSES } from '../src/ai/mock-client';
-import { draftCandidates, draftWindows, narrowWindow, numberedWindows, pickWindow, todayLabel } from '../src/ai/plan-context';
+import { draftWindows, narrowWindow, numberedWindows, pickWindow, todayLabel, windowLabel } from '../src/ai/plan-context';
 import { draftDeadline } from '../src/ai/plan-ideas';
+import { addDays, isoDay } from '../src/common/zone';
 import {
-  bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup, win,
+  bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup,
 } from './helpers';
-import { addDays } from '../src/common/zone';
 
-// La IA aún usa la semana actual (la del lunes 28 de sep. de 2026, la de NOW): la fecha sale del día de la semana.
-const mw = (dayOfWeek: number, startTime: string, endTime: string, availabilityPercentage = 100, freeMembers = 2): MatchWindow => ({
-  date: addDays('2026-09-28', dayOfWeek - 1), dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers,
-});
+// NOW es el martes 29/09/2026 10:00. La semana actual empieza el lunes 28/09 y la siguiente el 05/10.
+const mw = (dayOfWeek: number, startTime: string, endTime: string, availabilityPercentage = 100, freeMembers = 2): MatchWindow => {
+  const date = addDays('2026-09-28', dayOfWeek - 1);
+  return { date, dayOfWeek: isoDay(date), startTime, endTime, availabilityPercentage, freeMembers };
+};
+// Lo mismo en la semana siguiente.
+const mwn = (dayOfWeek: number, startTime: string, endTime: string): MatchWindow => {
+  const date = addDays('2026-10-05', dayOfWeek - 1);
+  return { date, dayOfWeek: isoDay(date), startTime, endTime, availabilityPercentage: 100, freeMembers: 2 };
+};
 
-// Huecos de la semilla (ejemplo E3, domain spec §1.2) en el orden de GET /availability: el número de la lista = índice + 1.
-const E3 = [
-  mw(1, '12:00', '20:00'), mw(2, '08:00', '20:00'), mw(3, '08:00', '14:00'), mw(3, '19:00', '20:00'), mw(4, '08:00', '20:00'),
-  mw(5, '08:00', '09:00'), mw(5, '11:00', '20:00'), mw(6, '08:00', '20:00'), mw(7, '08:00', '20:00'),
+// Huecos de la semilla (ejemplo E3, domain spec §1.2) tal como los ve la IA sin `week`: los de esta semana que no
+// empezaron (el martes ya empezó) y los de la siguiente. El número de la lista = índice + 1.
+const SEMANA = [
+  mw(3, '08:00', '14:00'), mw(3, '19:00', '20:00'), mw(4, '08:00', '20:00'), mw(5, '08:00', '09:00'), mw(5, '11:00', '20:00'),
+  mw(6, '08:00', '20:00'), mw(7, '08:00', '20:00'),
 ];
-
-// NOW es martes 10:00: lo que queda del martes empieza a las 12:00 (ahora + 2 h, para que dé tiempo a votar), y el
-// hueco entero, empezando antes de las 10:00, es el martes que viene. Así ve el borrador los huecos de E3 (el de la
-// próxima semana, al final).
-const HOY = mw(2, '12:00', '20:00');
-const MARTES_QUE_VIENE = mw(2, '08:00', '20:00');
-const E3_BORRADOR = [E3[0], HOY, ...E3.slice(2), MARTES_QUE_VIENE];
+const SIGUIENTE = [
+  mwn(1, '12:00', '20:00'), mwn(2, '08:00', '20:00'), mwn(3, '08:00', '14:00'), mwn(3, '19:00', '20:00'), mwn(4, '08:00', '20:00'),
+  mwn(5, '08:00', '09:00'), mwn(5, '11:00', '20:00'), mwn(6, '08:00', '20:00'), mwn(7, '08:00', '20:00'),
+];
+const CAND = [...SEMANA, ...SIGUIENTE];
 
 // Fecha local de 2026 (mes 0-based) en ISO, como la devuelve el servidor.
 const at = (month: number, day: number, hour: number) => new Date(2026, month, day, hour, 0).toISOString();
@@ -42,84 +47,79 @@ async function setup(ai?: AiClient, aiRateLimit?: number) {
 
 const post = (path: string, token: string, body?: object) => request(app).post(`/api${path}`).set(bearer(token)).send(body);
 
-const DRAFT_REPLY = { title: 'Estudiar para el parcial', category: 'ESTUDIO', placeName: 'Biblioteca central', windowIndex: 2, deadlineHours: 24 };
+const DRAFT_REPLY = { title: 'Estudiar para el parcial', category: 'ESTUDIO', placeName: 'Biblioteca central', windowIndex: 3, deadlineHours: 24 };
 
 const idea = (title: string, windowIndex: number | null) => ({
   title, category: 'SALIDA', placeIdea: 'Parque', windowIndex, reason: `Porque ${title} encaja.`,
 });
 
 describe('contexto de los planes', () => {
-  it('numera los huecos desde 1 con día, horas y % libre', () => {
-    expect(numberedWindows([mw(2, '08:00', '20:00'), mw(5, '11:00', '12:00', 50, 1)])).toBe(
-      '1. martes 08:00-20:00 · 100 % del grupo libre (2 personas)\n2. viernes 11:00-12:00 · 50 % del grupo libre (1 persona)',
+  it('numera los huecos desde 1 con la fecha, las horas y el % libre', () => {
+    expect(numberedWindows([mw(3, '08:00', '20:00'), mw(5, '11:00', '12:00', 50, 1)])).toBe(
+      '1. Mié 30 sep 08:00–20:00 · 100 % del grupo libre (2 personas)\n2. Vie 2 oct 11:00–12:00 · 50 % del grupo libre (1 persona)',
     );
-    expect(numberedWindows([])).toBe('(el grupo no tiene huecos en común esta semana)');
+    expect(numberedWindows([])).toBe('(el grupo no tiene huecos en común en estas fechas)');
+  });
+
+  it('windowLabel: día de la semana, día del mes y mes abreviado', () => {
+    expect(windowLabel(mw(4, '16:00', '18:00'))).toBe('Jue 1 oct 16:00–18:00');
+    expect(windowLabel(mwn(1, '09:00', '10:00'))).toBe('Lun 5 oct 09:00–10:00');
   });
 
   it.each([
-    [1, E3[0]], [9, E3[8]], [0, null], [10, null], [-1, null], [1.5, null], [null, null],
+    [1, CAND[0]], [16, CAND[15]], [0, null], [17, null], [-1, null], [1.5, null], [null, null],
   ] as const)('pickWindow(%s) solo acepta números de la lista', (index, expected) => {
-    expect(pickWindow(E3, index)).toEqual(expected);
+    expect(pickWindow(CAND, index)).toEqual(expected);
   });
 
-  it('todayLabel usa la hora del servidor y no depende del idioma del sistema', () => {
+  it('todayLabel usa la hora de Lima y no depende del idioma del sistema', () => {
     expect(todayLabel(NOW)).toBe('martes 29 de septiembre de 2026, 10:00');
+    // 02:30 UTC del miércoles sigue siendo el martes 21:30 en Lima.
+    expect(todayLabel(new Date('2026-09-30T02:30:00Z'))).toBe('martes 29 de septiembre de 2026, 21:30');
   });
 });
 
-describe('draftCandidates: los huecos de hoy en el borrador', () => {
-  it('parte el hueco de hoy en lo que aún da tiempo a votar y lo que ya pasó (la próxima semana, al final)', () => {
-    expect(draftCandidates(E3, NOW)).toEqual(E3_BORRADOR);
+describe('draftWindows: de 2 a 5 opciones con fecha', () => {
+  const choice = (windowIndex: number, startTime: string | null = null, endTime: string | null = null) => ({ windowIndex, startTime, endTime });
+
+  it('descarta las opciones que empiezan en menos de 2 h (no da tiempo a votar)', () => {
+    const windows = [mw(2, '10:00', '12:00'), mw(2, '12:00', '14:00'), CAND[0]];
+    // El recorte 11:00-12:00 empieza en 1 h: fuera; las otras dos valen.
+    expect(draftWindows(windows, [choice(1, '11:00', '12:00'), choice(2), choice(3)], NOW)).toEqual([mw(2, '12:00', '14:00'), CAND[0]]);
   });
 
-  it('con minutos, lo de hoy empieza en la hora en punto siguiente a ahora + 2 h', () => {
-    expect(draftCandidates([mw(2, '08:00', '20:00')], new Date(2026, 8, 29, 10, 25))).toEqual([
-      mw(2, '13:00', '20:00'), mw(2, '08:00', '20:00'),
+  it('una opción de IA que empieza justo en 2 h vale', () => {
+    expect(draftWindows([mw(2, '12:00', '14:00'), CAND[0]], [choice(1), choice(2)], NOW)).toEqual([mw(2, '12:00', '14:00'), CAND[0]]);
+  });
+
+  it('si la IA da una sola, se completa hasta 2 con la mejor candidata que no se repite', () => {
+    // Todas con 100 %: gana la de mayor duración (12 h) y, a igual duración, la fecha más temprana (sáb 3).
+    expect(draftWindows(CAND, [choice(3)], NOW)).toEqual([CAND[2], CAND[5]]);
+  });
+
+  it('si la IA no da ninguna, se completan las 2 mejores', () => {
+    expect(draftWindows(CAND, [], NOW)).toEqual([CAND[2], CAND[5]]);
+    expect(draftWindows(CAND, [choice(99)], NOW)).toEqual([CAND[2], CAND[5]]);
+  });
+
+  it('las opciones que se solapan el mismo día se descartan (la propuesta las rechazaría)', () => {
+    expect(draftWindows(CAND, [choice(3, '16:00', '18:00'), choice(3, '12:00', '17:00'), choice(3, '18:00', '20:00')], NOW)).toEqual([
+      mw(4, '16:00', '18:00'), mw(4, '18:00', '20:00'),
     ]);
+    // La completada tampoco se solapa con la elegida: no es el jueves entero, sino el sábado.
+    expect(draftWindows(CAND, [choice(3, '16:00', '18:00')], NOW)).toEqual([mw(4, '16:00', '18:00'), CAND[5]]);
   });
 
-  it('un hueco de hoy que ya pasó entero queda solo para la próxima semana', () => {
-    expect(draftCandidates([mw(2, '08:00', '14:00')], new Date(2026, 8, 29, 15, 0))).toEqual([mw(2, '08:00', '14:00')]);
+  it('la IA da 3: se quedan las 3, sin repetidas', () => {
+    expect(draftWindows(CAND, [choice(3), choice(3), choice(6), choice(7)], NOW)).toEqual([CAND[2], CAND[5], CAND[6]]);
   });
 
-  it('un hueco de hoy que empieza en menos de 2 h y no pasó todavía no se ofrece', () => {
-    expect(draftCandidates([mw(2, '10:00', '12:00'), mw(2, '11:00', '12:00')], NOW)).toEqual([]);
+  it('con una sola candidata devuelve esa sola (la ruta responde 409)', () => {
+    expect(draftWindows([CAND[0]], [choice(1)], NOW)).toEqual([CAND[0]]);
   });
 
-  it('de noche ya no queda nada para hoy', () => {
-    expect(draftCandidates([mw(2, '12:00', '20:00')], new Date(2026, 8, 29, 19, 0))).toEqual([mw(2, '12:00', '20:00')]);
-  });
-
-  it('el límite de 30 se aplica a los huecos antes de partir: la parte de la próxima semana no se pierde', () => {
-    const huecos = [mw(2, '08:00', '20:00'), ...Array.from({ length: 30 }, (_, i) => mw(3, `${String(8 + (i % 12)).padStart(2, '0')}:00`, '20:00'))];
-    const candidates = draftCandidates(huecos, NOW);
-    expect(candidates).toHaveLength(31);
-    expect(candidates.at(-1)).toEqual(mw(2, '08:00', '20:00'));
-  });
-
-  it('con la hora, la lista del prompt marca qué es hoy y qué es la próxima semana', () => {
-    expect(numberedWindows([HOY, mw(3, '08:00', '14:00'), MARTES_QUE_VIENE], NOW)).toBe(
-      '1. martes (hoy) 12:00-20:00 · 100 % del grupo libre (2 personas)\n' +
-        '2. miércoles 08:00-14:00 · 100 % del grupo libre (2 personas)\n' +
-        '3. martes (la próxima semana, empezando antes de las 10:00) 08:00-20:00 · 100 % del grupo libre (2 personas)',
-    );
-  });
-
-  it('draftWindows descarta las opciones que empiezan en menos de 2 h (no da tiempo a votar)', () => {
-    const windows = [mw(2, '10:00', '12:00'), mw(2, '12:00', '14:00'), E3[2]];
-    const choice = (windowIndex: number, startTime: string | null = null, endTime: string | null = null) => ({ windowIndex, startTime, endTime });
-    expect(draftWindows(windows, [choice(1, '11:00', '12:00'), choice(2), choice(3)], NOW)).toEqual([mw(2, '12:00', '14:00'), E3[2]]);
-  });
-
-  it('en el hueco de la próxima semana vale cualquier recorte que empiece antes de la hora actual (aunque acabe después)', () => {
-    const choice = (startTime: string, endTime: string) => ({ windowIndex: 10, startTime, endTime });
-    expect(draftWindows(E3_BORRADOR, [choice('09:00', '12:00')], NOW)).toEqual([mw(2, '09:00', '12:00')]);
-  });
-
-  it('un recorte del hueco de la próxima semana que empieza a la hora actual o después caería hoy: queda el hueco entero', () => {
-    const choice = (startTime: string, endTime: string) => ({ windowIndex: 10, startTime, endTime });
-    expect(draftWindows(E3_BORRADOR, [choice('14:00', '16:00')], NOW)).toEqual([MARTES_QUE_VIENE]);
-    expect(draftWindows(E3_BORRADOR, [choice('10:00', '12:00')], NOW)).toEqual([MARTES_QUE_VIENE]);
+  it('las candidatas que empiezan en menos de 2 h no completan', () => {
+    expect(draftWindows([mw(2, '10:30', '12:00'), CAND[0]], [], NOW)).toEqual([CAND[0]]);
   });
 });
 
@@ -166,7 +166,7 @@ describe('draftDeadline (D7)', () => {
 
   it('con franja: cierra 1 h antes de su próximo inicio si eso llega antes', () => {
     // Miércoles 08:00 → cierre el miércoles 30 a las 07:00 (antes que ahora + 48 h).
-    expect(draftDeadline(NOW, 48, E3[2])).toBe(at(8, 30, 7));
+    expect(draftDeadline(NOW, 48, mw(3, '08:00', '14:00'))).toBe(at(8, 30, 7));
   });
 
   it('no adelanta el cierre si la franja empieza en menos de 2 h', () => {
@@ -175,85 +175,129 @@ describe('draftDeadline (D7)', () => {
 });
 
 describe('POST /api/groups/:id/ai/proposal-draft', () => {
-  it('arma el borrador con un hueco real del grupo y un plazo futuro', async () => {
+  it('arma el borrador con una franja real del grupo, completa hasta 2 y da un plazo futuro', async () => {
     const fake = fakeAiJson(DRAFT_REPLY);
     const { yo, group } = await setup(fake.client);
-    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: '  Estudiar el martes para el parcial en la biblioteca ' });
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: '  Estudiar el jueves para el parcial en la biblioteca ' });
     expect(res.status).toBe(200);
-    // El martes es hoy: queda lo de hoy desde las 12:00 y la votación cierra a las 11:00, 1 h antes.
+    // La IA eligió el jueves 1 (08:00-20:00); la 2.ª la completa el servidor (el sábado 3, la más larga y temprana).
     expect(res.body).toEqual({
       title: 'Estudiar para el parcial',
       category: 'ESTUDIO',
       placeName: 'Biblioteca central',
-      window: HOY,
-      windows: [HOY],
-      votingDeadline: at(8, 29, 11),
+      window: CAND[2],
+      windows: [CAND[2], CAND[5]],
+      votingDeadline: at(8, 30, 10),
     });
     expect(fake.calls).toHaveLength(1);
     const [call] = fake.calls;
     expect(call.task).toBe('proposal-draft');
-    expect(call.prompt).toContain('<<<DATOS\nEstudiar el martes para el parcial en la biblioteca\nDATOS>>>');
-    expect(call.prompt).toContain(numberedWindows(E3_BORRADOR, NOW));
+    expect(call.prompt).toContain('<<<DATOS\nEstudiar el jueves para el parcial en la biblioteca\nDATOS>>>');
+    expect(call.prompt).toContain(numberedWindows(CAND));
+    expect(call.prompt).toContain('3. Jue 1 oct 08:00–20:00 · 100 % del grupo libre (2 personas)');
     expect(call.prompt).toContain('Hoy es martes 29 de septiembre de 2026, 10:00');
   });
 
-  it('«hoy»: el plan cae hoy y la votación cierra 1 h antes de que empiece', async () => {
-    const fake = fakeAiJson({ ...DRAFT_REPLY, windowIndex: 2, startTime: '14:00', endTime: '16:00', deadlineHours: 48 });
+  it('el prompt muestra fechas y no habla de «semana tipo» ni de «la próxima semana»', async () => {
+    const fake = fakeAiJson(DRAFT_REPLY);
     const { yo, group } = await setup(fake.client);
-    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar hoy 2 horas' });
-    expect(res.body.windows).toEqual([mw(2, '14:00', '16:00')]);
-    expect(res.body.votingDeadline).toBe(at(8, 29, 13));
-    expect(fake.calls[0].prompt).toContain('"(hoy)"');
+    await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar' });
+    const { prompt } = fake.calls[0];
+    expect(prompt).toMatch(/\d+\. (Lun|Mar|Mié|Jue|Vie|Sáb|Dom) \d{1,2} (sep|oct) \d{2}:\d{2}–\d{2}:\d{2}/);
+    expect(prompt).not.toMatch(/semana tipo/i);
+    expect(prompt).not.toContain('(hoy)');
+    expect(prompt).not.toContain('la próxima semana');
   });
 
-  it('«hoy» a una hora que ya pasó no se agenda la semana siguiente: queda lo que resta de hoy', async () => {
-    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 2, startTime: '09:00', endTime: '11:00', deadlineHours: 48 }).client);
-    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar hoy a las 9' });
-    expect(res.body.window).toEqual(HOY);
-    expect(res.body.votingDeadline).toBe(at(8, 29, 11));
+  it('sin `week` los candidatos son los de esta semana que no empezaron y los de la siguiente', async () => {
+    const fake = fakeAiJson({ ...DRAFT_REPLY, windowIndex: 16 });
+    const { yo, group } = await setup(fake.client);
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'El domingo 11' });
+    // El martes 29 (ya empezó) no está; el último candidato es el domingo 11.
+    expect(fake.calls[0].prompt).not.toContain('Mar 29 sep');
+    expect(res.body.window).toEqual(CAND[15]);
   });
 
-  it('la parte de hoy que ya pasó se ofrece como la próxima semana', async () => {
-    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 10, deadlineHours: 48 }).client);
-    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'El martes que viene temprano' });
-    expect(res.body.window).toEqual(MARTES_QUE_VIENE);
-    expect(res.body.votingDeadline).toBe(at(9, 1, 10));
+  it('con `week` usa solo esa semana (se normaliza al lunes)', async () => {
+    const fake = fakeAiJson({ ...DRAFT_REPLY, windowIndex: 1 });
+    const { yo, group } = await setup(fake.client);
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'La semana que viene', week: '2026-10-07' });
+    expect(res.status).toBe(200);
+    expect(res.body.window).toEqual(SIGUIENTE[0]);
+    expect(fake.calls[0].prompt).toContain(numberedWindows(SIGUIENTE));
+    expect(fake.calls[0].prompt).not.toContain('30 sep');
+  });
+
+  it('una `week` fuera de las 4 válidas → 400 VALIDATION_ERROR, sin llamar a la IA', async () => {
+    const fake = fakeAiJson(DRAFT_REPLY);
+    const { yo, group } = await setup(fake.client);
+    for (const week of ['2026-12-28', '2026-09-21', 'pronto']) {
+      const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar', week });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it('el borrador trae entre 2 y 5 opciones, todas con date', async () => {
+    const { yo, group } = await setup(fakeAiJson(DRAFT_REPLY).client);
+    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar' });
+    expect(body.windows.length).toBeGreaterThanOrEqual(2);
+    expect(body.windows.length).toBeLessThanOrEqual(5);
+    for (const w of body.windows) expect(w.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(body.window).toEqual(body.windows[0]);
+  });
+
+  it('si la IA da una sola opción, el servidor completa hasta 2 sin repetir', async () => {
+    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 6 }).client);
+    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'El sábado' });
+    expect(body.windows).toEqual([CAND[5], CAND[2]]);
+  });
+
+  it('si solo hay 1 candidata → 409 NO_COMMON_WINDOWS', async () => {
+    // El domingo 11 a las 06:00 solo queda su franja (08:00-20:00) de la semana del 5 de octubre: no se llega a 2.
+    const { app: tight } = await makeTestApp({ now: () => new Date(2026, 9, 11, 6, 0), ai: fakeAiJson(DRAFT_REPLY).client });
+    const { yo, group } = await setupSeedGroup(tight);
+    const res = await request(tight).post(`/api/groups/${group.id}/ai/proposal-draft`).set(bearer(yo.token)).send({ text: 'Estudiar', week: '2026-10-05' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('NO_COMMON_WINDOWS');
   });
 
   it('el plazo se adelanta a 1 h antes de la franja elegida', async () => {
-    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 3, deadlineHours: 48 }).client);
+    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 1, deadlineHours: 72 }).client);
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el miércoles' });
-    expect(res.body.window).toEqual(E3[2]);
+    expect(res.body.window).toEqual(CAND[0]);
     expect(res.body.votingDeadline).toBe(at(8, 30, 7));
   });
 
   it('recorta la franja a las horas que pide (p. ej. 2 h el viernes en la tarde) y cierra la votación antes', async () => {
-    const fake = fakeAiJson({ ...DRAFT_REPLY, windowIndex: 7, startTime: '16:00', endTime: '18:00', deadlineHours: 96 });
+    const fake = fakeAiJson({ ...DRAFT_REPLY, windowIndex: 5, startTime: '16:00', endTime: '18:00', deadlineHours: 96 });
     const { yo, group } = await setup(fake.client);
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Reunión de 2 horas el viernes en la tarde' });
     expect(res.body.window).toEqual(mw(5, '16:00', '18:00'));
-    // 96 h llegarían al sábado: cierra el viernes 2 de octubre a las 15:00, 1 h antes del recorte.
-    expect(res.body.votingDeadline).toBe(at(9, 2, 15));
+    // La 2.ª opción la completa el servidor (jueves 1 a las 08:00, antes del viernes): cierra el jueves a las 07:00.
+    expect(res.body.windows).toEqual([mw(5, '16:00', '18:00'), CAND[2]]);
+    expect(res.body.votingDeadline).toBe(at(9, 1, 7));
     expect(fake.calls[0].prompt).toContain('"startTime" y "endTime"');
     expect(fake.calls[0].prompt).toContain('"en la tarde" = 12:00-18:00');
   });
 
-  it('hasta 3 opciones para votar: las inválidas y repetidas se descartan, y cierra antes de la primera que llega', async () => {
+  it('hasta 3 opciones de la IA: las inválidas y repetidas se descartan, y cierra antes de la primera que llega', async () => {
     const reply = {
-      ...DRAFT_REPLY, windowIndex: 7, startTime: '16:00', endTime: '18:00', deadlineHours: 96,
+      ...DRAFT_REPLY, windowIndex: 5, startTime: '16:00', endTime: '18:00', deadlineHours: 96,
       alternatives: [
-        { windowIndex: 7, startTime: '16:00', endTime: '18:00' }, // repetida
+        { windowIndex: 5, startTime: '16:00', endTime: '18:00' }, // repetida
         { windowIndex: 99, startTime: null, endTime: null }, // no existe
-        { windowIndex: 6, startTime: '08:00', endTime: '09:00' }, // viernes temprano: llega antes
-        { windowIndex: 7, startTime: '12:00', endTime: '14:00' },
+        { windowIndex: 4, startTime: '08:00', endTime: '09:00' }, // viernes temprano: llega antes
+        { windowIndex: 5, startTime: '12:00', endTime: '14:00' },
       ],
     };
-    const fake = fakeAiJson({ ...reply, alternatives: [...reply.alternatives, { windowIndex: 2, startTime: null, endTime: null }] });
+    const fake = fakeAiJson({ ...reply, alternatives: [...reply.alternatives, { windowIndex: 6, startTime: null, endTime: null }] });
     const { yo, group } = await setup(fake.client);
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Reunión de 2 horas el viernes' });
     expect(res.body.window).toEqual(mw(5, '16:00', '18:00'));
-    // La del martes sobra: ya hay 3 opciones válidas.
-    expect(res.body.windows).toEqual([mw(5, '16:00', '18:00'), E3[5], mw(5, '12:00', '14:00')]);
+    // El sábado sobra: ya hay 3 opciones válidas.
+    expect(res.body.windows).toEqual([mw(5, '16:00', '18:00'), CAND[3], mw(5, '12:00', '14:00')]);
     // Cierra el viernes 2 de octubre a las 07:00, 1 h antes de la opción de las 08:00.
     expect(res.body.votingDeadline).toBe(at(9, 2, 7));
     expect(fake.calls[0].prompt).toContain('"alternatives"');
@@ -261,24 +305,24 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
 
   it('alternativas ausentes o mal formadas no rompen el borrador', async () => {
     const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, alternatives: 'ninguna' }).client);
-    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el martes' });
+    const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el jueves' });
     expect(res.status).toBe(200);
-    expect(res.body.windows).toEqual([HOY]);
+    expect(res.body.windows).toEqual([CAND[2], CAND[5]]);
   });
 
   it('un recorte fuera de la franja no pasa: queda la franja completa', async () => {
-    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 7, startTime: '20:15', endTime: '21:45' }).client);
+    const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex: 5, startTime: '20:15', endTime: '21:45' }).client);
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'El viernes en la noche' });
-    expect(res.body.window).toEqual(E3[6]);
+    expect(res.body.window).toEqual(CAND[4]);
   });
 
-  it('una franja inventada no pasa: window null (D5)', async () => {
+  it('una franja inventada no pasa a ser la principal: el servidor propone las 2 mejores', async () => {
     for (const windowIndex of [99, 0]) {
       const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, windowIndex, deadlineHours: 48 }).client);
       const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar' });
       expect(res.status).toBe(200);
-      expect(res.body.window).toBeNull();
-      expect(res.body.votingDeadline).toBe(at(9, 1, 10));
+      expect(res.body.windows).toEqual([CAND[2], CAND[5]]);
+      expect(res.body.votingDeadline).toBe(at(9, 1, 7));
     }
   });
 
@@ -287,7 +331,9 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
     const { yo, group } = await setup(fakeAiJson(reply).client);
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Algo' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ title: 'x'.repeat(80), category: 'OTRO', placeName: null, window: null, windows: [], votingDeadline: at(9, 1, 10) });
+    expect(res.body).toEqual({
+      title: 'x'.repeat(80), category: 'OTRO', placeName: null, window: CAND[2], windows: [CAND[2], CAND[5]], votingDeadline: at(9, 1, 7),
+    });
   });
 
   it('valida el texto antes de llamar a la IA', async () => {
@@ -326,38 +372,36 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
     const { yo, group } = await setup();
     const res = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Lo que sea' });
     expect(res.body).toEqual({
-      title: 'Plan de ejemplo con el grupo', category: 'REUNION', placeName: 'Biblioteca central', window: E3[0], windows: [E3[0]],
-      votingDeadline: at(9, 1, 10),
+      title: 'Plan de ejemplo con el grupo', category: 'REUNION', placeName: 'Biblioteca central', window: CAND[0], windows: [CAND[0], CAND[2]],
+      votingDeadline: at(8, 30, 7),
     });
   });
 
   it('el borrador sirve tal cual para crear la propuesta', async () => {
     const { yo, group } = await setup(fakeAiJson(DRAFT_REPLY).client);
-    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el martes' });
+    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el jueves' });
     const created = await createProposal(app, yo.token, group.id, {
       title: body.title,
       location: { name: body.placeName, latitude: null, longitude: null },
       votingDeadline: body.votingDeadline,
-      // TODO(franjas-con-fecha Task 6): el borrador aún trae una sola opción; se le suma otra para llegar al mínimo de 2.
-      windows: [{ date: body.window.date, startTime: body.window.startTime, endTime: body.window.endTime }, win(7, '10:00', '11:00')],
+      windows: body.windows.map((w: MatchWindow) => ({ date: w.date, startTime: w.startTime, endTime: w.endTime })),
     });
     expect(created.windows[0]).toEqual(
-      expect.objectContaining({ date: '2026-09-29', dayOfWeek: 2, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100 }),
+      expect.objectContaining({ date: '2026-10-01', dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100 }),
     );
   });
 
   it('el borrador recortado también sirve para crear la propuesta', async () => {
     const { yo, group } = await setup(fakeAiJson({ ...DRAFT_REPLY, startTime: '16:00', endTime: '18:00' }).client);
-    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el martes en la tarde' });
+    const { body } = await post(`/groups/${group.id}/ai/proposal-draft`, yo.token, { text: 'Estudiar el jueves en la tarde' });
     const created = await createProposal(app, yo.token, group.id, {
       title: body.title,
       location: null,
       votingDeadline: body.votingDeadline,
-      // TODO(franjas-con-fecha Task 6): el borrador aún trae una sola opción; se le suma otra para llegar al mínimo de 2.
-      windows: [{ date: body.window.date, startTime: body.window.startTime, endTime: body.window.endTime }, win(7, '10:00', '11:00')],
+      windows: body.windows.map((w: MatchWindow) => ({ date: w.date, startTime: w.startTime, endTime: w.endTime })),
     });
     expect(created.windows[0]).toEqual(
-      expect.objectContaining({ date: '2026-09-29', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }),
+      expect.objectContaining({ date: '2026-10-01', dayOfWeek: 4, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }),
     );
   });
 });
@@ -413,14 +457,32 @@ describe('POST /api/groups/:id/ai/suggestions', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       suggestions: [
-        { title: 'Picnic', category: 'SALIDA', placeIdea: 'Parque', window: E3[0], reason: 'Porque Picnic encaja.' },
-        { title: 'Cine', category: 'SALIDA', placeIdea: 'Parque', window: E3[4], reason: 'Porque Cine encaja.' },
+        { title: 'Picnic', category: 'SALIDA', placeIdea: 'Parque', window: CAND[0], reason: 'Porque Picnic encaja.' },
+        { title: 'Cine', category: 'SALIDA', placeIdea: 'Parque', window: CAND[4], reason: 'Porque Cine encaja.' },
         { title: 'Karaoke', category: 'SALIDA', placeIdea: 'Parque', window: null, reason: 'Porque Karaoke encaja.' },
       ],
     });
     expect(fake.calls[0].task).toBe('plan-suggestions');
     expect(fake.calls[0].prompt).toContain('Planes ya propuestos: Repaso antes de la entrega');
-    expect(fake.calls[0].prompt).toContain(numberedWindows(E3));
+    expect(fake.calls[0].prompt).toContain(numberedWindows(CAND));
+  });
+
+  it('con `week`, las ideas usan los huecos de esa semana', async () => {
+    const fake = fakeAiJson({ suggestions: [idea('Picnic', 1), idea('Cine', 2), idea('Karaoke', 3)] });
+    const { yo, group } = await setup(fake.client);
+    const res = await post(`/groups/${group.id}/ai/suggestions`, yo.token, { week: '2026-10-06' });
+    expect(res.status).toBe(200);
+    expect(fake.calls[0].prompt).toContain(numberedWindows(SIGUIENTE));
+    expect(res.body.suggestions.map((s: { window: MatchWindow }) => s.window)).toEqual(SIGUIENTE.slice(0, 3));
+  });
+
+  it('una `week` fuera de las 4 válidas → 400, sin llamar a la IA', async () => {
+    const fake = fakeAiJson({ suggestions: [idea('Picnic', 1)] });
+    const { yo, group } = await setup(fake.client);
+    const res = await post(`/groups/${group.id}/ai/suggestions`, yo.token, { week: '2026-12-28' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(fake.calls).toHaveLength(0);
   });
 
   it('ninguna idea válida o lista vacía → 502 AI_BAD_RESPONSE', async () => {
@@ -445,7 +507,7 @@ describe('POST /api/groups/:id/ai/suggestions', () => {
     const res = await post(`/groups/${group.id}/ai/suggestions`, yo.token);
     const mock = MOCK_RESPONSES['plan-suggestions'] as { suggestions: { title: string }[] };
     expect(res.body.suggestions.map((s: { title: string }) => s.title)).toEqual(mock.suggestions.map((s) => s.title));
-    expect(res.body.suggestions.map((s: { window: MatchWindow }) => s.window)).toEqual([E3[0], E3[1], E3[2]]);
+    expect(res.body.suggestions.map((s: { window: MatchWindow }) => s.window)).toEqual([CAND[0], CAND[1], CAND[2]]);
   });
 });
 

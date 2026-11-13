@@ -45,9 +45,9 @@ describe('summaryData', () => {
       votosEmitidos: 1,
       franjas: [
         // Ordenadas por fecha (martes 6, jueves 8 y sábado 10 de octubre).
-        { franja: 'Mar 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
-        { franja: 'Jue 08:00-20:00', votos: 1, disponibilidad: '100 %', elegida: false },
-        { franja: 'Sáb 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
+        { franja: 'Mar 6 oct 08:00–20:00', votos: 0, disponibilidad: '100 %', elegida: false },
+        { franja: 'Jue 8 oct 08:00–20:00', votos: 1, disponibilidad: '100 %', elegida: false },
+        { franja: 'Sáb 10 oct 08:00–20:00', votos: 0, disponibilidad: '100 %', elegida: false },
       ],
       imprevistos: [],
     });
@@ -67,6 +67,9 @@ describe('POST /api/proposals/:id/ai/summary', () => {
     expect(fake.calls[0].prompt).toContain('<<<DATOS');
     expect(fake.calls[0].prompt).toContain('"plan": "Repaso antes de la entrega"');
     expect(fake.calls[0].prompt).toContain('"votosEmitidos": 1');
+    // Cada franja lleva su fecha, no solo el día de la semana.
+    expect(fake.calls[0].prompt).toContain('"franja": "Jue 8 oct 08:00–20:00"');
+    expect(fake.calls[0].prompt).toContain('"franja": "Mar 6 oct 08:00–20:00"');
     expect(await getProposal(proposal.id, yo.token)).toEqual(before);
   });
 

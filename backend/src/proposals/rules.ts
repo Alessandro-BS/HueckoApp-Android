@@ -4,24 +4,6 @@ import { instant } from '../common/zone';
 
 // Reglas puras de las propuestas (domain spec §5). Sin base de datos: se prueban aparte.
 
-/** Día ISO (1 = lunes … 7 = domingo) de una fecha en hora local. */
-const isoDayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1;
-
-/**
- * La próxima vez (estrictamente posterior a `from`) que ocurre `dayOfWeek` a las `startTime`, en hora local
- * del servidor. Si hoy es ese día y la hora aún no llegó, es hoy; si ya pasó, la semana siguiente.
- * Ya no la usan las propuestas (sus franjas tienen fecha); solo la IA hasta que trabaje con fechas.
- * TODO(franjas-con-fecha Task 6): borrarla (con isoDayOf) cuando plan-context.ts y plan-ideas.ts usen fechas.
- */
-export function nextOccurrence(dayOfWeek: number, startTime: string, from: Date): Date {
-  const [hours, minutes] = startTime.split(':').map(Number);
-  for (let offset = 0; offset <= 7; offset++) {
-    const candidate = new Date(from.getFullYear(), from.getMonth(), from.getDate() + offset, hours, minutes);
-    if (isoDayOf(candidate) === dayOfWeek && candidate.getTime() > from.getTime()) return candidate;
-  }
-  throw new Error(`Día de la semana inválido: ${dayOfWeek}`);
-}
-
 /**
  * Lo que se guarda al confirmar la franja `date` a las `startTime`: `scheduledAt` es su instante (ISO, UTC) en
  * America/Lima y `scheduledDate` la misma fecha «YYYY-MM-DD», para que la app la muestre sin depender del teléfono.

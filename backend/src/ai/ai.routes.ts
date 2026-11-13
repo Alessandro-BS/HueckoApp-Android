@@ -10,10 +10,10 @@ import { proposalsRepository } from '../proposals/proposals.repository';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { aiCallRecorder, aiCallsRepository } from './ai-calls.repository';
 import { askAi } from './ask-ai';
-import { commonWindows, currentWeekWindows, draftCandidates, draftWindows, earliestWindow, pickWindow } from './plan-context';
+import { candidateWindows, draftWindows, earliestWindow, MIN_DRAFT_WINDOWS, pickWindow } from './plan-context';
 import {
   DRAFT_JSON_SCHEMA, draftDeadline, draftPrompt, draftResponseSchema, proposalDraftInputSchema,
-  SUGGESTIONS_JSON_SCHEMA, suggestionsPrompt, suggestionsResponseSchema,
+  SUGGESTIONS_JSON_SCHEMA, suggestionsInputSchema, suggestionsPrompt, suggestionsResponseSchema,
 } from './plan-ideas';
 import { OCR_JSON_SCHEMA, OCR_PROMPT, ocrResponseSchema, toOcrBlocks } from './schedule-ocr';
 import { uploadScheduleImage } from './upload';
@@ -58,17 +58,20 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   router.post('/:id/ai/proposal-draft', aiLimiter, async (req, res) => {
     const userId = getUserId(res);
     const { group } = await loadGroupForMember(groups, String(req.params.id), userId);
-    const { text } = proposalDraftInputSchema.parse(req.body);
+    const { text, week } = proposalDraftInputSchema.parse(req.body);
     const at = now();
-    // El hueco de hoy partido en lo que aún sirve hoy y lo que ya es la semana que viene.
-    const windows = draftCandidates(await currentWeekWindows(group, blocks, at), at);
+    const windows = await candidateWindows(group, blocks, week, at);
     const answer = await askAi(
       ai,
       { task: 'proposal-draft', prompt: draftPrompt({ text, group, windows, now: at }), schema: DRAFT_JSON_SCHEMA },
       draftResponseSchema,
       aiCallRecorder(calls, userId, at),
     );
+    // De 2 a 5 opciones: las de la IA y, si faltan, las mejores franjas de los candidatos.
     const options = draftWindows(windows, [answer, ...answer.alternatives], at);
+    if (options.length < MIN_DRAFT_WINDOWS) {
+      throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común en esas fechas: elige las franjas a mano.');
+    }
     const draft: ProposalDraft = {
       title: answer.title,
       category: answer.category,
@@ -76,7 +79,7 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
       window: options[0] ?? null,
       windows: options,
       // La votación cierra antes de la opción que llega primero.
-      votingDeadline: draftDeadline(at, answer.deadlineHours, earliestWindow(options, at)),
+      votingDeadline: draftDeadline(at, answer.deadlineHours, earliestWindow(options)),
     };
     res.json(draft);
   });
@@ -84,10 +87,11 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   router.post('/:id/ai/suggestions', aiLimiter, async (req, res) => {
     const userId = getUserId(res);
     const { group } = await loadGroupForMember(groups, String(req.params.id), userId);
-    const windows = await commonWindows(group, blocks, now());
+    const { week } = suggestionsInputSchema.parse(req.body ?? {});
+    const at = now();
+    const windows = await candidateWindows(group, blocks, week, at);
     // Las 5 propuestas más recientes, para que la IA no repita planes.
     const recentTitles = (await proposals.listByGroup(group.id, userId)).slice(0, 5).map((p) => p.title);
-    const at = now();
     const ideas = await askAi(
       ai,
       { task: 'plan-suggestions', prompt: suggestionsPrompt({ group, windows, recentTitles, now: at }), schema: SUGGESTIONS_JSON_SCHEMA },

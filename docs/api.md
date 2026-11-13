@@ -154,7 +154,7 @@ Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`.
 - `metrics.matchingHours`: suma, sobre las franjas de las propuestas de mis grupos **que no están `CANCELADO`** (cualquier otro estado cuenta, también `EN_RECOORDINACION`) con `availabilityPercentage ≥ 80` (fijo, no el umbral del grupo), de `hora(endTime) − hora(startTime)` en horas enteras (se truncan los minutos), sin deduplicar solapes. Es la fórmula de la app Kotlin salvo que aquí las canceladas no cuentan.
 - `metrics.totalBlocks`: mis bloques de horario (recurrentes y puntuales).
 - `nextPlan`: el primero de `/me/upcoming-plans` con `attendees`, uno por miembro del grupo; su estado sale de su primera incidencia sin resolver: `TARDANZA` → `RETRASADO`, `FALTA`/`IMPREVISTO` → `NO_ASISTE`, ninguna → `PUNTUAL`. `null` si no hay.
-- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` = la franja elegida (o, si no hay, la primera) de su propuesta **más reciente** que no esté `CANCELADO` y tenga franjas. «Más reciente» = mayor `createdAt`; a igual `createdAt`, la creada después (el orden de `GET /groups/:id/proposals`). `null` si no hay ninguna.
+- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` (`date`, `dayOfWeek`, `startTime`, `endTime`, `availabilityPercentage`) = la franja elegida (o, si no hay, la primera) de su propuesta **más reciente** que no esté `CANCELADO` y tenga franjas. «Más reciente» = mayor `createdAt`; a igual `createdAt`, la creada después (el orden de `GET /groups/:id/proposals`). `null` si no hay ninguna.
 - `pendingVotes`: propuestas `PROPUESTO` de mis grupos con `groupName`, las que cierran antes primero.
 - `expressAlert`: de los planes que aún no ocurrieron, el primero `EN_RECOORDINACION` (`kind: "RECOORDINACION"`) o, si no hay, el primero `CONFIRMADO` con incidencias sin resolver (`kind: "AVISO"`). `who` y `reason` salen de su incidencia sin resolver más crítica (`ALTA` primero; si no, la más antigua). `canResolve` es el `canManage` del plan para mí. `null` si no hay.
 
@@ -341,35 +341,34 @@ Reglas:
 ### `POST /groups/:id/ai/proposal-draft`
 Convierte una frase en un borrador para «Nueva propuesta». Solo miembros (`403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`). Cuerpo = `ProposalDraftInput`:
 ```json
-{ "text": "Estudiar para el parcial el martes en la biblioteca" }
+{ "text": "Estudiar para el parcial el jueves en la biblioteca", "week": "2026-10-05" }
 ```
-`text` obligatorio, 3–500 caracteres tras `trim`. Responde `200 ProposalDraft` (no guarda nada):
+`text` obligatorio, 3–500 caracteres tras `trim`. `week` opcional (lunes `YYYY-MM-DD`; cualquier día se normaliza a su lunes): sin `week`, los candidatos son los huecos de esta semana y de la siguiente que aún no empezaron; con `week`, solo los de esa semana (los mismos que `GET /groups/:id/availability?week=`). Fuera de las 4 semanas válidas → `400 VALIDATION_ERROR`. Responde `200 ProposalDraft` (no guarda nada):
 ```json
 { "title": "Estudiar para el parcial", "category": "ESTUDIO", "placeName": "Biblioteca central",
-  "window": { "dayOfWeek": 2, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
-  "windows": [ { "dayOfWeek": 2, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
-               { "dayOfWeek": 2, "startTime": "14:00", "endTime": "16:00", "availabilityPercentage": 100, "freeMembers": 2 } ],
-  "votingDeadline": "2026-09-30T15:00:00.000Z" }
+  "window": { "date": "2026-10-08", "dayOfWeek": 4, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
+  "windows": [ { "date": "2026-10-08", "dayOfWeek": 4, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
+               { "date": "2026-10-10", "dayOfWeek": 6, "startTime": "08:00", "endTime": "20:00", "availabilityPercentage": 100, "freeMembers": 2 } ],
+  "votingDeadline": "2026-10-08T14:00:00.000Z" }
 ```
 - `category` ∈ `ESTUDIO | REUNION | COMIDA | DEPORTE | SALIDA | OTRO` (`PlanCategory`; una desconocida → `OTRO`). No se guarda en la propuesta.
-- `window` está **siempre dentro** de uno de los huecos reales de `GET /groups/:id/availability`: a la IA se le pasan numerados y responde con el número (si da uno que no existe, `window` es `null`) y, además, con `startTime`/`endTime` para recortarlo a lo que se pide (duración, momento del día; 2 h si no dice). El recorte solo se aplica si son `HH:mm`, el fin va después del inicio y caen dentro del hueco; si no, `window` es el hueco completo. Conserva `availabilityPercentage` y `freeMembers` del hueco (el peor caso del tramo).
-- `windows`: de 0 a 3 opciones para votar (la IA da la principal y hasta 2 alternativas), cada una con las mismas reglas que `window`; las inválidas o repetidas se descartan. La primera es `window`. La app las carga todas en «Elegir yo las franjas».
-- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. Con opciones, el cierre se adelanta a 1 h antes del próximo inicio de la que llega primero (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
-- A la IA se le pasan como máximo 30 huecos (los primeros de `GET /groups/:id/availability`), así que `window` siempre cae dentro de uno de ellos.
-- **El hueco de hoy se ofrece dos veces**, porque cada franja se agenda en su próxima ocurrencia: lo que aún sirve hoy empieza en ahora + 2 h redondeado a la hora en punto (p. ej. a las 10:25 → desde las 13:00) y se marca «(hoy)»; si el hueco empieza antes de la hora actual, también va **entero** al final de la lista como «(la próxima semana, empezando antes de las HH:00)», y un recorte suyo solo vale si empieza antes de esa hora (si no, caería hoy: queda el hueco entero). Así un plan «para hoy» nunca cae la semana siguiente. El límite de 30 se aplica antes de partirlo, así que la lista puede tener alguno más.
-- Una opción que empieza en menos de 2 h se descarta, para que la votación siempre pueda cerrar 1 h antes de su inicio.
+- A la IA se le pasan los candidatos numerados y **con fecha** («1. Jue 8 oct 16:00–18:00 · 100 % del grupo libre (2 personas)»), como máximo 30, y responde con el número (`windowIndex`) y, además, con `startTime`/`endTime` para recortarlo a lo que se pide (duración, momento del día; 2 h si no dice). El recorte solo se aplica si son `HH:mm`, el fin va después del inicio y caen dentro del hueco; si no, vale el hueco completo. Conserva `availabilityPercentage` y `freeMembers` del hueco (el peor caso del tramo). Un número que no existe se descarta.
+- `windows`: **de 2 a 5 opciones** para votar, cada una dentro de un hueco real del grupo y lista para usarse como `TimeWindowInput` (`date`, `startTime`, `endTime`). La IA da la principal y hasta 2 alternativas; se descartan las inválidas, las repetidas o que se solapan el mismo día y las que empiezan en menos de 2 h (para que la votación pueda cerrar 1 h antes). Si quedan menos de 2, el servidor completa con las mejores franjas de los candidatos (mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas) que no se solapen con las elegidas. La primera es `window`.
+- Si ni así hay 2 opciones → `409 NO_COMMON_WINDOWS`.
+- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. El cierre se adelanta a 1 h antes del inicio de la opción que llega primero (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
+- Fechas y horas son las de **America/Lima**; el prompt dice «hoy» en esa zona.
 - Títulos de más de 80 y lugares de más de 100 caracteres se recortan; un lugar vacío es `null`.
+
+`200` · `400 VALIDATION_ERROR` · `403` · `404` · `409 NO_COMMON_WINDOWS` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /groups/:id/ai/suggestions`
+Cuerpo opcional `{ "week"?: "YYYY-MM-DD" }` con la misma regla que el borrador (sin `week`: esta semana y la siguiente, solo lo que no empezó; fuera de las 4 semanas válidas → `400 VALIDATION_ERROR`). 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta su descripción y sus últimas 5 propuestas (para no repetir). Solo miembros.
+`200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` es un `MatchWindow` con `date` de la lista de candidatos, o `null` si la IA dio un número que no existe. La app abre «Nueva propuesta» rellenada con la idea elegida.
 
 `200` · `400 VALIDATION_ERROR` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
-### `POST /groups/:id/ai/suggestions`
-Sin cuerpo. 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta su descripción y sus últimas 5 propuestas (para no repetir). Solo miembros.
-`200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` sigue la misma regla que en el borrador. La app abre «Nueva propuesta» rellenada con la idea elegida.
-
-`200` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
-
 ### `POST /proposals/:id/ai/summary`
-Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recomendación para quien lo gestiona. Cualquier miembro (`403 NOT_A_MEMBER` · `404 PROPOSAL_NOT_FOUND`); no para planes `CANCELADO` (`409 INVALID_STATE`). **Nunca cambia el plan**: confirmar, reprogramar o cancelar se hace con los endpoints de siempre.
+Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recomendación para quien lo gestiona. Cualquier miembro (`403 NOT_A_MEMBER` · `404 PROPOSAL_NOT_FOUND`); no para planes `CANCELADO` (`409 INVALID_STATE`). A la IA le llega cada franja con su fecha («Jue 8 oct 08:00–20:00»). **Nunca cambia el plan**: confirmar, reprogramar o cancelar se hace con los endpoints de siempre.
 ```json
 { "summary": "Votó 1 de 2 integrantes: el jueves va ganando y no hay imprevistos.",
   "recommendation": "CONFIRMAR", "reason": "Hay una franja clara y nadie reportó problemas." }

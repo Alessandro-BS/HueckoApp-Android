@@ -68,7 +68,7 @@ export function groupSummaries(groups: readonly GroupSummary[], proposals: reado
       id: g.id,
       name: g.name,
       memberCount: g.memberCount,
-      nextWindow: w ? { dayOfWeek: w.dayOfWeek, startTime: w.startTime, endTime: w.endTime, availabilityPercentage: w.availabilityPercentage } : null,
+      nextWindow: w ? { date: w.date, dayOfWeek: w.dayOfWeek, startTime: w.startTime, endTime: w.endTime, availabilityPercentage: w.availabilityPercentage } : null,
     };
   });
 }

@@ -73,7 +73,7 @@ export const makeDashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
     ],
   },
   groups: [
-    { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
+    { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { date: '2026-10-07', dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
   ],
   pendingVotes: [{ ...makeProposal(), groupName: 'Proyecto Integrador' }],
   expressAlert: {
