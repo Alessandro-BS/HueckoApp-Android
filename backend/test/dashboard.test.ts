@@ -1,4 +1,4 @@
-import type { GroupMember, GroupSummary, Incidence, ProposalWithGroup, TimeWindow, User } from '@hueckoapp/shared';
+import type { ExpressVote, GroupMember, GroupSummary, Incidence, ProposalWithGroup, TimeWindow, User } from '@hueckoapp/shared';
 import { describe, expect, it } from 'vitest';
 
 import { addDays } from '../src/common/zone';
@@ -60,7 +60,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2']);
     expect(d.expressAlert).toEqual({
       proposalId: 'prop_1', planTitle: 'Reunión de avance del proyecto', groupName: 'Proyecto Integrador',
-      who: 'Ana', reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, createdBy: test,
+      who: 'Ana', reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, createdBy: test, expiresAt: null,
     });
   });
 
@@ -106,6 +106,41 @@ describe('alerta exprés (G5)', () => {
     expect(build([aviso, recoordinacion]).expressAlert).toMatchObject({ proposalId: 'prop_3', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma', canResolve: false });
     // Control positivo: el mismo plan, gestionable por quien pregunta (p. ej. el OWNER si quien lo creó se fue).
     expect(build([aviso, { ...recoordinacion, canManage: true }]).expressAlert?.canResolve).toBe(true);
+  });
+
+  const voto = (over: Partial<ExpressVote> = {}): ExpressVote => ({
+    id: 'ev_1', status: 'ABIERTA', reportedBy: ana, reason: 'Me operan mañana.', criticalReason: 'Es imprescindible.',
+    openedAt: NOW.toISOString(), expiresAt: new Date(2026, 8, 29, 12, 0).toISOString(), closedAt: null,
+    counts: { CANCELAR: 0, REAGENDAR: 0, MANTENER: 0 }, myVote: null, canVote: true, eligibleVoters: 2, quorum: 1,
+    result: null, resultByDefault: null, recommendation: null, ...over,
+  });
+
+  it('una votación exprés abierta es VOTACION, con quien reportó, su motivo y cuándo vence; gana a la recoordinación', () => {
+    const conVoto = prop1({ id: 'prop_v', expressVote: voto(), incidences: [incidence({ criticality: 'ALTA', reason: 'otro texto' })] });
+    const recoordinacion = prop1({ id: 'prop_r', state: 'EN_RECOORDINACION', incidences: [incidence()] });
+    expect(build([recoordinacion, conVoto]).expressAlert).toEqual({
+      proposalId: 'prop_v', planTitle: 'Reunión de avance del proyecto', groupName: 'Proyecto Integrador',
+      who: 'Ana', reason: 'Me operan mañana.', kind: 'VOTACION', canResolve: true, createdBy: test,
+      expiresAt: new Date(2026, 8, 29, 12, 0).toISOString(),
+    });
+    expect(build([conVoto]).expressAlert?.canResolve).toBe(true);
+    expect(build([{ ...conVoto, canManage: false }]).expressAlert?.canResolve).toBe(false);
+  });
+
+  it('una votación ya cerrada no es VOTACION', () => {
+    const cerrada = prop1({ expressVote: voto({ status: 'CERRADA', result: 'MANTENER', closedAt: NOW.toISOString() }), incidences: [incidence({ resolved: true })] });
+    expect(build([cerrada]).expressAlert).toBeNull();
+  });
+
+  it('el plan reagendado por la votación es RECOORDINACION (sin expiresAt)', () => {
+    const reagendado = prop1({
+      state: 'EN_RECOORDINACION', expressVote: voto({ status: 'CERRADA', result: 'REAGENDAR', closedAt: NOW.toISOString() }),
+    });
+    expect(build([reagendado]).expressAlert).toMatchObject({ kind: 'RECOORDINACION', who: 'Ana', expiresAt: null });
+  });
+
+  it('una ausencia no crítica sigue siendo AVISO, sin expiresAt', () => {
+    expect(build([prop1()]).expressAlert).toMatchObject({ kind: 'AVISO', expiresAt: null });
   });
 
   it('un plan que ya ocurrió no es el próximo ni dispara la alerta', () => {

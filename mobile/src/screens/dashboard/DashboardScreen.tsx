@@ -141,7 +141,8 @@ export function DashboardScreen({ navigation }: TabScreen<'Dashboard'>) {
               {dashboard.expressAlert ? (
                 <ExpressVoteCard
                   key={dashboard.expressAlert.proposalId}
-                  kind={dashboard.expressAlert.kind}
+                  // TODO(votacion-expres Task 8): la tarjeta nueva distingue VOTACION; mientras, se muestra como RECOORDINACION.
+                  kind={dashboard.expressAlert.kind === 'VOTACION' ? 'RECOORDINACION' : dashboard.expressAlert.kind}
                   who={dashboard.expressAlert.who}
                   reason={dashboard.expressAlert.reason}
                   planTitle={dashboard.expressAlert.planTitle}

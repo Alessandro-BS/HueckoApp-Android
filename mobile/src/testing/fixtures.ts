@@ -78,7 +78,7 @@ export const makeDashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
   pendingVotes: [{ ...makeProposal(), groupName: 'Proyecto Integrador' }],
   expressAlert: {
     proposalId: 'prop_1', planTitle: 'Reunión de avance del proyecto', groupName: 'Proyecto Integrador', who: 'Ana',
-    reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, createdBy: TEST_USER,
+    reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, createdBy: TEST_USER, expiresAt: null,
   },
   ...over,
 });

@@ -166,9 +166,10 @@ export type ExpressAlert = {
   groupName: string;
   who: string;                          // nombre de quien reportó la incidencia
   reason: string;
-  kind: 'RECOORDINACION' | 'AVISO';     // EN_RECOORDINACION, o CONFIRMADO con incidencias sin resolver
+  kind: 'VOTACION' | 'RECOORDINACION' | 'AVISO'; // votación exprés abierta; plan EN_RECOORDINACION; o CONFIRMADO con incidencias sin resolver
   canResolve: boolean;                  // = canManage del plan para el usuario actual
   createdBy: User;
+  expiresAt: string | null;             // ISO: cuándo vence la votación; solo en VOTACION, null en los demás
 };
 
 export type DashboardGroup = {

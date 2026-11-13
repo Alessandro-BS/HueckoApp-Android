@@ -74,30 +74,38 @@ export function groupSummaries(groups: readonly GroupSummary[], proposals: reado
 }
 
 /**
- * G5: de los planes que aún no ocurrieron, el primero EN_RECOORDINACION («Votación exprés») o, si no hay,
- * el primero CONFIRMADO con incidencias sin resolver (aviso). Se muestra su incidencia ALTA o, si no, la más antigua.
+ * G5: de los planes que aún no ocurrieron, por prioridad: el primero con votación exprés ABIERTA (`VOTACION`, con el
+ * motivo de quien reportó y cuándo vence), si no el primero EN_RECOORDINACION (`RECOORDINACION`: tras una votación que
+ * reagendó el plan sus incidencias ya están resueltas, así que quién y por qué salen de la votación), si no el primero
+ * CONFIRMADO con incidencias sin resolver (`AVISO`). Sin votación se muestra la incidencia ALTA sin resolver o, si no,
+ * la más antigua.
  */
 export function expressAlertFor(proposals: readonly ProposalWithGroup[], now: Date): ExpressAlert | null {
-  const candidates = proposals.filter(
-    (p) =>
-      (p.state === 'EN_RECOORDINACION' || p.state === 'CONFIRMADO') &&
-      (p.scheduledAt === null || isFuture(p.scheduledAt, now)) &&
-      p.incidences.some((i) => !i.resolved),
-  );
-  const p = candidates.find((x) => x.state === 'EN_RECOORDINACION') ?? candidates[0];
-  if (!p) return null;
-  const pending = p.incidences.filter((i) => !i.resolved);
-  const shown = pending.find((i) => i.criticality === 'ALTA') ?? pending[0];
-  return {
-    proposalId: p.id,
-    planTitle: p.title,
-    groupName: p.groupName,
-    who: shown.user.name,
-    reason: shown.reason,
-    kind: p.state === 'EN_RECOORDINACION' ? 'RECOORDINACION' : 'AVISO',
-    canResolve: p.canManage,
-    createdBy: p.createdBy,
+  const upcoming = proposals.filter((p) => p.scheduledAt === null || isFuture(p.scheduledAt, now));
+  const pendingOf = (p: ProposalWithGroup) => p.incidences.filter((i) => !i.resolved);
+  const shownIncidence = (p: ProposalWithGroup) => {
+    const pending = pendingOf(p);
+    return pending.find((i) => i.criticality === 'ALTA') ?? pending[0];
   };
+  const alert = (p: ProposalWithGroup, kind: ExpressAlert['kind'], who: string, reason: string, expiresAt: string | null): ExpressAlert => ({
+    proposalId: p.id, planTitle: p.title, groupName: p.groupName, who, reason, kind, canResolve: p.canManage, createdBy: p.createdBy, expiresAt,
+  });
+
+  const voting = upcoming.find((p) => p.state === 'CONFIRMADO' && p.expressVote?.status === 'ABIERTA');
+  if (voting?.expressVote) {
+    const v = voting.expressVote;
+    return alert(voting, 'VOTACION', v.reportedBy.name, v.reason, v.expiresAt);
+  }
+
+  for (const p of upcoming.filter((x) => x.state === 'EN_RECOORDINACION')) {
+    const shown = shownIncidence(p);
+    if (p.expressVote) return alert(p, 'RECOORDINACION', p.expressVote.reportedBy.name, p.expressVote.reason, null);
+    if (shown) return alert(p, 'RECOORDINACION', shown.user.name, shown.reason, null);
+  }
+
+  const warned = upcoming.find((p) => p.state === 'CONFIRMADO' && pendingOf(p).length > 0);
+  const shown = warned && shownIncidence(warned);
+  return warned && shown ? alert(warned, 'AVISO', shown.user.name, shown.reason, null) : null;
 }
 
 export function buildDashboard(input: {

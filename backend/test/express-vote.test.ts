@@ -1,4 +1,4 @@
-import type { Group, Proposal, User } from '@hueckoapp/shared';
+import type { Dashboard, Group, Proposal, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -252,6 +252,32 @@ describe('cierre al consultar', () => {
     clock.set(later(61));
     await request(app).get(path()).set(bearer(carlos.token)).expect(200);
     expect(await voteRows(p)).toEqual([{ status: 'CERRADA', result: 'MANTENER' }]);
+  });
+
+  describe('alerta de Inicio', () => {
+    const alertOf = async (token: string) => ((await request(app).get('/api/me/dashboard').set(bearer(token)).expect(200)).body as Dashboard).expressAlert;
+
+    it('con la votación abierta es VOTACION con quién la abrió, su motivo y cuándo vence', async () => {
+      const p = await planWithVote();
+      expect(await alertOf(carlos.token)).toMatchObject({
+        proposalId: p.id, kind: 'VOTACION', who: 'Yo', reason: 'Estoy enfermo', expiresAt: later(60).toISOString(), canResolve: false,
+      });
+      expect((await alertOf(yo.token))?.canResolve).toBe(true);
+    });
+
+    it('vencida con REAGENDAR: Inicio ya muestra RECOORDINACION (se cerró antes de armarlo)', async () => {
+      const p = await planWithVote();
+      await expressVote(p, ana.token, 'REAGENDAR').expect(200);
+      await expressVote(p, carlos.token, 'REAGENDAR').expect(200);
+      clock.set(later(61));
+      expect(await alertOf(carlos.token)).toMatchObject({ proposalId: p.id, kind: 'RECOORDINACION', expiresAt: null });
+    });
+
+    it('vencida sin votos: se mantiene el plan y la alerta desaparece', async () => {
+      await planWithVote();
+      clock.set(later(61));
+      expect(await alertOf(carlos.token)).toBeNull();
+    });
   });
 
   it('POST /incidences cierra antes de comprobar el estado: una REAGENDAR vencida ya no admite reportes', async () => {
