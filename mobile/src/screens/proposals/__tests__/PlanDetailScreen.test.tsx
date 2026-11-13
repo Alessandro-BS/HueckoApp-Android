@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Alert, Linking } from 'react-native';
 
+import { ApiError } from '../../../api/client';
 import * as proposalsApi from '../../../api/proposals';
 import { makeConfirmed, makeExpressVote, makeProposal, TEST_USER } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
@@ -139,6 +140,20 @@ it('un miembro vota «Reagendar» en la votación exprés del plan', async () =>
   expect(screen.getByLabelText('Reagendar, 2 votos').props.accessibilityState.selected).toBe(true);
 });
 
+it('si el voto exprés llega tarde (409 VOTING_CLOSED), recarga el plan y muestra la votación cerrada', async () => {
+  mocked.getProposal
+    .mockResolvedValueOnce(makeConfirmed({ id: 'p1', expressVote: makeExpressVote() }))
+    .mockResolvedValue(
+      makeConfirmed({ id: 'p1', expressVote: makeExpressVote({ status: 'CERRADA', result: 'CANCELAR', resultByDefault: false, canVote: false }) }),
+    );
+  mocked.voteExpress.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
+  await renderScreen('p1');
+  await fireEvent.press(await screen.findByText('Mantener'));
+  expect(await screen.findByText('El grupo decidió: Cancelar')).toBeTruthy();
+  expect(mocked.getProposal).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText('¿Qué hacemos con el plan?')).toBeNull();
+});
+
 it('con la votación abierta, quien gestiona conserva «Cancelar plan»', async () => {
   mocked.getProposal.mockResolvedValue(makeConfirmed({ expressVote: makeExpressVote() }));
   await renderScreen();
@@ -165,6 +180,19 @@ it('en recoordinación quien no gestiona no ve «Proponer franjas»', async () =
   await renderScreen();
   expect(await screen.findByText('Plan en recoordinación')).toBeTruthy();
   expect(screen.queryByText('Proponer franjas')).toBeNull();
+});
+
+it('en recoordinación con la fecha vieja ya pasada (regla anterior), quien gestiona aún propone franjas', async () => {
+  // Hoy es martes 29 a las 10:00; la regla vieja dejó el plan en recoordinación con su fecha del lunes 28.
+  const atascado = makeConfirmed({
+    state: 'EN_RECOORDINACION', expressVote: null, scheduledAt: new Date(2026, 8, 28, 11, 0).toISOString(), scheduledDate: '2026-09-28',
+  });
+  mocked.getProposal.mockResolvedValue(atascado);
+  await renderScreen();
+  expect(await screen.findByText('Plan en recoordinación')).toBeTruthy();
+  expect(screen.queryByText('Reportar imprevisto')).toBeNull();
+  await fireEvent.press(screen.getByText('Proponer franjas'));
+  expect(screen.getByText('Proponer franjas nuevas')).toBeTruthy();
 });
 
 it('un aviso que no es crítico se ve en «Imprevistos», sin votación', async () => {

@@ -23,6 +23,8 @@ type Props = {
   proposal: Proposal;
   onVote: (option: ExpressOption) => Promise<unknown>;
   onReplan: (input: ReplanInput) => Promise<unknown>;
+  /** Si el voto falla (p. ej. 409 VOTING_CLOSED: la votación cerró o el plan se canceló), recarga el plan. */
+  onStale?: () => void;
   /** Solo para tests: por defecto, el reloj de la app. */
   now?: Date;
 };
@@ -30,7 +32,7 @@ type Props = {
 // Votación exprés del grupo (docs/api.md, «Votación exprés»): una ausencia crítica abre una votación corta con tres
 // opciones; vota cada miembro menos quien avisó y el resultado lo aplica el servidor. Si el grupo decidió reagendar
 // (plan EN_RECOORDINACION), quien gestiona propone franjas nuevas con el mismo ReplanSheet de «Replantear».
-export function ExpressVoteCard({ proposal, onVote, onReplan, now: nowProp }: Props) {
+export function ExpressVoteCard({ proposal, onVote, onReplan, onStale, now: nowProp }: Props) {
   const now = nowProp ?? today();
   const vote = proposal.expressVote;
   const [pending, setPending] = useState<ExpressOption | null>(null);
@@ -43,6 +45,9 @@ export function ExpressVoteCard({ proposal, onVote, onReplan, now: nowProp }: Pr
     const result = await action.run(option);
     setPending(null);
     if (result.ok) showToast('Tu voto ha sido registrado.');
+    // Si falló, la tarjeta puede estar desfasada (la votación cerró o venció, o el plan se canceló): el mensaje queda
+    // en el banner mientras se recarga el plan y, si la votación ya cerró, la recarga la muestra cerrada.
+    else onStale?.();
   };
 
   const recoordinating = proposal.state === 'EN_RECOORDINACION';

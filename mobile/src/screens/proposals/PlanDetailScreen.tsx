@@ -63,8 +63,10 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   const active = proposal.state === 'CONFIRMADO' || proposal.state === 'EN_RECOORDINACION';
   // La votación exprés y «Reportar imprevisto» solo tienen sentido si el plan aún no ocurrió (D3).
   const activeUpcoming = active && isUpcoming(proposal, now);
-  // Tarjeta de la votación exprés (abierta o la última cerrada) o, en recoordinación, «Proponer franjas».
-  const showExpress = activeUpcoming && (proposal.expressVote !== null || proposal.state === 'EN_RECOORDINACION');
+  // Tarjeta de la votación exprés (abierta o la última cerrada) o, en recoordinación, «Proponer franjas». La
+  // recoordinación siempre está vigente: la regla anterior conservaba la fecha vieja y, aunque ya pasara, el plan
+  // sigue atascado hasta que quien gestiona lo replantee.
+  const showExpress = proposal.state === 'EN_RECOORDINACION' || (activeUpcoming && proposal.expressVote !== null);
   // Solo se reporta sobre un plan confirmado: en recoordinación no hay fecha a la que faltar (409 INVALID_STATE).
   const canReport = activeUpcoming && proposal.state === 'CONFIRMADO';
   const openVoteId = proposal.expressVote?.status === 'ABIERTA' ? proposal.expressVote.id : null;
@@ -89,7 +91,9 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
       >
         <ProposalHeader proposal={proposal} now={now} details />
 
-        {showExpress ? <ExpressVoteCard proposal={proposal} now={now} onVote={voteExpress} onReplan={replan} /> : null}
+        {showExpress ? (
+          <ExpressVoteCard proposal={proposal} now={now} onVote={voteExpress} onReplan={replan} onStale={() => void reload()} />
+        ) : null}
 
         {proposal.state !== 'CANCELADO' ? <VotingSummaryCard proposalId={proposal.id} /> : null}
 

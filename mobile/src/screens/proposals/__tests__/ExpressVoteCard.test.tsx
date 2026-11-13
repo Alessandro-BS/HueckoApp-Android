@@ -15,8 +15,9 @@ const withVote = (over: Parameters<typeof makeExpressVote>[0] = {}) => makeConfi
 const renderCard = async (proposal = withVote(), handlers: { onVote?: jest.Mock; onReplan?: jest.Mock } = {}) => {
   const onVote = handlers.onVote ?? jest.fn().mockResolvedValue(undefined);
   const onReplan = handlers.onReplan ?? jest.fn().mockResolvedValue(undefined);
-  await render(<ExpressVoteCard proposal={proposal} now={NOW} onVote={onVote} onReplan={onReplan} />);
-  return { onVote, onReplan };
+  const onStale = jest.fn();
+  await render(<ExpressVoteCard proposal={proposal} now={NOW} onVote={onVote} onReplan={onReplan} onStale={onStale} />);
+  return { onVote, onReplan, onStale };
 };
 
 beforeEach(() => jest.clearAllMocks());
@@ -76,6 +77,17 @@ it('si el voto falla muestra el mensaje del servidor y deja volver a votar', asy
   expect(showToast).not.toHaveBeenCalled();
   await fireEvent.press(screen.getByText('Mantener'));
   expect(onVote).toHaveBeenCalledTimes(2);
+});
+
+it('si el voto falla pide recargar el plan (la votación pudo cerrarse); si sale bien, no', async () => {
+  const onVote = jest.fn().mockRejectedValueOnce(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.')).mockResolvedValue(undefined);
+  const { onStale } = await renderCard(withVote(), { onVote });
+  await fireEvent.press(screen.getByText('Mantener'));
+  await waitFor(() => expect(onStale).toHaveBeenCalledTimes(1));
+  // Control positivo: un voto que sí se registra no recarga.
+  await fireEvent.press(screen.getByText('Cancelar'));
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
+  expect(onStale).toHaveBeenCalledTimes(1);
 });
 
 it('cerrada con resultado: «El grupo decidió: Reagendar», sin botones', async () => {
