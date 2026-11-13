@@ -45,7 +45,7 @@ flowchart LR
 | 📅 | **Horario semanal** | Bloques recurrentes o **puntuales** (un día concreto, que cuenta solo en su fecha) escritos a mano (reloj nativo de Android) o leídos de una foto con IA |
 | 👥 | **Grupos** | Código de invitación y roles: dueño, miembro y miembro **imprescindible** |
 | 🔍 | **Huecos en común** | El servidor cruza las agendas de 08:00 a 20:00 de la semana que elijas (hora de Lima) y muestra el % del grupo libre |
-| 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, un voto por persona y **replantear** si las franjas ya pasaron |
+| 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, un voto por persona y **replantear** la propuesta en votación (franjas y plazo nuevos) |
 | ⚠️ | **Imprevistos** | Si alguien no puede ir, el responsable decide si el plan sigue o se reprograma con franjas nuevas y una fecha límite nueva |
 | 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
 | 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
