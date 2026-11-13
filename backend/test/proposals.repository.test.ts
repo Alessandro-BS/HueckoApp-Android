@@ -21,7 +21,7 @@ const setup = async () => {
   await groups.addMember(group.id, beto.id);
   const repo = proposalsRepository(db);
   const create = (windows: NewWindow[]) =>
-    repo.create({ groupId: group.id, createdBy: ana.id, title: 'Plan', location: null, votingDeadline: DEADLINE, windows, createdAt });
+    repo.create({ groupId: group.id, createdBy: ana.id, title: 'Plan', location: null, votingDeadline: DEADLINE, windows, multipleVotes: false, createdAt });
   return { db, repo, create, ana, beto };
 };
 
@@ -59,8 +59,8 @@ describe('proposalsRepository: franjas con fecha', () => {
     const { db, repo, create, ana, beto } = await setup();
     const id = await create([win('2026-09-30', '16:00', '18:00'), win('2026-10-01', '10:00', '12:00')]);
     const [first, second] = (await repo.findById(id, ana.id))!.windows;
-    await repo.vote(id, ana.id, first.id, createdAt);
-    await repo.vote(id, beto.id, second.id, createdAt);
+    await repo.voteIfOpen(id, ana.id, first.id, NOW);
+    await repo.voteIfOpen(id, beto.id, second.id, NOW);
     await repo.confirm(id, first.id, '2026-09-30T21:00:00.000Z', '2026-09-30');
 
     const deadline = '2026-10-07T01:00:00.000Z';
@@ -75,7 +75,7 @@ describe('proposalsRepository: franjas con fecha', () => {
       ['2026-10-08', 4, '18:00', '20:00', 50, 0],
     ]);
     expect(after.windows.some((w) => w.id === first.id || w.id === second.id)).toBe(false);
-    expect(after).toMatchObject({ chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: deadline, myVoteWindowId: null });
+    expect(after).toMatchObject({ chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: deadline, myVoteWindowIds: [] });
     expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [id])).toEqual({ n: 0 });
   });
 
@@ -83,13 +83,13 @@ describe('proposalsRepository: franjas con fecha', () => {
     const { repo, create, ana } = await setup();
     const id = await create([win('2026-09-30', '16:00', '18:00'), win('2026-10-01', '10:00', '12:00')]);
     const before = (await repo.findById(id, ana.id))!;
-    await repo.vote(id, ana.id, before.windows[0].id, createdAt);
+    await repo.voteIfOpen(id, ana.id, before.windows[0].id, NOW);
     // Dos franjas iguales chocan con el UNIQUE.
     await expect(repo.replaceWindows(id, [win('2026-10-07', '10:00', '12:00'), win('2026-10-07', '10:00', '12:00')], DEADLINE)).rejects.toMatchObject({
       code: '23505',
     });
     const after = (await repo.findById(id, ana.id))!;
     expect(after.windows.map((w) => w.id)).toEqual(before.windows.map((w) => w.id));
-    expect(after.myVoteWindowId).toBe(before.windows[0].id);
+    expect(after.myVoteWindowIds).toEqual([before.windows[0].id]);
   });
 });

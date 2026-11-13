@@ -244,4 +244,11 @@ export const migrations: string[] = [
   `ALTER TABLE group_members DROP CONSTRAINT group_members_role_check;
    UPDATE group_members SET role = 'ORGANIZER' WHERE role = 'OWNER';
    ALTER TABLE group_members ADD CONSTRAINT group_members_role_check CHECK (role IN ('ORGANIZER', 'MEMBER'));`,
+
+  // 11 — Cierre automático y voto múltiple. La clave de votes (PRIMARY KEY inline de la migración 2, así que Postgres
+  // la llamó votes_pkey) pasa a incluir la franja.
+  `ALTER TABLE proposals ADD COLUMN multiple_votes BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE proposals ADD COLUMN auto_closed BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE votes DROP CONSTRAINT votes_pkey;
+   ALTER TABLE votes ADD PRIMARY KEY (proposal_id, user_id, window_id);`,
 ];

@@ -60,7 +60,7 @@ export function useDashboard(userId?: string) {
 
   // Votar desde «Votaciones en curso»: misma alternancia que en Votar (useVoteToggle). No lanza.
   const { toggle: toggleVote, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
-    currentVote: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowId,
+    currentVote: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowIds[0],
     vote: async (id, windowId) => replacePending(await voteWindow(id, windowId)),
     unvote: async (id) => replacePending(await removeVote(id)),
   });

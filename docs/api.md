@@ -237,12 +237,13 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
   El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`), con los bloques recurrentes de ese día de la semana y los puntuales de esa fecha.
 - `week` opcional (`YYYY-MM-DD`; cualquier día se normaliza a su lunes; por defecto, la semana actual): **solo se usa si `windows` viene vacío u omitido**, y entonces solo valen esta semana y las 3 siguientes (`400` «Elige una semana entre esta y las próximas 3»). Con `windows` se ignora.
 - Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability?week=` que empiezan después del `votingDeadline` (así tampoco entran las que ya empezaron): mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas. Si salen menos de 2 (también porque el plazo deja fuera las demás), **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
-- Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
+- `multipleVotes` opcional (booleano, por defecto `true`; otro tipo → `400`): con `true` cada persona puede votar **varias** franjas; con `false`, una sola (votar otra mueve el voto). Se guarda en la propuesta y no cambia al replantear.
+- Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias, y con `autoClosed: false`.
 
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
 
 ### `GET /proposals/:id`
-`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»). `expressVote` es su votación exprés más reciente (la abierta o la última cerrada; `null` si nunca tuvo); si está abierta y ya venció, se cierra antes de responder (ver «Votación exprés»).
+`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowIds` son las franjas que votó quien pregunta (en el orden de `windows`; vacío si ninguna), `multipleVotes` dice si se pueden votar varias, `autoClosed` si el servidor cerró la votación solo (por ahora siempre `false`) y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»). `expressVote` es su votación exprés más reciente (la abierta o la última cerrada; `null` si nunca tuvo); si está abierta y ya venció, se cierra antes de responder (ver «Votación exprés»).
 `404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
 
 **Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.
@@ -257,11 +258,11 @@ Siempre hay al menos un `ORGANIZER` (`409 LAST_ORGANIZER` y la herencia al salir
 Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra los botones con él (no comparando ids). Si lo intenta alguien que no gestiona el plan: `403 NOT_MANAGER` «Solo quien organiza el plan puede hacer esto.»
 
 ### `PUT /proposals/:id/vote`
-`{ "windowId": "..." }`. Un voto por persona y propuesta: votar otra franja **mueve** el voto; votar la misma otra vez **no cambia nada** (idempotente). El «tocar otra vez retira el voto» de la app Kotlin se hace desde la app con `DELETE`.
+`{ "windowId": "..." }`. Según `Proposal.multipleVotes`: con `true`, cada voto **suma** una franja a las que ya votaste; con `false`, votar otra franja **mueve** el único voto. Votar la misma otra vez **no cambia nada** (idempotente). Retirar un voto se hace con `DELETE`.
 `200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta (también si un replanteo la borró justo antes de guardar el voto).
 
 ### `DELETE /proposals/:id/vote`
-Retira mi voto (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
+Retira mis votos: con `?windowId=` solo el de esa franja; sin parámetros, todos los míos en la propuesta (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
 
 ### `POST /proposals/:id/windows`
 Añadir una franja a una propuesta en votación. Cualquier miembro. `{ "date": "2026-10-09", "startTime": "18:00", "endTime": "19:30" }` (`TimeWindowInput`, con las mismas reglas de una franja al crear: fecha de las 4 semanas válidas, horas, que no haya empezado). Además, todas `400 VALIDATION_ERROR`:

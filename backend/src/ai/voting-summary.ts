@@ -42,6 +42,7 @@ export function summaryData(p: Proposal, group: Group, now: Date) {
     lugar: p.location?.name ?? null,
     integrantes: group.members.length,
     votacionAbierta: isVotingOpen(p, now),
+    votoMultiple: p.multipleVotes,
     votosEmitidos: p.windows.reduce((total, w) => total + w.voteCount, 0),
     franjas: p.windows.map((w) => ({
       franja: windowLabel(w),

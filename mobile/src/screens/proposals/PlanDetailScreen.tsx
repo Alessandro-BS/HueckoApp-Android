@@ -103,7 +103,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
         ) : (
           <View style={styles.list}>
             {proposal.windows.map((w) => (
-              <VoteWindowRow key={w.id} window={w} voted={proposal.myVoteWindowId === w.id} chosen={proposal.chosenWindowId === w.id} />
+              <VoteWindowRow key={w.id} window={w} voted={proposal.myVoteWindowIds.includes(w.id)} chosen={proposal.chosenWindowId === w.id} />
             ))}
           </View>
         )}

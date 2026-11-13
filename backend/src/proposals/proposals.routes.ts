@@ -25,6 +25,7 @@ import {
   replanSchema,
   timeWindowInputSchema,
   validationError,
+  unvoteQuerySchema,
   voteSchema,
   WINDOW_LIMITS,
 } from './proposals.schemas';
@@ -80,7 +81,7 @@ function proposalsContext({ db, now, expressVoteMinutes, ai, onBackgroundTask }:
   };
 
   const assertVotingOpen = (proposal: Proposal) => {
-    if (!isVotingOpen(proposal, now())) throw new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.');
+    if (!isVotingOpen(proposal, now())) throw votingClosed();
   };
 
   return {
@@ -127,6 +128,7 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
         location: input.location,
         votingDeadline: new Date(input.votingDeadline).toISOString(),
         windows,
+        multipleVotes: input.multipleVotes,
         createdAt: now.toISOString(),
       })
       .catch((error: unknown) => {
@@ -138,6 +140,7 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
   return router;
 }
 
+const votingClosed = () => new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.');
 const windowNotFound = () => new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
 
 // Montado en /api/proposals detrás de requireAuth.
@@ -156,17 +159,19 @@ export function proposalsRouter(deps: ResolvedDeps) {
     ctx.assertVotingOpen(proposal);
     if (!proposal.windows.some((w) => w.id === windowId)) throw windowNotFound();
     // Si un replanteo borró la franja justo ahora, su clave foránea falla: 404 como si no existiera.
-    await ctx.proposals.vote(proposal.id, userId, windowId, ctx.now().toISOString()).catch((error: unknown) => {
+    const result = await ctx.proposals.voteIfOpen(proposal.id, userId, windowId, ctx.now()).catch((error: unknown) => {
       throw isForeignKeyViolation(error, 'votes_window_id_proposal_id_fkey') ? windowNotFound() : error;
     });
+    if (result === 'CLOSED') throw votingClosed();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
   router.delete('/:id/vote', async (req, res) => {
     const userId = getUserId(res);
     const { proposal } = await ctx.loadForMember(req.params.id, userId);
+    const { windowId } = unvoteQuerySchema.parse(req.query);
     ctx.assertVotingOpen(proposal);
-    await ctx.proposals.unvote(proposal.id, userId);
+    if ((await ctx.proposals.unvoteIfOpen(proposal.id, userId, windowId ?? null, ctx.now())) === 'CLOSED') throw votingClosed();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 

@@ -43,7 +43,7 @@ it('carga el resumen y mis bloques en una sola carga', async () => {
 });
 
 it('toggleVote vota y actualiza solo esa votación, conservando el nombre del grupo', async () => {
-  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowId: 'w_22' }));
+  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowIds: ['w_22'] }));
   const { result } = await load();
   let outcome;
   await act(async () => {
@@ -51,12 +51,12 @@ it('toggleVote vota y actualiza solo esa votación, conservando el nombre del gr
   });
   expect(outcome).toEqual({ ok: true, value: 'voted' });
   expect(proposals.voteWindow).toHaveBeenCalledWith('prop_2', 'w_22');
-  expect(result.current.dashboard?.pendingVotes[0]).toMatchObject({ id: 'prop_2', myVoteWindowId: 'w_22', groupName: 'Proyecto Integrador' });
+  expect(result.current.dashboard?.pendingVotes[0]).toMatchObject({ id: 'prop_2', myVoteWindowIds: ['w_22'], groupName: 'Proyecto Integrador' });
 });
 
 it('toggleVote sobre mi franja retira el voto', async () => {
   dashboard.getDashboard.mockResolvedValue(
-    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowId: 'w_21' }), groupName: 'Proyecto Integrador' }] }),
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
   );
   proposals.removeVote.mockResolvedValue(makeProposal());
   const { result } = await load();
@@ -66,7 +66,7 @@ it('toggleVote sobre mi franja retira el voto', async () => {
   });
   expect(outcome).toEqual({ ok: true, value: 'unvoted' });
   expect(proposals.removeVote).toHaveBeenCalledWith('prop_2');
-  expect(result.current.dashboard?.pendingVotes[0].myVoteWindowId).toBeNull();
+  expect(result.current.dashboard?.pendingVotes[0].myVoteWindowIds).toEqual([]);
 });
 
 it('si el voto falla, no lanza: expone voteError y el resumen no cambia', async () => {

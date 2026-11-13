@@ -32,7 +32,7 @@ export function useProposal(proposalId: string) {
     [mutate],
   );
 
-  const myVote = data?.myVoteWindowId ?? null;
+  const myVote = data?.myVoteWindowIds[0] ?? null;
   const { toggle, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
     currentVote: () => myVote,
     vote: async (id, windowId) => apply(await voteWindow(id, windowId)),

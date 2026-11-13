@@ -115,7 +115,7 @@ it('sin datos muestra los estados vacíos', async () => {
 });
 
 it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)', async () => {
-  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowId: 'w_22' }));
+  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowIds: ['w_22'] }));
   await renderScreen();
   await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
@@ -125,7 +125,7 @@ it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)'
 
 it('tocar la franja que ya voté retira el voto y avisa (B8)', async () => {
   dashboard.getDashboard.mockResolvedValue(
-    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowId: 'w_21' }), groupName: 'Proyecto Integrador' }] }),
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
   );
   proposals.removeVote.mockResolvedValue(makeProposal());
   await renderScreen();

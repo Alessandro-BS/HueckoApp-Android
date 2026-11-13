@@ -76,11 +76,12 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: ago(24),
     windows: [{ date: inTwoDays, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
+    multipleVotes: true,
     createdAt: ago(48),
   });
   const [meetingWindow] = (await proposals.findById(meetingId, ids.test))!.windows;
-  await proposals.vote(meetingId, ids.test, meetingWindow.id, ago(30));
-  await proposals.vote(meetingId, ids.ana, meetingWindow.id, ago(30));
+  await proposals.voteIfOpen(meetingId, ids.test, meetingWindow.id, new Date(ago(30)));
+  await proposals.voteIfOpen(meetingId, ids.ana, meetingWindow.id, new Date(ago(30)));
   await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date);
   await proposals.reportIncidence(
     meetingId,
@@ -111,10 +112,11 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
       { date: onOrAfter(inTwoDays, 4), startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 },
       { date: onOrAfter(inTwoDays, 5), startTime: '16:00', endTime: '18:00', availabilityPercentage: 50 },
     ],
+    multipleVotes: true,
     createdAt: ago(1),
   });
   const tuesday = (await proposals.findById(reviewId, ids.ana))!.windows.find((w) => w.dayOfWeek === 2)!;
-  await proposals.vote(reviewId, ids.ana, tuesday.id, now.toISOString());
+  await proposals.voteIfOpen(reviewId, ids.ana, tuesday.id, now);
 
   return DEMO_PROPOSAL_TITLES.length;
 }

@@ -69,7 +69,7 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
               <VoteWindowRow
                 key={w.id}
                 window={w}
-                voted={proposal.myVoteWindowId === w.id}
+                voted={proposal.myVoteWindowIds.includes(w.id)}
                 chosen={proposal.chosenWindowId === w.id}
                 onPress={open ? () => void vote(w.id) : undefined}
                 disabled={voting}

@@ -25,6 +25,8 @@ type ProposalRow = {
   chosen_window_id: string | null;
   scheduled_at: string | null;
   scheduled_date: string | null;
+  multiple_votes: boolean;
+  auto_closed: boolean;
   created_at: string;
 };
 type WindowRow = {
@@ -52,6 +54,7 @@ type IncidenceRow = {
   created_at: string;
 };
 type MyVoteRow = { proposal_id: string; window_id: string };
+type VotingRow = { state: ProposalState; voting_deadline: string; multiple_votes: boolean };
 type MemberRow = { group_id: string; id: string; role: GroupMember['role'] };
 
 // `date` es "YYYY-MM-DD" (en America/Lima) y ya validada por quien llama: el día de la semana se deriva de ella.
@@ -74,6 +77,7 @@ export type NewProposal = {
   location: Location | null;
   votingDeadline: string;
   windows: NewWindow[];
+  multipleVotes: boolean;
   // ISO del reloj de la app: se escribe siempre explícito, nunca el valor por defecto de la tabla.
   createdAt: string;
 };
@@ -126,7 +130,7 @@ const toIncidence = (r: IncidenceRow): Incidence => ({
 export function proposalsRepository(db: Db) {
   /**
    * Completa las filas con sus franjas (y votos), incidencias y el voto de `viewerId` con un número FIJO de consultas,
-   * sin importar cuántas propuestas haya (antes eran 3 por propuesta: N+1). `viewerId` decide myVoteWindowId:
+   * sin importar cuántas propuestas haya (antes eran 3 por propuesta: N+1). `viewerId` decide myVoteWindowIds:
    * la misma propuesta se ve distinta según quién pregunta. Mismo orden y mismas claves que antes.
    */
   const hydrate = async (rows: readonly ProposalRow[], viewerId: string): Promise<Proposal[]> => {
@@ -161,10 +165,10 @@ export function proposalsRepository(db: Db) {
       (r) => r.proposal_id,
       toIncidence,
     );
-    const myVotes = new Map(
-      (await db.many<MyVoteRow>(`SELECT proposal_id, window_id FROM votes WHERE user_id = $1 AND proposal_id ${inProposalIds(2)}`, [viewerId, ids])).map(
-        (r) => [r.proposal_id, r.window_id] as const,
-      ),
+    const myVotes = groupBy(
+      await db.many<MyVoteRow>(`SELECT proposal_id, window_id FROM votes WHERE user_id = $1 AND proposal_id ${inProposalIds(2)}`, [viewerId, ids]),
+      (r) => r.proposal_id,
+      (r) => r.window_id,
     );
     // Miembros actuales de los grupos de estas propuestas: deciden canManage (el creador mientras siga en el grupo o cualquier organizador).
     const members = groupBy(
@@ -179,24 +183,30 @@ export function proposalsRepository(db: Db) {
       (r): ManagerCandidate => ({ id: r.id, role: r.role }),
     );
     const expressVotes = await expressVotesRepository(db).latestFor(ids, viewerId);
-    return rows.map((row) => ({
-      id: row.id,
-      groupId: row.group_id,
-      title: row.title,
-      location: row.location_name === null ? null : { name: row.location_name, latitude: row.latitude, longitude: row.longitude },
-      createdBy: { id: row.created_by, name: row.creator_name, email: row.creator_email },
-      votingDeadline: row.voting_deadline,
-      state: row.state,
-      windows: windows.get(row.id) ?? [],
-      myVoteWindowId: myVotes.get(row.id) ?? null,
-      canManage: canManageProposal({ viewerId, creatorId: row.created_by, members: members.get(row.group_id) ?? [] }),
-      chosenWindowId: row.chosen_window_id,
-      scheduledAt: row.scheduled_at,
-      scheduledDate: row.scheduled_date,
-      incidences: incidences.get(row.id) ?? [],
-      expressVote: expressVotes.get(row.id) ?? null,
-      createdAt: row.created_at,
-    }));
+    return rows.map((row) => {
+      const mine = new Set(myVotes.get(row.id));
+      const rowWindows = windows.get(row.id) ?? [];
+      return {
+        id: row.id,
+        groupId: row.group_id,
+        title: row.title,
+        location: row.location_name === null ? null : { name: row.location_name, latitude: row.latitude, longitude: row.longitude },
+        createdBy: { id: row.created_by, name: row.creator_name, email: row.creator_email },
+        votingDeadline: row.voting_deadline,
+        state: row.state,
+        windows: rowWindows,
+        multipleVotes: row.multiple_votes,
+        autoClosed: row.auto_closed,
+        myVoteWindowIds: rowWindows.filter((w) => mine.has(w.id)).map((w) => w.id),
+        canManage: canManageProposal({ viewerId, creatorId: row.created_by, members: members.get(row.group_id) ?? [] }),
+        chosenWindowId: row.chosen_window_id,
+        scheduledAt: row.scheduled_at,
+        scheduledDate: row.scheduled_date,
+        incidences: incidences.get(row.id) ?? [],
+        expressVote: expressVotes.get(row.id) ?? null,
+        createdAt: row.created_at,
+      };
+    });
   };
 
   // proposal_windows no tiene created_at: se ordenan por fecha y hora, no por creación.
@@ -227,11 +237,11 @@ export function proposalsRepository(db: Db) {
       const id = randomUUID();
       await db.transaction(async () => {
         await db.query(
-          `INSERT INTO proposals (id, group_id, title, location_name, latitude, longitude, created_by, voting_deadline, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          `INSERT INTO proposals (id, group_id, title, location_name, latitude, longitude, created_by, voting_deadline, multiple_votes, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             id, input.groupId, input.title, input.location?.name ?? null, input.location?.latitude ?? null,
-            input.location?.longitude ?? null, input.createdBy, input.votingDeadline, input.createdAt,
+            input.location?.longitude ?? null, input.createdBy, input.votingDeadline, input.multipleVotes, input.createdAt,
           ],
         );
         for (const w of input.windows) await insertWindow(id, w);
@@ -284,20 +294,34 @@ export function proposalsRepository(db: Db) {
       });
     },
 
-    // Un voto por persona y propuesta: votar otra franja lo mueve; la misma, no cambia nada (G1).
-    // `createdAt` (ISO del reloj de la app) se escribe explícito; al mover el voto se actualiza también.
-    async vote(proposalId: string, userId: string, windowId: string, createdAt: string): Promise<void> {
-      await db.query(
-        `INSERT INTO votes (proposal_id, user_id, window_id, created_at) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (proposal_id, user_id) DO UPDATE
-           SET window_id = excluded.window_id,
-               created_at = CASE WHEN votes.window_id = excluded.window_id THEN votes.created_at ELSE excluded.created_at END`,
-        [proposalId, userId, windowId, createdAt],
-      );
+    // Vota una franja si la votación sigue abierta ('CLOSED' si no). La fila de la propuesta se bloquea (FOR UPDATE) y el
+    // plazo se compara aquí con el reloj de la app. Con voto único, votar otra franja mueve el voto; con voto múltiple se
+    // suman. Repetir la misma franja no cambia nada (ni su created_at).
+    async voteIfOpen(proposalId: string, userId: string, windowId: string, now: Date): Promise<'OK' | 'CLOSED'> {
+      return db.transaction(async () => {
+        const row = await db.one<VotingRow>('SELECT state, voting_deadline, multiple_votes FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
+        if (!row || row.state !== 'PROPUESTO' || new Date(row.voting_deadline).getTime() <= now.getTime()) return 'CLOSED';
+        if (!row.multiple_votes) {
+          await db.query('DELETE FROM votes WHERE proposal_id = $1 AND user_id = $2 AND window_id <> $3', [proposalId, userId, windowId]);
+        }
+        await db.query(
+          `INSERT INTO votes (proposal_id, user_id, window_id, created_at) VALUES ($1, $2, $3, $4)
+           ON CONFLICT (proposal_id, user_id, window_id) DO NOTHING`,
+          [proposalId, userId, windowId, now.toISOString()],
+        );
+        return 'OK';
+      });
     },
 
-    async unvote(proposalId: string, userId: string): Promise<void> {
-      await db.query('DELETE FROM votes WHERE proposal_id = $1 AND user_id = $2', [proposalId, userId]);
+    // Quita mi voto a una franja (o todos mis votos si `windowId` es null) con la misma comprobación que voteIfOpen.
+    async unvoteIfOpen(proposalId: string, userId: string, windowId: string | null, now: Date): Promise<'OK' | 'CLOSED'> {
+      return db.transaction(async () => {
+        const row = await db.one<VotingRow>('SELECT state, voting_deadline, multiple_votes FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
+        if (!row || row.state !== 'PROPUESTO' || new Date(row.voting_deadline).getTime() <= now.getTime()) return 'CLOSED';
+        if (windowId === null) await db.query('DELETE FROM votes WHERE proposal_id = $1 AND user_id = $2', [proposalId, userId]);
+        else await db.query('DELETE FROM votes WHERE proposal_id = $1 AND user_id = $2 AND window_id = $3', [proposalId, userId, windowId]);
+        return 'OK';
+      });
     },
 
     // Los cambios de estado solo se aplican si el plan sigue en el estado que la ruta comprobó: false si otra petición

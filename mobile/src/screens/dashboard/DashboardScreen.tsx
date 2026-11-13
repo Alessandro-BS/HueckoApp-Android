@@ -119,7 +119,7 @@ function PendingVoteCard({ proposal, now, disabled, onVote }: {
           <VoteWindowRow
             key={w.id}
             window={w}
-            voted={proposal.myVoteWindowId === w.id}
+            voted={proposal.myVoteWindowIds.includes(w.id)}
             countStyle="plain"
             onPress={open ? () => onVote(w.id) : undefined}
             disabled={disabled}

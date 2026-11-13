@@ -36,7 +36,7 @@ it('votar una franja usa PUT; tocar la mía retira el voto con DELETE (G1, B8)',
   mocked.getProposal.mockResolvedValue(makeProposal());
   mocked.voteWindow.mockResolvedValue(
     makeProposal({
-      myVoteWindowId: 'w_22',
+      myVoteWindowIds: ['w_22'],
       windows: [makeWindow({ voteCount: 1 }), makeWindow({ id: 'w_22', dayOfWeek: 4, startTime: '10:00', endTime: '12:00', voteCount: 1 })],
     }),
   );

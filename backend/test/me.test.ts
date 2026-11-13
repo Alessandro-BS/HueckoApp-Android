@@ -102,7 +102,7 @@ describe('GET /api/me/dashboard', () => {
     expect(d.groups).toEqual([
       { id: group.id, name: 'Proyecto Integrador', memberCount: 2, nextWindow: { date: '2026-10-06', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
     ]);
-    expect(d.pendingVotes).toEqual([expect.objectContaining({ id: prop2.id, groupName: 'Proyecto Integrador', myVoteWindowId: null })]);
+    expect(d.pendingVotes).toEqual([expect.objectContaining({ id: prop2.id, groupName: 'Proyecto Integrador', myVoteWindowIds: [] })]);
     expect(d.expressAlert).toMatchObject({ proposalId: prop1.id, kind: 'AVISO', who: 'Ana', canResolve: true });
 
     const deAna: Dashboard = (await get('dashboard', ana.token)).body;

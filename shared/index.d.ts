@@ -121,7 +121,9 @@ export type Proposal = {
   votingDeadline: string;          // ISO 8601 (UTC); solo se vota antes de esta hora
   state: ProposalState;
   windows: TimeWindow[];           // ordenadas por fecha y hora
-  myVoteWindowId: string | null;   // ventana que votó el usuario actual
+  multipleVotes: boolean;          // true: se pueden votar varias franjas; false: un voto por persona (votar otra lo mueve)
+  autoClosed: boolean;             // true si el servidor cerró la votación solo (reservado; hasta ahora siempre false)
+  myVoteWindowIds: string[];       // franjas que votó el usuario actual, en el orden de `windows`
   canManage: boolean;              // true si el usuario actual puede confirmar, cancelar o replantear (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
   scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
@@ -143,6 +145,7 @@ export type ProposalInput = {
   location?: Location | null;
   votingDeadline: string;          // ISO 8601 futura y anterior al inicio de la primera franja
   windows?: TimeWindowInput[];     // de 2 a 5; vacío u omitido: el servidor propone las 3 mejores franjas de `week`
+  multipleVotes?: boolean;         // por defecto true
   week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); solo se usa sin `windows`; por defecto, esta semana
 };
 

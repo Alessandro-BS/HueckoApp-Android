@@ -1,4 +1,4 @@
-import type { Group, Proposal, User } from '@hueckoapp/shared';
+import type { Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -40,11 +40,12 @@ const post = (body: object, token = yo.token, groupId = group.id) =>
   request(app).post(`/api/groups/${groupId}/proposals`).set(bearer(token)).send({ title: 'Repaso', votingDeadline: DEADLINE, ...body });
 
 // Propuesta de la semilla prop_2, en la semana siguiente: martes 16–18, jueves 10–12 y viernes 16–18.
-const prop2 = () =>
+const prop2 = (extra: Partial<ProposalInput> = {}) =>
   createProposal(app, ana.token, group.id, {
     title: 'Repaso antes de la entrega',
     votingDeadline: DEADLINE,
     windows: [win(2, '16:00', '18:00'), win(4, '10:00', '12:00'), win(5, '16:00', '18:00')],
+    ...extra,
   });
 const counts = (p: Proposal) => p.windows.map((w) => w.voteCount);
 // Plazo anterior al jueves 1/10 08:00, la primera de las 3 mejores de esta semana.
@@ -72,7 +73,9 @@ describe('POST /api/groups/:id/proposals', () => {
         { id: expect.any(String), date: '2026-10-06', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
         { id: expect.any(String), date: '2026-10-09', dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0 },
       ],
-      myVoteWindowId: null,
+      multipleVotes: true,
+      autoClosed: false,
+      myVoteWindowIds: [],
       canManage: true,
       chosenWindowId: null,
       scheduledAt: null,
@@ -284,19 +287,19 @@ describe('GET /api/proposals/:id', () => {
 });
 
 describe('PUT/DELETE /api/proposals/:id/vote', () => {
-  it('votar, mover el voto y repetir la misma franja sin cambios (G1)', async () => {
-    const p = await prop2();
+  it('votar, mover el voto (voto único) y repetir la misma franja sin cambios (G1)', async () => {
+    const p = await prop2({ multipleVotes: false });
     const martes = windowOf(p, 2).id;
     const jueves = windowOf(p, 4).id;
 
     const deAna = await voteFor(app, p.id, martes, ana.token);
     expect(deAna.status).toBe(200);
-    expect(deAna.body.myVoteWindowId).toBe(martes);
+    expect(deAna.body.myVoteWindowIds).toEqual([martes]);
     expect(counts(deAna.body)).toEqual([1, 0, 0]);
 
     await voteFor(app, p.id, jueves, yo.token);
     const movido = await voteFor(app, p.id, martes, yo.token);
-    expect(movido.body.myVoteWindowId).toBe(martes);
+    expect(movido.body.myVoteWindowIds).toEqual([martes]);
     expect(counts(movido.body)).toEqual([2, 0, 0]);
 
     const repetido = await voteFor(app, p.id, martes, yo.token);
@@ -309,7 +312,7 @@ describe('PUT/DELETE /api/proposals/:id/vote', () => {
     await voteFor(app, p.id, windowOf(p, 2).id, yo.token);
     const res = await unvoteFor(app, p.id, yo.token);
     expect(res.status).toBe(200);
-    expect(res.body.myVoteWindowId).toBeNull();
+    expect(res.body.myVoteWindowIds).toEqual([]);
     expect(counts(res.body)).toEqual([0, 0, 0]);
     expect((await unvoteFor(app, p.id, yo.token)).status).toBe(200);
   });
