@@ -293,7 +293,7 @@ export type AdminGroupSummary = {
   description: string;
   memberCount: number;
   proposalCount: number;
-  owner: User | null;              // organizador actual; null si el grupo no tiene miembros
+  organizers: User[];              // quienes organizan el grupo, del más antiguo al más nuevo; [] si no hay miembros
   createdAt: string;
 };
 

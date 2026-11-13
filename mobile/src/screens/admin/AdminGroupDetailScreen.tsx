@@ -6,7 +6,7 @@ import { Avatar, ErrorBanner, HueckoCard, LoadState, ProposalStateBadge, Seconda
 import { useAdminGroup } from '../../hooks/useAdminGroup';
 import type { AppStackScreen } from '../../navigation/types';
 import { categoryColorFor, colors, typography } from '../../theme';
-import { countLabel } from '../../utils/admin';
+import { countLabel, organizersLabel } from '../../utils/admin';
 import { memberCountLabel } from '../../utils/groups';
 import { voteCountLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
@@ -75,7 +75,7 @@ export function AdminGroupDetailScreen({ navigation, route }: AppStackScreen<'Ad
             {`Código ${group.inviteCode} · ${memberCountLabel(group.memberCount)} · umbral ${group.availabilityThreshold} %`}
           </Text>
           <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
-            {group.owner ? `Organiza: ${group.owner.name}` : 'Sin organizador'}
+            {organizersLabel(group.organizers)}
           </Text>
         </View>
 

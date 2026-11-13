@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 
 import * as adminApi from '../../../api/admin';
 import { ApiError } from '../../../api/client';
+import { ANA, TEST_USER } from '../../../testing/fixtures';
 import { makeAdminProposal, makeGroupDetail } from '../../../testing/adminFixtures';
 import { showToast } from '../../../utils/toast';
 import { AdminGroupDetailScreen } from '../AdminGroupDetailScreen';
@@ -117,4 +118,29 @@ it('eliminar pide confirmación, borra, avisa y vuelve atrás', async () => {
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   expect(mocked.deleteAdminGroup).toHaveBeenCalledWith('g1');
   expect(showToast).toHaveBeenCalledWith('Grupo «Proyecto Integrador» eliminado.');
+});
+
+it('lista los organizadores arriba y marca a cada miembro como Organiza, Imprescindible o Miembro', async () => {
+  const carlos = { ...ANA, id: 'u_carlos', name: 'Carlos', email: 'carlos@correo.com' };
+  mocked.getAdminGroup.mockResolvedValue(
+    makeGroupDetail({
+      organizers: [TEST_USER, carlos],
+      memberCount: 3,
+      members: [
+        { ...TEST_USER, role: 'ORGANIZER', isEssential: false },
+        { ...carlos, role: 'ORGANIZER', isEssential: true },
+        { ...ANA, role: 'MEMBER', isEssential: true },
+      ],
+    }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Organiza: Usuario de Prueba, Carlos')).toBeTruthy();
+  expect(screen.getAllByText('Organiza')).toHaveLength(2);
+  expect(screen.getByText('Imprescindible')).toBeTruthy();
+});
+
+it('sin organizadores lo dice', async () => {
+  mocked.getAdminGroup.mockResolvedValue(makeGroupDetail({ organizers: [], members: [] }));
+  await renderScreen();
+  expect(await screen.findByText('Sin organizadores')).toBeTruthy();
 });

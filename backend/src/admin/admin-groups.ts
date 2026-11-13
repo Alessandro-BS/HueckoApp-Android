@@ -1,4 +1,4 @@
-import type { AdminGroupDetail, AdminGroupSummary, AdminProposalSummary, Page, ProposalState } from '@hueckoapp/shared';
+import type { AdminGroupDetail, AdminGroupSummary, AdminProposalSummary, Page, ProposalState, User } from '@hueckoapp/shared';
 
 import type { Db, SqlParam } from '../db/db';
 import { groupsRepository, MEMBER_ORDER } from '../groups/groups.repository';
@@ -16,10 +16,9 @@ type GroupRow = {
   created_at: string;
   member_count: number;
   proposal_count: number;
-  owner_id: string | null;
-  owner_name: string | null;
-  owner_email: string | null;
 };
+
+type OrganizerRow = { group_id: string; id: string; name: string; email: string };
 
 type ProposalRow = {
   id: string;
@@ -37,16 +36,11 @@ type ProposalRow = {
   incidence_count: number;
 };
 
-// El organizador actual (si por datos rotos hubiera dos, el que llegó antes).
 const GROUP_SELECT = `
   SELECT g.id, g.name, g.description, g.created_at,
          (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id) AS member_count,
-         (SELECT COUNT(*) FROM proposals p WHERE p.group_id = g.id) AS proposal_count,
-         o.id AS owner_id, o.name AS owner_name, o.email AS owner_email
-  FROM groups g
-  LEFT JOIN users o ON o.id = (
-    SELECT m.user_id FROM group_members m WHERE m.group_id = g.id AND m.role = 'ORGANIZER' ${MEMBER_ORDER} LIMIT 1
-  )`;
+         (SELECT COUNT(*) FROM proposals p WHERE p.group_id = g.id) AS proposal_count
+  FROM groups g`;
 
 // voteCount solo cuenta a quienes siguen en el grupo, igual que GET /proposals/:id.
 const PROPOSAL_SELECT = `
@@ -57,13 +51,13 @@ const PROPOSAL_SELECT = `
          (SELECT COUNT(*) FROM incidences i WHERE i.proposal_id = p.id) AS incidence_count
   FROM proposals p JOIN users u ON u.id = p.created_by`;
 
-const toGroup = (r: GroupRow): AdminGroupSummary => ({
+const toGroup = (r: GroupRow, organizers: User[]): AdminGroupSummary => ({
   id: r.id,
   name: r.name,
   description: r.description,
   memberCount: r.member_count,
   proposalCount: r.proposal_count,
-  owner: r.owner_id === null ? null : { id: r.owner_id, name: r.owner_name ?? '', email: r.owner_email ?? '' },
+  organizers,
   createdAt: r.created_at,
 });
 
@@ -93,7 +87,24 @@ export function adminGroups(db: Db) {
     if (!row) throw groupNotFound();
     return row;
   };
-  const findProposal = (id: string) => db.one<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.id = $1`, [id]);
+  // Los organizadores de varios grupos en una sola consulta, del que llegó antes al que llegó después.
+  const loadOrganizers = async (groupIds: string[]): Promise<Map<string, User[]>> => {
+    const byGroup = new Map<string, User[]>();
+    if (groupIds.length === 0) return byGroup;
+    const rows = await db.many<OrganizerRow>(
+      `SELECT m.group_id, u.id, u.name, u.email
+       FROM group_members m JOIN users u ON u.id = m.user_id
+       WHERE m.group_id = ANY($1) AND m.role = 'ORGANIZER' ${MEMBER_ORDER}`,
+      [groupIds],
+    );
+    for (const r of rows) {
+      const list = byGroup.get(r.group_id) ?? [];
+      list.push({ id: r.id, name: r.name, email: r.email });
+      byGroup.set(r.group_id, list);
+    }
+    return byGroup;
+  };
+  const findProposal =(id: string) => db.one<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.id = $1`, [id]);
 
   return {
     async list(search: string, page: number): Promise<Page<AdminGroupSummary>> {
@@ -105,7 +116,8 @@ export function adminGroups(db: Db) {
         `${GROUP_SELECT} ${where} ORDER BY g.created_at DESC, g.seq DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
         [...filter, ADMIN_PAGE_SIZE, offsetOf(page)],
       );
-      return toPage(rows.map(toGroup), page, total);
+      const organizers = await loadOrganizers(rows.map((r) => r.id));
+      return toPage(rows.map((r) => toGroup(r, organizers.get(r.id) ?? [])), page, total);
     },
 
     async detail(id: string): Promise<AdminGroupDetail> {
@@ -114,7 +126,7 @@ export function adminGroups(db: Db) {
       if (!group) throw groupNotFound();
       const rows = await db.many<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.seq DESC`, [id]);
       return {
-        ...toGroup(row),
+        ...toGroup(row, (await loadOrganizers([id])).get(id) ?? []),
         inviteCode: group.inviteCode,
         availabilityThreshold: group.availabilityThreshold,
         members: group.members,

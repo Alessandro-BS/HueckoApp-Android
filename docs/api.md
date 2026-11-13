@@ -490,7 +490,7 @@ Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantal
 `{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a primer plano, al reabrirse o al iniciar sesión (y, si pierde el rol mientras está en esas pantallas, en cuanto una petición responde `403 NOT_ADMIN`).
 
 ### `GET /admin/groups?search=&page=`
-`200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, owner, createdAt }`, los más nuevos primero. `owner` es el `ORGANIZER` actual (`User`) o `null` si no quedan miembros. `search` busca en el nombre y el código de invitación.
+`200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, organizers, createdAt }`, los más nuevos primero. `organizers` son los `User` con rol `ORGANIZER`, del que lleva más tiempo en el grupo al más reciente (`[]` si no quedan miembros); se cargan en una sola consulta para toda la página. `search` busca en el nombre y el código de invitación.
 
 ### `GET /admin/groups/:id`
 `200 AdminGroupDetail` = `AdminGroupSummary` + `inviteCode`, `availabilityThreshold`, `members` (`GroupMember[]`, en orden de llegada) y `proposals` (`AdminProposalSummary[]`, las más recientes primero: `{ id, title, state, createdBy, createdAt, votingDeadline, scheduledAt, scheduledDate, voteCount, incidenceCount }`; `voteCount` solo cuenta a quienes siguen en el grupo). La administración lo ve **sin ser miembro**. `404 GROUP_NOT_FOUND`.
