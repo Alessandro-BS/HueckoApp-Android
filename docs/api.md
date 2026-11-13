@@ -504,6 +504,7 @@ Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni qu
 ## Cambios respecto a la app Kotlin
 
 - **Bloques puntuales con fecha:** en Kotlin un bloque puntual solo tenía `dayOfWeek = null` y no guardaba *qué día* ocurría. Ahora lleva `date`.
+- **Franjas con fecha:** en Kotlin las franjas eran «semana tipo» (día de la semana y horas), y la fecha se calculaba al confirmar («el próximo jueves»); los puntuales no contaban para la disponibilidad. Ahora cada franja lleva `date` (`YYYY-MM-DD`, en `America/Lima`), elegida en una de las 4 semanas válidas; el plan se agenda en la fecha de la franja ganadora y `dayOfWeek` se deriva de esa fecha.
 - **`isEssential` es por grupo:** en Kotlin estaba en `User`, pero alguien puede ser imprescindible en un grupo y no en otro. Ahora está en `GroupMember`.
 - **Votos por usuario, no por email:** el servidor sabe quién vota por el token; la app ya no envía `userEmail`.
 - **Un solo usuario actual:** el `id` sale siempre del token. Esto elimina el desajuste `mock_123` / `user_1` de la versión Kotlin.
