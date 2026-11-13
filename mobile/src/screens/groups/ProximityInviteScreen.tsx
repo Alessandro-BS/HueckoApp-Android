@@ -10,7 +10,7 @@ import { ProximityStatusView, useAcceptable } from './ProximityStatusView';
 
 const CLOSE_AFTER_MS = 2000;
 
-// «Acercar para invitar»: al juntar el celular con el de quien quiere unirse, el dueño acepta o rechaza.
+// «Acercar para invitar»: al juntar el celular con el de quien quiere unirse, quien invita (cualquier miembro) acepta o rechaza.
 export function ProximityInviteScreen({ navigation, route }: AppStackScreen<'ProximityInvite'>) {
   const { groupId } = route.params;
   const client = useQueryClient();

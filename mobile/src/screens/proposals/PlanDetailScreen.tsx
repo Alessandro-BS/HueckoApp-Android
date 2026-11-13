@@ -58,7 +58,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   }
 
   const now = today();
-  // Quién gestiona lo decide el servidor (canManage: el creador o, si se fue, el organizador); la app no compara ids.
+  // Quién gestiona lo decide el servidor (canManage: el creador mientras siga en el grupo, o cualquier organizador); la app no compara ids.
   const canManage = proposal.canManage;
   const active = proposal.state === 'CONFIRMADO' || proposal.state === 'EN_RECOORDINACION';
   // La votación exprés y «Reportar imprevisto» solo tienen sentido si el plan aún no ocurrió (D3).

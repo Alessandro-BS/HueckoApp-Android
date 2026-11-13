@@ -69,7 +69,7 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onSetRole,
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
       {isOrganizer ? (
         <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
-          Marca como imprescindibles a quienes deben estar sí o sí: si uno falta a un plan, el plan se vuelve a coordinar. Los organizadores pueden nombrar y quitar a otros organizadores.
+          Marca como imprescindibles a quienes deben estar sí o sí: si uno falta a un plan, el plan se vuelve a coordinar. Los organizadores editan el grupo, gestionan sus planes y pueden nombrar o quitar a otros organizadores.
         </Text>
       ) : null}
       {group.members.map((member, index) => (
@@ -102,7 +102,13 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onSetRole,
                   <Text style={[typography.labelLarge, { color: colors.error }]}>Quitar organizador</Text>
                 </Pressable>
               ) : (
-                <Pressable accessibilityRole="button" onPress={() => void setRole(member, 'ORGANIZER')} hitSlop={8} style={styles.action}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Hacer organizador: ${member.name}`}
+                  onPress={() => void setRole(member, 'ORGANIZER')}
+                  hitSlop={8}
+                  style={styles.action}
+                >
                   <Text style={[typography.labelLarge, { color: colors.primary }]}>Hacer organizador</Text>
                 </Pressable>
               )

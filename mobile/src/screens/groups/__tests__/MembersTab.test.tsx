@@ -85,14 +85,14 @@ describe('organizadores', () => {
   it('el texto de ayuda menciona imprescindibles y organizadores', async () => {
     await renderTab(trio, 'u1');
     expect(screen.getByText(/imprescindibles/)).toBeTruthy();
-    expect(screen.getByText(/organizadores/)).toBeTruthy();
+    expect(screen.getByText(/Los organizadores editan el grupo, gestionan sus planes y pueden nombrar o quitar a otros organizadores./)).toBeTruthy();
   });
 
   it('«Hacer organizador» llama onSetRole sin confirmar y avisa', async () => {
     const onSetRole = jest.fn().mockResolvedValue(undefined);
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     await renderTab(trio, 'u1', onSetRole);
-    await fireEvent.press(screen.getByText('Hacer organizador'));
+    await fireEvent.press(screen.getByLabelText('Hacer organizador: Ana'));
     expect(alert).not.toHaveBeenCalled();
     expect(onSetRole).toHaveBeenCalledWith('u2', 'ORGANIZER');
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Ana ahora es organizador del grupo.'));
