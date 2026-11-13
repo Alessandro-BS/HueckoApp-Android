@@ -200,4 +200,36 @@ export const migrations: string[] = [
    END
    $$;
    ALTER TABLE proposal_windows ADD CONSTRAINT proposal_windows_proposal_date_time_key UNIQUE (proposal_id, date, start_time, end_time);`,
+
+  // 8 — Votación exprés grupal: una falta crítica en un plan confirmado abre una votación corta.
+  // - Una sola ABIERTA por plan (índice único parcial); las CERRADAS se acumulan como historial.
+  // - express_vote_voters fija quién vota al abrir (una fila por votante; option es su voto, NULL mientras no vote).
+  //   Solo cuentan los que siguen en el grupo: se comprueba al leer, no se borran filas al salir de un grupo.
+  // - incidences.critical_reason: por qué la incidencia fue crítica (NULL si no lo fue).
+  `ALTER TABLE incidences ADD COLUMN critical_reason TEXT COLLATE "C";
+   CREATE TABLE express_votes (
+     id                    TEXT COLLATE "C" PRIMARY KEY,
+     seq                   BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+     proposal_id           TEXT COLLATE "C" NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+     reporter_id           TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     reason                TEXT COLLATE "C" NOT NULL,
+     critical_reason       TEXT COLLATE "C" NOT NULL,
+     status                TEXT COLLATE "C" NOT NULL CHECK (status IN ('ABIERTA', 'CERRADA')),
+     opened_at             TEXT COLLATE "C" NOT NULL,
+     expires_at            TEXT COLLATE "C" NOT NULL,
+     closed_at             TEXT COLLATE "C",
+     result                TEXT COLLATE "C" CHECK (result IN ('CANCELAR', 'REAGENDAR', 'MANTENER')),
+     result_by_default     BOOLEAN,
+     recommendation        TEXT COLLATE "C" CHECK (recommendation IN ('CANCELAR', 'REAGENDAR', 'MANTENER')),
+     recommendation_reason TEXT COLLATE "C"
+   );
+   CREATE UNIQUE INDEX express_votes_one_open ON express_votes (proposal_id) WHERE status = 'ABIERTA';
+   CREATE INDEX express_votes_proposal_idx ON express_votes (proposal_id, opened_at);
+   CREATE TABLE express_vote_voters (
+     vote_id  TEXT COLLATE "C" NOT NULL REFERENCES express_votes(id) ON DELETE CASCADE,
+     user_id  TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     option   TEXT COLLATE "C" CHECK (option IN ('CANCELAR', 'REAGENDAR', 'MANTENER')),
+     voted_at TEXT COLLATE "C",
+     PRIMARY KEY (vote_id, user_id)
+   );`,
 ];

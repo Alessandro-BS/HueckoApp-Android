@@ -5,6 +5,7 @@ import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Prop
 import { isoDay } from '../common/zone';
 import type { Db } from '../db/db';
 import { MEMBER_ORDER } from '../groups/groups.repository';
+import { expressVotesRepository } from './express-votes.repository';
 import { canManageProposal, type ManagerCandidate } from './permissions';
 
 type ProposalRow = {
@@ -46,6 +47,7 @@ type IncidenceRow = {
   delay_minutes: number | null;
   criticality: Criticality;
   resolved: boolean;
+  critical_reason: string | null;
   created_at: string;
 };
 type MyVoteRow = { proposal_id: string; window_id: string };
@@ -117,7 +119,7 @@ const toIncidence = (r: IncidenceRow): Incidence => ({
   delayMinutes: r.delay_minutes,
   criticality: r.criticality,
   resolved: r.resolved,
-  criticalReason: null, // TODO(votacion-expres Task 2): hidratar desde la base
+  criticalReason: r.critical_reason,
   createdAt: r.created_at,
 });
 
@@ -176,6 +178,7 @@ export function proposalsRepository(db: Db) {
       (r) => r.group_id,
       (r): ManagerCandidate => ({ id: r.id, role: r.role }),
     );
+    const expressVotes = await expressVotesRepository(db).latestFor(ids, viewerId);
     return rows.map((row) => ({
       id: row.id,
       groupId: row.group_id,
@@ -191,7 +194,7 @@ export function proposalsRepository(db: Db) {
       scheduledAt: row.scheduled_at,
       scheduledDate: row.scheduled_date,
       incidences: incidences.get(row.id) ?? [],
-      expressVote: null, // TODO(votacion-expres Task 2): hidratar
+      expressVote: expressVotes.get(row.id) ?? null,
       createdAt: row.created_at,
     }));
   };
