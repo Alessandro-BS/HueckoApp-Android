@@ -60,7 +60,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
     expect(d.pendingVotes.map((p) => p.id)).toEqual(['prop_2']);
     expect(d.expressAlert).toEqual({
       proposalId: 'prop_1', planTitle: 'Reunión de avance del proyecto', groupName: 'Proyecto Integrador',
-      who: 'Ana', reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, createdBy: test, expiresAt: null,
+      who: 'Ana', reason: 'Cruce con un examen de laboratorio a última hora.', kind: 'AVISO', canResolve: true, canVote: false, createdBy: test, expiresAt: null,
     });
   });
 
@@ -120,11 +120,19 @@ describe('alerta exprés (G5)', () => {
     const recoordinacion = prop1({ id: 'prop_r', state: 'EN_RECOORDINACION', incidences: [incidence()] });
     expect(build([recoordinacion, conVoto]).expressAlert).toEqual({
       proposalId: 'prop_v', planTitle: 'Reunión de avance del proyecto', groupName: 'Proyecto Integrador',
-      who: 'Ana', reason: 'Me operan mañana.', kind: 'VOTACION', canResolve: true, createdBy: test,
+      who: 'Ana', reason: 'Me operan mañana.', kind: 'VOTACION', canResolve: true, canVote: true, createdBy: test,
       expiresAt: new Date(2026, 8, 29, 12, 0).toISOString(),
     });
     expect(build([conVoto]).expressAlert?.canResolve).toBe(true);
     expect(build([{ ...conVoto, canManage: false }]).expressAlert?.canResolve).toBe(false);
+  });
+
+  it('canVote de la alerta es el canVote de la votación abierta (false para quien avisó o no vota) y false fuera de VOTACION', () => {
+    const conVoto = prop1({ id: 'prop_v', expressVote: voto({ canVote: false }) });
+    expect(build([conVoto]).expressAlert).toMatchObject({ kind: 'VOTACION', canVote: false });
+    // Una votación cerrada que dejó el plan en recoordinación: aunque su canVote fuera true, ya no se vota.
+    const reagendado = prop1({ state: 'EN_RECOORDINACION', expressVote: voto({ status: 'CERRADA', result: 'REAGENDAR', canVote: true }) });
+    expect(build([reagendado]).expressAlert).toMatchObject({ kind: 'RECOORDINACION', canVote: false });
   });
 
   it('una votación ya cerrada no es VOTACION', () => {

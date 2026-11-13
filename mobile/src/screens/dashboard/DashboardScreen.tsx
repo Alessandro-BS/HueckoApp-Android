@@ -35,7 +35,8 @@ function MetricCard({ icon, value, label, caption, onPress }: MetricProps) {
 }
 
 // Alerta de Inicio según el tipo: votación exprés abierta, plan que el grupo mandó a reagendar o aviso de imprevisto.
-// Ninguna decide nada aquí: «Votar» y «Proponer franjas» abren el plan, donde están la votación y la hoja de franjas.
+// Ninguna decide nada aquí: «Votar» («Ver votación» si no voto) y «Proponer franjas» abren el plan, donde están la
+// votación y la hoja de franjas.
 function alertTexts(alert: ExpressAlert, now: Date) {
   switch (alert.kind) {
     case 'VOTACION':
@@ -43,7 +44,8 @@ function alertTexts(alert: ExpressAlert, now: Date) {
         label: `Votación exprés: ${alert.who} no puede ir`,
         headline: `«${alert.planTitle}» · ${alert.groupName}`,
         closes: alert.expiresAt ? closesInLabel(alert.expiresAt, now) : null,
-        action: 'Votar',
+        // Quien avisó (o entró después) no vota: la misma alerta le abre el plan para seguir la votación.
+        action: alert.canVote ? 'Votar' : 'Ver votación',
         icon: 'how-to-vote' as IconName,
       };
     case 'RECOORDINACION':

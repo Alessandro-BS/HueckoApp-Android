@@ -190,7 +190,7 @@ it('alerta AVISO: «Ver plan» abre el plan', async () => {
 it('alerta VOTACION: quién no puede ir, cuánto falta y «Votar» abre el plan', async () => {
   const base = makeDashboard().expressAlert!;
   dashboard.getDashboard.mockResolvedValue(
-    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', canVote: true, expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
   );
   await renderScreen();
   expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
@@ -198,6 +198,18 @@ it('alerta VOTACION: quién no puede ir, cuánto falta y «Votar» abre el plan'
   expect(screen.getByText('Cruce con un examen de laboratorio a última hora.')).toBeTruthy();
   expect(screen.queryByText('Ver plan')).toBeNull();
   await fireEvent.press(screen.getByText('Votar'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta VOTACION para quien no vota (quien avisó, o entró después): «Ver votación» en vez de «Votar», y abre el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', canVote: false, expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
+  expect(screen.queryByText('Votar')).toBeNull();
+  await fireEvent.press(screen.getByText('Ver votación'));
   expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
 });
 

@@ -168,6 +168,7 @@ export type ExpressAlert = {
   reason: string;
   kind: 'VOTACION' | 'RECOORDINACION' | 'AVISO'; // votación exprés abierta; plan EN_RECOORDINACION; o CONFIRMADO con incidencias sin resolver
   canResolve: boolean;                  // = canManage del plan para el usuario actual
+  canVote: boolean;                     // solo en VOTACION: el canVote de la votación abierta; false en los demás
   createdBy: User;
   expiresAt: string | null;             // ISO: cuándo vence la votación; solo en VOTACION, null en los demás
 };

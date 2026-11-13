@@ -260,9 +260,10 @@ describe('cierre al consultar', () => {
     it('con la votación abierta es VOTACION con quién la abrió, su motivo y cuándo vence', async () => {
       const p = await planWithVote();
       expect(await alertOf(carlos.token)).toMatchObject({
-        proposalId: p.id, kind: 'VOTACION', who: 'Yo', reason: 'Estoy enfermo', expiresAt: later(60).toISOString(), canResolve: false,
+        proposalId: p.id, kind: 'VOTACION', who: 'Yo', reason: 'Estoy enfermo', expiresAt: later(60).toISOString(), canResolve: false, canVote: true,
       });
-      expect((await alertOf(yo.token))?.canResolve).toBe(true);
+      // Quien avisó gestiona el plan pero no vota: la app le ofrece «Ver votación» en vez de «Votar».
+      expect(await alertOf(yo.token)).toMatchObject({ canResolve: true, canVote: false });
     });
 
     it('vencida con REAGENDAR: Inicio ya muestra RECOORDINACION (se cerró antes de armarlo)', async () => {

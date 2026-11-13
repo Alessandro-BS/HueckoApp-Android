@@ -88,8 +88,10 @@ export function expressAlertFor(proposals: readonly ProposalWithGroup[], now: Da
     const pending = pendingOf(p);
     return pending.find((i) => i.criticality === 'ALTA') ?? pending[0];
   };
+  // canVote solo en VOTACION (el de la votación abierta para quien pregunta): la app ofrece «Votar» o «Ver votación».
   const alert = (p: ProposalWithGroup, kind: ExpressAlert['kind'], who: string, reason: string, expiresAt: string | null): ExpressAlert => ({
-    proposalId: p.id, planTitle: p.title, groupName: p.groupName, who, reason, kind, canResolve: p.canManage, createdBy: p.createdBy, expiresAt,
+    proposalId: p.id, planTitle: p.title, groupName: p.groupName, who, reason, kind, canResolve: p.canManage,
+    canVote: kind === 'VOTACION' && p.expressVote?.canVote === true, createdBy: p.createdBy, expiresAt,
   });
 
   const voting = upcoming.find((p) => p.state === 'CONFIRMADO' && p.expressVote?.status === 'ABIERTA');
