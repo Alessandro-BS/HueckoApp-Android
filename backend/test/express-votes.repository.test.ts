@@ -10,7 +10,7 @@ const createdAt = NOW.toISOString();
 const OPENED = '2026-10-01T10:00:00.000Z';
 const EXPIRES = '2026-10-01T11:00:00.000Z';
 
-// Ana (dueña), Beto y Carla en un grupo, con un plan; Ana reporta y votan Beto y Carla.
+// Ana (organizadora), Beto y Carla en un grupo, con un plan; Ana reporta y votan Beto y Carla.
 const setup = async () => {
   const db = await makeTestDb();
   const users = usersRepository(db);

@@ -9,7 +9,7 @@ import { makeTestDb, NOW, recordQueries } from './helpers';
 const at = (ms: number) => new Date(NOW.getTime() + ms);
 const createdAt = NOW.toISOString();
 
-// Ana (dueña del grupo), Beto, Carla y Dani (sin grupo), y Memo, que ya es miembro.
+// Ana (organizadora del grupo), Beto, Carla y Dani (sin grupo), y Memo, que ya es miembro.
 const setup = async () => {
   const db = await makeTestDb();
   const users = usersRepository(db);

@@ -94,7 +94,7 @@ export function adminGroups(db: Db) {
     const rows = await db.many<OrganizerRow>(
       `SELECT m.group_id, u.id, u.name, u.email
        FROM group_members m JOIN users u ON u.id = m.user_id
-       WHERE m.group_id = ANY($1) AND m.role = 'ORGANIZER' ${MEMBER_ORDER}`,
+       WHERE m.group_id = ANY($1::text[]) AND m.role = 'ORGANIZER' ${MEMBER_ORDER}`,
       [groupIds],
     );
     for (const r of rows) {
@@ -104,7 +104,7 @@ export function adminGroups(db: Db) {
     }
     return byGroup;
   };
-  const findProposal =(id: string) => db.one<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.id = $1`, [id]);
+  const findProposal = (id: string) => db.one<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.id = $1`, [id]);
 
   return {
     async list(search: string, page: number): Promise<Page<AdminGroupSummary>> {

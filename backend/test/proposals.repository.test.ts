@@ -10,7 +10,7 @@ const win = (date: string, startTime: string, endTime: string, availabilityPerce
   date, startTime, endTime, availabilityPercentage,
 });
 
-// Ana (dueña) y Beto en un grupo, y un repositorio para crear propuestas directamente.
+// Ana (organizadora) y Beto en un grupo, y un repositorio para crear propuestas directamente.
 const setup = async () => {
   const db = await makeTestDb();
   const users = usersRepository(db);

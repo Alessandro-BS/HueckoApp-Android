@@ -139,6 +139,25 @@ describe('semilla de datos de ejemplo (D8)', () => {
     expect(await organizers('HUECKO123')).toEqual(['carlos@test.com']);
   });
 
+  it('sembrar otra vez sobre una base donde Ana es MEMBER la deja ORGANIZER, sin degradar a nadie', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, HASH, NOW);
+    const groupId = (await db.one<{ id: string }>('SELECT id FROM groups WHERE invite_code = $1', ['PROY2026']))!.id;
+    const anaId = await userId(db, 'ana@test.com');
+    await db.query("UPDATE group_members SET role = 'MEMBER' WHERE group_id = $1 AND user_id = $2", [groupId, anaId]);
+    // Carlos entra a mano como MEMBER: la semilla no le toca el rol.
+    const carlosId = await userId(db, 'carlos@test.com');
+    await groupsRepository(db).addMember(groupId, carlosId);
+
+    await seedDemoData(db, HASH, NOW);
+    await seedDemoData(db, HASH, NOW);
+    expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
+      ['Usuario de Prueba', 'ORGANIZER'],
+      ['Ana', 'ORGANIZER'],
+      ['Carlos', 'MEMBER'],
+    ]);
+  });
+
   it.each([
     ['sábado 23:30', new Date(2026, 9, 3, 23, 30), new Date(2026, 9, 5, 11, 0), new Date(2026, 9, 4, 20, 0)],
     ['miércoles 20:30, ya pasadas las 20:00', new Date(2026, 8, 30, 20, 30), new Date(2026, 9, 2, 11, 0), new Date(2026, 9, 1, 20, 0)],

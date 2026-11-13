@@ -119,12 +119,23 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
     },
 
     // Cambia «imprescindible» y/o el rol en una sola escritura. Nunca deja el grupo sin organizadores: quitarle el rol
-    // al último → 'LAST_ORGANIZER' sin escribir nada.
-    updateMember(groupId: string, userId: string, change: UpdateMemberInput): Promise<'OK' | 'LAST_ORGANIZER'> {
+    // al último → 'LAST_ORGANIZER' sin escribir nada. Con el grupo bloqueado vuelve a comprobar que quien actúa sigue
+    // siendo organizador (otro pudo quitarle el rol entre la comprobación de la ruta y el bloqueo) → 'NOT_ORGANIZER'.
+    updateMember(
+      groupId: string,
+      userId: string,
+      change: UpdateMemberInput,
+      actorId: string,
+    ): Promise<'OK' | 'LAST_ORGANIZER' | 'NOT_ORGANIZER'> {
       return db.transaction(async () => {
         // El mismo bloqueo que leave: dos cambios de rol, o un cambio y una salida, a la vez se ponen en fila y el
         // segundo cuenta los organizadores que dejó el primero.
         await db.query('SELECT id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
+        const actor = await db.one(
+          `SELECT 1 AS found FROM group_members WHERE group_id = $1 AND user_id = $2 AND role = 'ORGANIZER'`,
+          [groupId, actorId],
+        );
+        if (!actor) return 'NOT_ORGANIZER';
         if (change.role === 'MEMBER') {
           const { others, self } = (await db.one<{ others: number; self: number }>(
             `SELECT COUNT(*) FILTER (WHERE user_id <> $2) AS others, COUNT(*) FILTER (WHERE user_id = $2) AS self

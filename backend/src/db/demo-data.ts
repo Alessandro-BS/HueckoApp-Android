@@ -154,12 +154,13 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<S
         ]);
         created.groups++;
       }
-      // Quien salió del grupo desde la app vuelve a entrar con su rol de la semilla (puede haber varios organizadores);
-      // a quien sigue dentro no se le toca el rol que tenga ahora.
+      // Quien salió del grupo desde la app vuelve a entrar con su rol de la semilla (puede haber varios organizadores).
+      // A quien sigue dentro se le sube a ORGANIZER si la semilla lo es (una base de antes de «varios organizadores»
+      // tenía a Ana como MEMBER), pero nunca se degrada a nadie.
       for (const m of g.members) {
         await db.query(
           `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)
-           ON CONFLICT (group_id, user_id) DO NOTHING`,
+           ON CONFLICT (group_id, user_id) DO UPDATE SET role = 'ORGANIZER' WHERE EXCLUDED.role = 'ORGANIZER'`,
           [group.id, ids[m.user], m.role],
         );
       }

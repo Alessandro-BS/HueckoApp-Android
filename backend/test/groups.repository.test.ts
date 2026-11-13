@@ -77,9 +77,9 @@ describe('groupsRepository.updateMember', () => {
     // PGlite tiene una sola conexión y no puede reproducir la carrera: este test impide que un cambio quite el bloqueo
     // o cuente los organizadores antes de él.
     const { db, repo, group, ana, luis, roles } = await setupTwo();
-    await repo.updateMember(group.id, luis.id, { role: 'ORGANIZER' });
+    await repo.updateMember(group.id, luis.id, { role: 'ORGANIZER' }, ana.id);
     const calls = recordQueries(db);
-    expect(await repo.updateMember(group.id, ana.id, { role: 'MEMBER' })).toBe('OK');
+    expect(await repo.updateMember(group.id, ana.id, { role: 'MEMBER' }, ana.id)).toBe('OK');
     expect(calls[0]).toEqual({ sql: 'SELECT id FROM groups WHERE id = $1 FOR UPDATE', params: [group.id], inTransaction: true });
     expect(calls.length).toBeGreaterThan(2);
     expect(calls.every((c) => c.inTransaction)).toBe(true);
@@ -88,20 +88,20 @@ describe('groupsRepository.updateMember', () => {
 
   it('quitar el rol al último organizador: LAST_ORGANIZER sin escribir nada', async () => {
     const { repo, group, ana, roles } = await setupTwo();
-    expect(await repo.updateMember(group.id, ana.id, { role: 'MEMBER', isEssential: true })).toBe('LAST_ORGANIZER');
+    expect(await repo.updateMember(group.id, ana.id, { role: 'MEMBER', isEssential: true }, ana.id)).toBe('LAST_ORGANIZER');
     expect(await roles()).toEqual([['Ana', 'ORGANIZER', false], ['Luis', 'MEMBER', false]]);
   });
 
   it('dejar como MEMBER a quien ya lo es no cuenta como quitar el último organizador', async () => {
-    const { repo, group, luis, roles } = await setupTwo();
-    expect(await repo.updateMember(group.id, luis.id, { role: 'MEMBER', isEssential: true })).toBe('OK');
+    const { repo, group, ana, luis, roles } = await setupTwo();
+    expect(await repo.updateMember(group.id, luis.id, { role: 'MEMBER', isEssential: true }, ana.id)).toBe('OK');
     expect(await roles()).toEqual([['Ana', 'ORGANIZER', false], ['Luis', 'MEMBER', true]]);
   });
 
   it('solo isEssential no toca el rol; los dos campos se aplican juntos', async () => {
     const { repo, group, ana, luis, roles } = await setupTwo();
-    expect(await repo.updateMember(group.id, ana.id, { isEssential: true })).toBe('OK');
-    expect(await repo.updateMember(group.id, luis.id, { isEssential: true, role: 'ORGANIZER' })).toBe('OK');
+    expect(await repo.updateMember(group.id, ana.id, { isEssential: true }, ana.id)).toBe('OK');
+    expect(await repo.updateMember(group.id, luis.id, { isEssential: true, role: 'ORGANIZER' }, ana.id)).toBe('OK');
     expect(await roles()).toEqual([['Ana', 'ORGANIZER', true], ['Luis', 'ORGANIZER', true]]);
   });
 });

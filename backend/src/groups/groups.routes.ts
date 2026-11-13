@@ -65,14 +65,16 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
 
   // Orden: grupo (404), miembro (403), organizador (403), cuerpo (400), persona del grupo (404), último organizador (409).
   router.patch('/:id/members/:userId', async (req, res) => {
-    const { group } = await loadForOrganizer(req.params.id, getUserId(res));
+    const actorId = getUserId(res);
+    const { group } = await loadForOrganizer(req.params.id, actorId);
     const change = updateMemberSchema.parse(req.body);
     const { userId } = req.params;
     const memberNotFound = () => new ApiError(404, 'MEMBER_NOT_FOUND', 'Esa persona no pertenece al grupo.');
     if (!group.members.some((m) => m.id === userId)) throw memberNotFound();
-    if ((await groups.updateMember(group.id, userId, change)) === 'LAST_ORGANIZER') {
-      throw new ApiError(409, 'LAST_ORGANIZER', 'El grupo necesita al menos un organizador.');
-    }
+    const result = await groups.updateMember(group.id, userId, change, actorId);
+    // Dejó de ser organizador entre la comprobación de arriba y el bloqueo del grupo.
+    if (result === 'NOT_ORGANIZER') throw new ApiError(403, 'NOT_ORGANIZER', 'Solo un organizador del grupo puede hacer esto.');
+    if (result === 'LAST_ORGANIZER') throw new ApiError(409, 'LAST_ORGANIZER', 'El grupo necesita al menos un organizador.');
     // Si salió del grupo justo antes de guardar (o se borró el grupo), el UPDATE no tocó nada: igual que si no estuviera.
     const member: GroupMember | undefined = (await groups.findById(group.id))?.members.find((m) => m.id === userId);
     if (!member) throw memberNotFound();

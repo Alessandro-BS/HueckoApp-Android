@@ -304,12 +304,24 @@ describe('PATCH /api/groups/:id/members/:userId', () => {
       // B se quita el rol justo antes de que A bloquee el grupo (en Neon, B terminaría antes o esperaría al bloqueo).
       // Si A contara fuera del bloqueo o antes de él, vería a B como organizador y el grupo se quedaría sin ninguno.
       interleaveWith(db, LOCK_OR_UPDATE, async () => {
-        other = await groupsRepository(db).updateMember(group.id, b.user.id, { role: 'MEMBER' });
+        other = await groupsRepository(db).updateMember(group.id, b.user.id, { role: 'MEMBER' }, b.user.id);
       });
       const res = await patchMember(a.token, a.user.id, { role: 'MEMBER' });
       expect(other).toBe('OK');
       expect([res.status, res.body.error?.code]).toEqual([409, 'LAST_ORGANIZER']);
       expect(await roles()).toEqual([['A', 'ORGANIZER'], ['B', 'MEMBER'], ['C', 'MEMBER']]);
+    });
+
+    it('A deja de ser organizador justo antes de tomar el bloqueo → su «quitar a B» recibe 403 y B sigue siéndolo', async () => {
+      await makeBOrganizer();
+      expect((await patchMember(a.token, c.user.id, { role: 'ORGANIZER' })).status).toBe(200);
+      // B le quita el rol a A justo antes de que la petición de A bloquee el grupo: ya no tiene permiso.
+      interleaveWith(db, LOCK_OR_UPDATE, async () => {
+        await groupsRepository(db).updateMember(group.id, a.user.id, { role: 'MEMBER' }, b.user.id);
+      });
+      const res = await patchMember(a.token, b.user.id, { role: 'MEMBER' });
+      expect([res.status, res.body.error?.code]).toEqual([403, 'NOT_ORGANIZER']);
+      expect(await roles()).toEqual([['A', 'MEMBER'], ['B', 'ORGANIZER'], ['C', 'ORGANIZER']]);
     });
 
     it('Review Focus 2: un organizador se quita el rol mientras el otro sale → 409 y el grupo sigue con un organizador', async () => {
@@ -331,7 +343,7 @@ describe('PATCH /api/groups/:id/members/:userId', () => {
       let other: string | undefined;
       // B se quita el rol justo antes de que la salida de A bloquee el grupo (o, sin bloqueo, antes de que A se borre).
       interleaveWith(db, /^(SELECT id FROM groups WHERE id = \$1 FOR UPDATE|DELETE FROM group_members)/, async () => {
-        other = await groupsRepository(db).updateMember(group.id, b.user.id, { role: 'MEMBER' });
+        other = await groupsRepository(db).updateMember(group.id, b.user.id, { role: 'MEMBER' }, b.user.id);
       });
       expect((await request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(a.token))).status).toBe(204);
       expect(other).toBe('OK');
