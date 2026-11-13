@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Group, GroupMember, GroupSummary } from '@hueckoapp/shared';
+import type { Group, GroupMember, GroupSummary, UpdateMemberInput } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
 import { generateInviteCode } from './invite-code';
@@ -118,8 +118,28 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
       );
     },
 
-    async setEssential(groupId: string, userId: string, isEssential: boolean): Promise<void> {
-      await db.query('UPDATE group_members SET is_essential = $1 WHERE group_id = $2 AND user_id = $3', [isEssential, groupId, userId]);
+    // Cambia «imprescindible» y/o el rol en una sola escritura. Nunca deja el grupo sin organizadores: quitarle el rol
+    // al último → 'LAST_ORGANIZER' sin escribir nada.
+    updateMember(groupId: string, userId: string, change: UpdateMemberInput): Promise<'OK' | 'LAST_ORGANIZER'> {
+      return db.transaction(async () => {
+        // El mismo bloqueo que leave: dos cambios de rol, o un cambio y una salida, a la vez se ponen en fila y el
+        // segundo cuenta los organizadores que dejó el primero.
+        await db.query('SELECT id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
+        if (change.role === 'MEMBER') {
+          const { others, self } = (await db.one<{ others: number; self: number }>(
+            `SELECT COUNT(*) FILTER (WHERE user_id <> $2) AS others, COUNT(*) FILTER (WHERE user_id = $2) AS self
+             FROM group_members WHERE group_id = $1 AND role = 'ORGANIZER'`,
+            [groupId, userId],
+          ))!;
+          if (others === 0 && self > 0) return 'LAST_ORGANIZER';
+        }
+        await db.query(
+          `UPDATE group_members SET is_essential = COALESCE($3::boolean, is_essential), role = COALESCE($4::text, role)
+           WHERE group_id = $1 AND user_id = $2`,
+          [groupId, userId, change.isEssential ?? null, change.role ?? null],
+        );
+        return 'OK';
+      });
     },
 
     // Salir del grupo. Si no queda nadie, el grupo se borra; si se fue el último organizador,

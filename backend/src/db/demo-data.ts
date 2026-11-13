@@ -32,7 +32,8 @@ const GROUPS: { name: string; inviteCode: string; members: { user: UserKey; role
   {
     name: 'Proyecto Integrador',
     inviteCode: 'PROY2026',
-    members: [{ user: 'test', role: 'ORGANIZER' }, { user: 'ana', role: 'MEMBER' }],
+    // Dos organizadores, para probar desde la app que un grupo puede tener varios.
+    members: [{ user: 'test', role: 'ORGANIZER' }, { user: 'ana', role: 'ORGANIZER' }],
   },
   // Solo Carlos: así test@test.com puede probar «Unirme» con HUECKO123 (y una segunda vez da 409).
   { name: 'Amigos de la Uni', inviteCode: 'HUECKO123', members: [{ user: 'carlos', role: 'ORGANIZER' }] },
@@ -153,11 +154,11 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<S
         ]);
         created.groups++;
       }
-      // Quien salió del grupo desde la app vuelve a entrar; como MEMBER si el grupo ya tiene organizador (nunca dos).
+      // Quien salió del grupo desde la app vuelve a entrar con su rol de la semilla (puede haber varios organizadores);
+      // a quien sigue dentro no se le toca el rol que tenga ahora.
       for (const m of g.members) {
         await db.query(
-          `INSERT INTO group_members (group_id, user_id, role)
-           VALUES ($1, $2, CASE WHEN EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND role = 'ORGANIZER') THEN 'MEMBER' ELSE $3 END)
+          `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)
            ON CONFLICT (group_id, user_id) DO NOTHING`,
           [group.id, ids[m.user], m.role],
         );

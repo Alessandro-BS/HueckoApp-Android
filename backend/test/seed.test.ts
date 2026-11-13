@@ -119,10 +119,24 @@ describe('semilla de datos de ejemplo (D8)', () => {
     expect((await proposalsRepository(db).findById(mine, anaId))?.id).toBe(mine);
     expect((await proposalsRepository(db).findById(mine, anaId))?.title).toBe('Plan propio');
     expect(await count(db, 'proposals')).toBe(3);
+    // Vuelve con su rol de la semilla (un grupo puede tener varios organizadores).
     expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
       ['Usuario de Prueba', 'ORGANIZER'],
-      ['Ana', 'MEMBER'],
+      ['Ana', 'ORGANIZER'],
     ]);
+  });
+
+  it('«Proyecto Integrador» tiene dos organizadores (test y ana) y «Amigos de la Uni» uno (carlos)', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, HASH, NOW);
+    const organizers = (code: string) =>
+      column(
+        db,
+        `SELECT u.email AS v FROM group_members m JOIN users u ON u.id = m.user_id JOIN groups g ON g.id = m.group_id
+         WHERE g.invite_code = '${code}' AND m.role = 'ORGANIZER' ORDER BY m.joined_at, m.seq`,
+      );
+    expect(await organizers('PROY2026')).toEqual(['test@test.com', 'ana@test.com']);
+    expect(await organizers('HUECKO123')).toEqual(['carlos@test.com']);
   });
 
   it.each([

@@ -124,11 +124,11 @@ describe('canManage en la API', () => {
     expect((await post(`${p.id}/cancel`, yo.token)).body.state).toBe('CANCELADO');
   });
 
-  it('si se van quien la creó y el ORGANIZER, la gestiona quien lleva más tiempo (nunca queda huérfana)', async () => {
+  it('si se van quien la creó y el único ORGANIZER, la gestiona quien heredó el rol de organizador al salir (nunca queda huérfana)', async () => {
     const dani = await registerUser(app, { name: 'Dani' });
     await joinGroup(app, dani.token, group.inviteCode);
     const p = await planBy(ana.token);
-    // Dani figura como más antiguo que Carlos aunque se unió después: manda joined_at (D3).
+    // Dani figura como más antiguo que Carlos aunque se unió después: manda joined_at (D3), así que hereda Dani.
     await db.query('UPDATE group_members SET joined_at = $1 WHERE user_id = $2', ['2000-01-01T00:00:00.000Z', dani.user.id]);
     await leave(ana.token);
     await leave(yo.token); // C6: el rol ORGANIZER pasa a Dani

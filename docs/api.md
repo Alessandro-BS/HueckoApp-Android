@@ -34,7 +34,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo; `NOT_ORGANIZER`: la acción es solo de organizadores del grupo; `NOT_A_VOTER`: no está entre quienes votan la votación exprés de un plan de su grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`), quitarle el rol al último organizador de un grupo (`LAST_ORGANIZER`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
 | 500 | Error inesperado del servidor |
@@ -185,7 +185,12 @@ El servidor genera el `inviteCode`: **8 caracteres** de `ABCDEFGHJKLMNPQRSTUVWXY
 Solo un `ORGANIZER` (`403 NOT_ORGANIZER` «Solo un organizador del grupo puede hacer esto.»). Campos opcionales con las mismas reglas que al crear: `name`, `description`, `availabilityThreshold`; hay que enviar al menos uno. `200 Group`
 
 ### `PATCH /groups/:id/members/:userId`
-Solo un `ORGANIZER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. Un `ORGANIZER` puede marcarse a sí mismo.
+Cambia a un miembro: si es imprescindible y/o su rol. Cuerpo = `UpdateMemberInput`: `{ "isEssential"?: boolean, "role"?: "ORGANIZER" | "MEMBER" }`, al menos uno de los dos; si llegan los dos se aplican juntos (o ninguno).
+- Solo un `ORGANIZER`, que puede cambiar a cualquiera del grupo: nombrar organizador a un miembro, quitarle el rol a otro organizador (también al creador del grupo) o quitárselo a sí mismo, y marcar imprescindible a cualquiera (también a sí mismo).
+- **Nunca sin organizadores:** quitarle el rol al último `ORGANIZER` → `409 LAST_ORGANIZER` «El grupo necesita al menos un organizador.» y no se cambia nada (tampoco el `isEssential` del mismo cuerpo). Se comprueba con el grupo bloqueado, como al salir: si dos organizadores se quitan el rol a la vez, o uno se lo quita mientras el otro sale del grupo, el segundo ve lo que dejó el primero.
+- Comprobaciones en este orden: `404 GROUP_NOT_FOUND` · `403 NOT_A_MEMBER` · `403 NOT_ORGANIZER` · `400 VALIDATION_ERROR` (cuerpo vacío, «Envía isEssential o role»; `isEssential` que no es booleano; `role` distinto de `ORGANIZER`/`MEMBER`) · `404 MEMBER_NOT_FOUND` «Esa persona no pertenece al grupo.» · `409 LAST_ORGANIZER`.
+
+`200 GroupMember` con los cambios aplicados.
 
 ### `DELETE /groups/:id/members/me`
 Salir del grupo. `204`. Si sale el último `ORGANIZER` y quedan miembros, pasa a `ORGANIZER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y las gestionan los `ORGANIZER` (ver «Quién gestiona un plan»).

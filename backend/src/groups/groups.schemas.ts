@@ -33,6 +33,9 @@ export const joinGroupSchema = z.object({
     .transform(normalizeInviteCode),
 });
 
-export const updateMemberSchema = z.object({
-  isEssential: z.boolean({ error: 'isEssential debe ser true o false' }),
-});
+export const updateMemberSchema = z
+  .object({
+    isEssential: z.boolean({ error: 'isEssential debe ser true o false' }).optional(),
+    role: z.enum(['ORGANIZER', 'MEMBER'], { error: 'role debe ser ORGANIZER o MEMBER' }).optional(),
+  })
+  .refine((v) => v.isEssential !== undefined || v.role !== undefined, { message: 'Envía isEssential o role' });

@@ -32,6 +32,9 @@ export type TimeBlockInput = Omit<TimeBlock, 'id' | 'userId'>;
 
 export type GroupMember = User & { role: 'ORGANIZER' | 'MEMBER'; isEssential: boolean };
 
+// Cuerpo de PATCH /groups/:id/members/:userId: al menos uno de los dos campos.
+export type UpdateMemberInput = { isEssential?: boolean; role?: GroupMember['role'] };
+
 export type GroupSummary = {
   id: string;
   name: string;
