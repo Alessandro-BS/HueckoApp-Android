@@ -1,6 +1,8 @@
-import type { IncidenceInput, Proposal, ReplanInput, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
+import type { IncidenceInput, Proposal, ReplanInput, TimeWindowInput } from '@hueckoapp/shared';
 import { useCallback } from 'react';
 
+// TODO(votacion-expres Task 7): ResolveIncidencesInput ya no está en `shared` (se retira con el resolve).
+import type { ResolveIncidencesInput } from '../api/proposals';
 import {
   addWindow as postWindow,
   cancelProposal,

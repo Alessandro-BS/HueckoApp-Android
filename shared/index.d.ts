@@ -89,7 +89,7 @@ export type Incidence = {
 
 export type ExpressOption = 'CANCELAR' | 'REAGENDAR' | 'MANTENER';
 
-// Votación exprés grupal: una falta crítica en un plan confirmado abre una votación corta.
+// Votación exprés grupal: una ausencia crítica en un plan confirmado abre una votación corta (docs/api.md, «Votación exprés»).
 export type ExpressVote = {
   id: string;
   status: 'ABIERTA' | 'CERRADA';
@@ -119,7 +119,7 @@ export type Proposal = {
   state: ProposalState;
   windows: TimeWindow[];           // ordenadas por fecha y hora
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
-  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
+  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar o replantear (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
   scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
   scheduledDate: string | null;    // "YYYY-MM-DD": la fecha de la franja elegida (para mostrarla sin depender de la zona del teléfono)
@@ -145,9 +145,8 @@ export type ProposalInput = {
 
 export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes?: number | null };
 
-export type ResolveIncidencesInput =
-  | { newState: 'CONFIRMADO' | 'CANCELADO' }
-  | { newState: 'PROPUESTO'; votingDeadline: string; windows: TimeWindowInput[] };
+// Voto en la votación exprés (PUT /proposals/:id/express-vote); se puede cambiar mientras siga abierta.
+export type ExpressVoteInput = { option: ExpressOption };
 
 // Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; se borran los votos.
 export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };

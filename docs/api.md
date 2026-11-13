@@ -32,9 +32,9 @@ Todos los errores tienen la misma forma:
 | 400 | Subida del OCR: `IMAGE_REQUIRED` (falta la imagen), `INVALID_IMAGE` (no es JPG/PNG/WEBP), `INVALID_UPLOAD` (campos de más o multipart roto) |
 | 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
-| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
+| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo; `NOT_A_VOTER`: no está entre quienes votan la votación exprés). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
 | 500 | Error inesperado del servidor |
@@ -66,7 +66,8 @@ Resumen de las entidades:
 | `MatchWindow` | Franja libre en común con su % de coincidencia |
 | `Proposal` | Propuesta de plan con ventanas, votos, ubicación e incidencias |
 | `TimeWindow` | Ventana horaria votable dentro de una propuesta: fecha concreta (`date` `YYYY-MM-DD` en `America/Lima`) y su `dayOfWeek` |
-| `Incidence` | Imprevisto reportado sobre un plan confirmado |
+| `Incidence` | Imprevisto reportado sobre un plan confirmado (con `criticalReason` si es una ausencia crítica) |
+| `ExpressVote` | Votación exprés del grupo tras una ausencia crítica (`Proposal.expressVote`) |
 | `Location` | Lugar con nombre y coordenadas opcionales |
 | `ProposalWithGroup` | `Proposal` + `groupName` |
 | `UpcomingPlan` / `Attendee` | Próximo plan con la asistencia prevista de cada miembro |
@@ -145,10 +146,10 @@ Cuerpo = `TimeBlockInput` de `shared`. Reglas:
 `204` · `404 TIME_BLOCK_NOT_FOUND` si el bloque no existe o no es del usuario.
 
 ### `GET /me/upcoming-plans`
-`200 ProposalWithGroup[]`: propuestas `CONFIRMADO` de todos mis grupos cuyo `scheduledAt` todavía no llegó, de la más próxima a la más lejana. Cada una lleva `groupName`.
+`200 ProposalWithGroup[]`: propuestas `CONFIRMADO` de todos mis grupos cuyo `scheduledAt` todavía no llegó, de la más próxima a la más lejana. Cada una lleva `groupName`. Antes de responder cierra las votaciones exprés vencidas de mis grupos (ver «Votación exprés»).
 
 ### `GET /me/dashboard`
-Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`.
+Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`. Antes de calcularlo cierra las votaciones exprés vencidas de mis grupos (ver «Votación exprés»).
 - `metrics.activeGroups`: grupos de los que soy miembro.
 - `metrics.openVotes`: propuestas `PROPUESTO` de mis grupos (aunque su plazo haya pasado: siguen pendientes de hora hasta que alguien las confirme).
 - `metrics.matchingHours`: suma, sobre las franjas de las propuestas de mis grupos **que no están `CANCELADO`** (cualquier otro estado cuenta, también `EN_RECOORDINACION`) con `availabilityPercentage ≥ 80` (fijo, no el umbral del grupo), de `hora(endTime) − hora(startTime)` en horas enteras (se truncan los minutos), sin deduplicar solapes. Es la fórmula de la app Kotlin salvo que aquí las canceladas no cuentan.
@@ -207,7 +208,7 @@ Reglas:
 ## Propuestas y votación
 
 ### `GET /groups/:id/proposals`
-`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app las oculta). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app las oculta). Antes de responder cierra las votaciones exprés vencidas del grupo (ver «Votación exprés»). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
 
 ### `POST /groups/:id/proposals`
 ```json
@@ -236,13 +237,13 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
 
 ### `GET /proposals/:id`
-`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»).
+`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»). `expressVote` es su votación exprés más reciente (la abierta o la última cerrada; `null` si nunca tuvo); si está abierta y ya venció, se cierra antes de responder (ver «Votación exprés»).
 `404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
 
 **Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.
 
 ### Quién gestiona un plan
-Confirmar, cancelar, reprogramar y resolver imprevistos lo decide **una sola persona**, y ningún plan se queda sin ella:
+Confirmar, cancelar y replantear lo decide **una sola persona** (qué hacer ante una ausencia crítica lo vota el grupo: ver «Votación exprés»), y ningún plan se queda sin ella:
 1. quien creó la propuesta, mientras siga en el grupo (si sale y vuelve, la recupera);
 2. si se fue, el `OWNER` del grupo (quien lo creó; si también se fue, el rol ya pasó a quien lleva más tiempo, ver `DELETE /groups/:id/members/me`);
 3. si no hubiera `OWNER`, quien lleva más tiempo en el grupo (fecha de entrada más antigua; quien sale y vuelve cuenta desde su nueva entrada).
@@ -277,27 +278,31 @@ Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = el instante de inicio 
 Solo quien gestiona el plan (`403 NOT_MANAGER`). Desde cualquier estado salvo `CANCELADO` (`409 INVALID_STATE`). Pasa a `CANCELADO`. `200 Proposal`
 
 ### `POST /proposals/:id/incidences`
-Reportar un imprevisto sobre un plan `CONFIRMADO` o `EN_RECOORDINACION` (si no, `409 INVALID_STATE` «Solo se pueden reportar imprevistos de un plan confirmado.»). Cualquier miembro El estado se vuelve a comprobar al guardar, con el plan bloqueado: si otra petición lo cancela justo antes, también `409` y no se guarda nada; si lo cancela justo después, espera a que la incidencia quede guardada.
+Reportar un imprevisto sobre un plan `CONFIRMADO` cuya franja confirmada todavía no terminó (si no, `409 INVALID_STATE` «Solo se pueden reportar imprevistos de un plan confirmado.»; también en `EN_RECOORDINACION`: no hay fecha a la que faltar). Cualquier miembro. Antes de comprobar el estado se cierra la votación exprés del plan si ya venció (su resultado puede haberlo cambiado). El estado se vuelve a comprobar al guardar, con el plan bloqueado: si otra petición lo cancela (o una votación lo manda a recoordinar) justo antes, también `409` y no se guarda nada; si lo cancela justo después, espera a que la incidencia (y la votación que abra) quede guardada.
 ```json
 { "type": "TARDANZA", "reason": "Tráfico", "delayMinutes": 20 }
 ```
 Cuerpo = `IncidenceInput`. Reglas:
 - `type` ∈ `FALTA | TARDANZA | IMPREVISTO`; `reason` obligatorio, 1–200 caracteres tras `trim`.
 - `delayMinutes`: entero 1–600, **obligatorio** si `TARDANZA`; `null` u omitido en los demás.
-- `criticality` la pone el servidor: `FALTA` de un imprescindible → `ALTA`; cualquier otra `FALTA` o un `IMPREVISTO` → `MEDIA`; `TARDANZA` → `BAJA`, o `MEDIA` si `delayMinutes ≥ 30`.
-- Si quien reporta es imprescindible (`isEssential`) y el tipo es `FALTA`, un plan `CONFIRMADO` pasa a `EN_RECOORDINACION`.
+- **Ausencia crítica:** una `FALTA` o un `IMPREVISTO` es crítico si se cumple una de estas reglas, en este orden (la primera da `criticalReason`): quien reporta **propuso el plan** («propuso este plan»), es **imprescindible** (`isEssential`, «el grupo lo marcó como imprescindible») o es **organizador del grupo** (`OWNER`, «es organizador del grupo»). Una `TARDANZA` nunca lo es.
+- `criticality` la pone el servidor: ausencia crítica → `ALTA`; cualquier otra `FALTA` o un `IMPREVISTO` → `MEDIA`; `TARDANZA` → `BAJA`, o `MEDIA` si `delayMinutes ≥ 30`. `criticalReason` es `null` si no es crítica.
+- Una ausencia crítica **abre la votación exprés** del grupo (ver «Votación exprés») y el plan **sigue `CONFIRMADO`** mientras se vota. No se abre si el plan ya tiene una abierta (la incidencia se guarda igual e informa) ni si quien avisa está solo en el grupo (nadie puede votar).
 
 `201 Proposal`
 
-### `POST /proposals/:id/incidences/resolve`
-La «votación exprés». Solo quien gestiona el plan (`403 NOT_MANAGER`), y solo con el plan `CONFIRMADO` o `EN_RECOORDINACION` (`409 INVALID_STATE`). Cuerpo = `ResolveIncidencesInput`:
-- `{ "newState": "CONFIRMADO" }` — mantener el plan;
-- `{ "newState": "CANCELADO" }` — cancelarlo;
-- `{ "newState": "PROPUESTO", "votingDeadline": "2026-10-04T20:00:00.000Z", "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" }, ... ] }` — reprogramar: `votingDeadline` obligatorio, futuro y **anterior al inicio de la primera franja**; `windows` obligatorio (2 a 5, mismas reglas que al crear la propuesta).
+### Votación exprés
+Cuando alguien importante no puede ir a un plan confirmado, **decide el grupo**. `Proposal.expressVote` (`ExpressVote`) es la votación más reciente del plan: la abierta o la última cerrada (`null` si nunca tuvo); como mucho hay una abierta por plan.
+- **Quién vota:** los miembros del grupo al abrirse, menos quien avisó (la lista queda fijada). Puede votar quien está en esa lista y **sigue** en el grupo; quien sale deja de poder votar y su voto deja de contar (en `counts`, `eligibleVoters`, el quórum y «votaron todos»). Quien entra después no vota.
+- **Plazo** (`expiresAt`): `EXPRESS_VOTE_MINUTES` minutos (60 por defecto) desde que se abre (`openedAt`), sin pasar del inicio del plan (`scheduledAt`), pero **nunca menos de 5 minutos**.
+- **Cierre:** en cuanto votaron todos los votantes que siguen en el grupo, o al vencer el plazo. No hay procesos en segundo plano: una votación vencida se cierra **al consultar** (`GET /proposals/:id`, `GET /groups/:id/proposals`, `GET /me/dashboard`, `GET /me/upcoming-plans`, reportar y votar), en una transacción con el plan bloqueado, así que dos consultas a la vez la cierran y aplican su resultado **una sola vez**.
+- **Resultado** (`result`, `resultByDefault`; `null` mientras está abierta): quórum = 2 votos, o todos los votantes que siguen si son menos (`quorum`). Sin quórum → `MANTENER` con `resultByDefault: true`. Si no, la opción más votada; en empate gana la más prudente: `MANTENER` > `REAGENDAR` > `CANCELAR`.
+- **Qué hace con el plan, solo si sigue `CONFIRMADO`:** `CANCELAR` → `CANCELADO`; `MANTENER` → nada; `REAGENDAR` → `EN_RECOORDINACION` con `chosenWindowId`, `scheduledAt` y `scheduledDate` a `null` y sin votos de fecha. Si quien gestiona ya lo canceló, la votación se cierra sin tocarlo. Siempre, al cerrar, **todas** las incidencias del plan quedan `resolved: true`.
+- **Campos:** `reportedBy`, `reason` y `criticalReason` (de la incidencia que la abrió); `counts` = `{ CANCELAR, REAGENDAR, MANTENER }` (visibles para todos); `myVote` (`null` si no voté o no puedo votar); `canVote` (abierta y soy votante que sigue en el grupo); `eligibleVoters`; `closedAt`; `recommendation` (`{ option, reason }` de la IA, o `null`).
 
-`votingDeadline` y `windows` **solo se validan cuando `newState` es `PROPUESTO`**; con `CONFIRMADO` o `CANCELADO` se ignoran. Siempre: **todas** las incidencias quedan `resolved: true`. Con `PROPUESTO` además las franjas anteriores se **reemplazan** por las nuevas (el servidor calcula su `availabilityPercentage`) y se borran todos los votos, `chosenWindowId`, `scheduledAt` y `scheduledDate` vuelven a `null` y empieza una votación nueva hasta el plazo enviado. `200 Proposal` · `400 VALIDATION_ERROR`
-
-**Cuándo muestra la app la alerta exprés:** con el plan `EN_RECOORDINACION` («Votación exprés»: falta un imprescindible) o `CONFIRMADO` con incidencias sin resolver («Aviso de imprevisto»). En los dos casos solo quien gestiona el plan (`canManage`) ve Reprogramar / Cancelar / Mantener.
+### `PUT /proposals/:id/express-vote`
+Votar en la votación exprés abierta del plan. Cuerpo = `ExpressVoteInput`: `{ "option": "REAGENDAR" }` (`CANCELAR | REAGENDAR | MANTENER`). Un voto por persona; votar otra vez **cambia** el voto mientras siga abierta. Si con este voto ya votaron todos, la votación se cierra en el momento y se aplica su resultado (la respuesta ya lo trae).
+`200 Proposal` · `400 VALIDATION_ERROR` «Elige CANCELAR, REAGENDAR o MANTENER» · `403 NOT_A_VOTER` «No puedes votar en esta votación.» (quien avisó, quien no estaba en el grupo al abrirse o ya salió) · `409 VOTING_CLOSED` «La votación ya cerró.» (el plan no tiene votación abierta o ya venció).
 
 ### `POST /proposals/:id/replan`
 Replantea una propuesta **en votación**: reemplaza sus franjas y su plazo por otros nuevos. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo con la propuesta `PROPUESTO` (`409 INVALID_STATE`). Sirve sobre todo cuando todas las franjas ya pasaron (p. ej. propuestas anteriores a las fechas). Cuerpo = `ReplanInput`:
@@ -515,7 +520,7 @@ Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni qu
 - **Voto:** votar dos veces la misma franja ya no retira el voto en el servidor (`PUT /vote` es idempotente); la app lo retira con `DELETE` cuando se toca la franja ya votada, así que el gesto es el mismo.
 - **Plazo real:** `votingDeadline` es una fecha ISO (antes, texto libre) y cierra la votación.
 - **Sin «llamados a la votación»:** en Kotlin eran un marcador local sin efecto; no hay endpoint y la app quita el botón «Votación» y la sección «Llamadas a la votación» del grupo.
-- **Votación exprés:** la decide solo quien gestiona el plan —quien lo creó o, si se fue del grupo, el `OWNER`— (antes, el primero que pulsaba) y reprogramar pide una nueva fecha límite.
-- **Criticidad** calculada por el servidor según el tipo, si es imprescindible y los minutos de retraso.
+- **Votación exprés:** la decide el grupo votando (`CANCELAR`, `REAGENDAR` o `MANTENER`, con quórum y plazo; ver «Votación exprés»), no el primero que pulsaba; reagendar deja el plan en recoordinación.
+- **Criticidad** calculada por el servidor: una ausencia crítica (de quien propuso el plan, de un imprescindible o del organizador) es `ALTA` y lleva su `criticalReason`; las demás, según el tipo y los minutos de retraso.
 - **Plan confirmado con fecha:** `scheduledAt` y `scheduledDate`; el «próximo plan» usa la franja elegida, no la primera.
 - **OCR revisable y honesto:** los bloques leídos se validan uno a uno, salen como clases recurrentes (antes llegaban con `id`, `type` y `isRecurring` vacíos), se pueden corregir o quitar antes de guardarlos, y si la IA falla se muestra el error en vez de un horario inventado. El modelo `gemini-1.5-flash` (retirado) se sustituye por `GEMINI_MODEL`.

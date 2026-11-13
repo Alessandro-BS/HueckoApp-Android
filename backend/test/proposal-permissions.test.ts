@@ -73,15 +73,13 @@ describe('canManage en la API', () => {
     expect(list.map((p) => [p.id, p.canManage])).toEqual([[deYo.id, false], [deAna.id, true]]);
   });
 
-  it('si quien la creó se va, la gestiona el OWNER: confirma, resuelve y cancela', async () => {
+  it('si quien la creó se va, la gestiona el OWNER: confirma y cancela', async () => {
     const p = await planBy(ana.token);
     await voteFor(app, p.id, windowOf(p, 2).id, carlos.token);
     expect((await leave(ana.token)).status).toBe(204);
     expect([await canManage(p.id, yo.token), await canManage(p.id, carlos.token)]).toEqual([true, false]);
     expect((await post(`${p.id}/confirm`, carlos.token)).status).toBe(403);
     expect((await post(`${p.id}/confirm`, yo.token)).body.state).toBe('CONFIRMADO');
-    await post(`${p.id}/incidences`, carlos.token, { type: 'IMPREVISTO', reason: 'Examen' });
-    expect((await post(`${p.id}/incidences/resolve`, yo.token, { newState: 'CONFIRMADO' })).status).toBe(200);
     expect((await post(`${p.id}/cancel`, yo.token)).body.state).toBe('CANCELADO');
   });
 

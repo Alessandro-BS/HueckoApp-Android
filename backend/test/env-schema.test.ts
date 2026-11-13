@@ -27,3 +27,12 @@ describe('DATABASE_URL y PGLITE_DATA_DIR (D9)', () => {
     expect(parseEnv({ ...BASE, NODE_ENV: 'production', DATABASE_URL: NEON }).NODE_ENV).toBe('production'); // control positivo
   });
 });
+
+describe('EXPRESS_VOTE_MINUTES', () => {
+  it('por defecto 60; acepta otro entero positivo y rechaza 0 o decimales', () => {
+    expect(parseEnv(BASE).EXPRESS_VOTE_MINUTES).toBe(60);
+    expect(parseEnv({ ...BASE, EXPRESS_VOTE_MINUTES: '30' }).EXPRESS_VOTE_MINUTES).toBe(30);
+    expect(() => parseEnv({ ...BASE, EXPRESS_VOTE_MINUTES: '0' })).toThrow();
+    expect(() => parseEnv({ ...BASE, EXPRESS_VOTE_MINUTES: '1.5' })).toThrow();
+  });
+});

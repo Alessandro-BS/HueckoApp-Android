@@ -36,8 +36,8 @@ async function groupWithProposals(count: number) {
       await repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29');
       await repo.reportIncidence(
         id,
-        { userId: anaId, type: 'TARDANZA', reason: `Tráfico ${i}`, delayMinutes: 10, criticality: 'BAJA', createdAt: NOW.toISOString() },
-        false,
+        { userId: anaId, type: 'TARDANZA', reason: `Tráfico ${i}`, delayMinutes: 10, criticality: 'BAJA', criticalReason: null, createdAt: NOW.toISOString() },
+        60,
       );
     }
   }

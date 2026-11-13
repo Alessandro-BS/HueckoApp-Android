@@ -1,7 +1,8 @@
-import type { ResolveIncidencesInput } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+// TODO(votacion-expres Task 7): ResolveIncidencesInput ya no está en `shared` (se retira con el resolve).
+import type { ResolveIncidencesInput } from '../../api/proposals';
 import { ErrorBanner } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import { colors, radius, typography } from '../../theme';

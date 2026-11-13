@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type { ExpressOption, ExpressVote } from '@hueckoapp/shared';
+import type { ExpressOption, ExpressVote, ProposalState } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
 import { isUniqueViolation } from '../db/errors';
-import { EXPRESS_OPTIONS, quorumFor } from './express-rules';
+import { EXPRESS_OPTIONS, quorumFor, tally } from './express-rules';
 
 type VoteRow = {
   id: string;
@@ -36,8 +36,32 @@ export type OpenExpressVote = {
   expiresAt: string;
 };
 
+// Dónde buscar votaciones vencidas que cerrar antes de una lista: los planes de un grupo o los de mis grupos. (Un
+// solo plan se cierra con closeDue, después de comprobar el acceso.)
+export type CloseScope = { groupId: string } | { userId: string };
+
+const SCOPE_FILTER = {
+  groupId: 'p.group_id = $1',
+  userId: 'p.group_id IN (SELECT group_id FROM group_members WHERE user_id = $1)',
+} as const;
+
+// Lo que el resultado hace con el plan, solo si sigue CONFIRMADO (si alguien lo canceló, no se toca).
+async function applyResult(db: Db, proposalId: string, result: ExpressOption): Promise<void> {
+  if (result === 'CANCELAR') {
+    await db.query("UPDATE proposals SET state = 'CANCELADO' WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
+  } else if (result === 'REAGENDAR') {
+    // Recoordinación: sin franja elegida ni fecha, y sin los votos de fecha (quien gestiona propone franjas nuevas).
+    await db.query(
+      `UPDATE proposals SET state = 'EN_RECOORDINACION', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL
+       WHERE id = $1 AND state = 'CONFIRMADO'`,
+      [proposalId],
+    );
+    await db.query('DELETE FROM votes WHERE proposal_id = $1', [proposalId]);
+  }
+}
+
 export function expressVotesRepository(db: Db) {
-  return {
+  const repo = {
     /** Abre la votación con sus votantes fijados. `null` si el plan ya tiene una ABIERTA (índice único parcial). */
     async open(i: OpenExpressVote): Promise<string | null> {
       const id = randomUUID();
@@ -130,5 +154,88 @@ export function expressVotesRepository(db: Db) {
     async deleteClosedFor(proposalId: string): Promise<void> {
       await db.query("DELETE FROM express_votes WHERE proposal_id = $1 AND status = 'CERRADA'", [proposalId]);
     },
+
+    /**
+     * Guarda (o cambia) el voto solo si la votación sigue ABIERTA y sin vencer, con su fila bloqueada: un cierre a la
+     * vez espera al voto, o el voto ve la votación ya cerrada. false si ya cerró. Quién puede votar lo comprueba quien llama.
+     */
+    castVoteIfOpen(voteId: string, userId: string, option: ExpressOption, now: Date): Promise<boolean> {
+      return db.transaction(async () => {
+        const open = await db.one(
+          "SELECT id FROM express_votes WHERE id = $1 AND status = 'ABIERTA' AND expires_at > $2 FOR UPDATE",
+          [voteId, now.toISOString()],
+        );
+        if (!open) return false;
+        await repo.castVote(voteId, userId, option, now.toISOString());
+        return true;
+      });
+    },
+
+    /**
+     * Cierra la votación ABIERTA del plan si venció o si ya votaron todos los votantes que siguen en el grupo: hace el
+     * recuento, la marca CERRADA, aplica el resultado (solo si el plan sigue CONFIRMADO) y deja resueltas todas las
+     * incidencias del plan. Todo o nada, con el plan y la votación bloqueados (en ese orden, como reportar); el UPDATE
+     * de cierre exige que siga ABIERTA, así que dos cierres a la vez aplican el resultado una sola vez. true si cerró.
+     */
+    closeDue(proposalId: string, now: Date): Promise<boolean> {
+      return db.transaction(async () => {
+        const plan = await db.one<{ state: ProposalState; group_id: string }>('SELECT state, group_id FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
+        if (!plan) return false;
+        const vote = await db.one<{ id: string; expires_at: string }>(
+          "SELECT id, expires_at FROM express_votes WHERE proposal_id = $1 AND status = 'ABIERTA' FOR UPDATE",
+          [proposalId],
+        );
+        if (!vote) return false;
+        // Solo cuentan los votantes fijados que siguen en el grupo.
+        const voters = await db.many<{ option: ExpressOption | null }>(
+          `SELECT vv.option FROM express_vote_voters vv
+           JOIN group_members m ON m.group_id = $2 AND m.user_id = vv.user_id
+           WHERE vv.vote_id = $1`,
+          [vote.id, plan.group_id],
+        );
+        const expired = new Date(vote.expires_at).getTime() <= now.getTime();
+        if (!expired && voters.some((v) => v.option === null)) return false;
+        const { result, byDefault } = tally(voters.flatMap((v) => (v.option === null ? [] : [v.option])), voters.length);
+        const { rowCount } = await db.query(
+          "UPDATE express_votes SET status = 'CERRADA', closed_at = $2, result = $3, result_by_default = $4 WHERE id = $1 AND status = 'ABIERTA'",
+          [vote.id, now.toISOString(), result, byDefault],
+        );
+        if (rowCount === 0) return false;
+        if (plan.state === 'CONFIRMADO') await applyResult(db, proposalId, result);
+        await db.query('UPDATE incidences SET resolved = TRUE WHERE proposal_id = $1', [proposalId]);
+        return true;
+      });
+    },
+
+    /**
+     * Cierre perezoso antes de una lectura: `closeDue` de cada votación ABIERTA y **vencida** del alcance (sin ninguna,
+     * una sola consulta y nada más). Nunca lanza: un error se anota en el log y la lectura sigue (la siguiente lo reintenta).
+     */
+    async closeDueInScope(scope: CloseScope, now: Date): Promise<void> {
+      const [filter, value] = 'groupId' in scope ? [SCOPE_FILTER.groupId, scope.groupId] : [SCOPE_FILTER.userId, scope.userId];
+      try {
+        const due = await db.many<{ proposal_id: string }>(
+          `SELECT v.proposal_id FROM express_votes v JOIN proposals p ON p.id = v.proposal_id
+           WHERE ${filter} AND v.status = 'ABIERTA' AND v.expires_at <= $2`,
+          [value, now.toISOString()],
+        );
+        for (const { proposal_id } of due) {
+          try {
+            await repo.closeDue(proposal_id, now);
+          } catch (error) {
+            logCloseError(proposal_id, error);
+          }
+        }
+      } catch (error) {
+        logCloseError(null, error);
+      }
+    },
   };
+  return repo;
+}
+
+/** Un cierre que falla no corta la petición: se anota (salvo en los tests) y lo reintenta la siguiente lectura. */
+export function logCloseError(proposalId: string | null, error: unknown): void {
+  if (process.env.NODE_ENV === 'test') return;
+  console.error(`No se pudo cerrar la votación exprés${proposalId ? ` del plan ${proposalId}` : ''}:`, error instanceof Error ? error.message : error);
 }

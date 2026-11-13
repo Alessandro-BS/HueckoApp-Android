@@ -1,8 +1,14 @@
-import type { IncidenceInput, Proposal, ProposalInput, ReplanInput, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
+import type { IncidenceInput, Proposal, ProposalInput, ReplanInput, TimeWindowInput } from '@hueckoapp/shared';
 
 import { api } from './client';
 
-export type { IncidenceInput, ProposalInput, ReplanInput, ResolveIncidencesInput, TimeWindowInput };
+export type { IncidenceInput, ProposalInput, ReplanInput, TimeWindowInput };
+
+// TODO(votacion-expres Task 7): el backend ya no tiene POST /incidences/resolve y `shared` ya no exporta este tipo;
+// la app lo reemplaza por la votación exprés del grupo (PUT /proposals/:id/express-vote).
+export type ResolveIncidencesInput =
+  | { newState: 'CONFIRMADO' | 'CANCELADO' }
+  | { newState: 'PROPUESTO'; votingDeadline: string; windows: TimeWindowInput[] };
 
 const groupProposalsPath = (groupId: string) => `/groups/${encodeURIComponent(groupId)}/proposals`;
 const proposalPath = (id: string) => `/proposals/${encodeURIComponent(id)}`;

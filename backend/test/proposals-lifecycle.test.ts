@@ -8,7 +8,6 @@ import {
   AFTER_DEADLINE,
   bearer,
   createProposal,
-  dateOf,
   DEADLINE,
   interleave,
   makeClock,
@@ -21,10 +20,6 @@ import {
   win,
   windowOf,
 } from './helpers';
-
-const NEW_DEADLINE = new Date(2026, 9, 4, 20, 0).toISOString();
-// Franjas nuevas para reprogramar: miércoles 7/10 y jueves 8/10 (después de NEW_DEADLINE).
-const NEW_WINDOWS = [win(3, '11:00', '13:00'), win(4, '16:00', '18:00')];
 
 let app: Express;
 let db: Db;
@@ -42,7 +37,7 @@ beforeEach(async () => {
 const postTo = (path: string, token: string, body: object = {}) =>
   request(app).post(`/api/proposals/${path}`).set(bearer(token)).send(body);
 const vote = (p: Proposal, dayOfWeek: number, token: string) => voteFor(app, p.id, windowOf(p, dayOfWeek).id, token);
-// Ana pasa a ser imprescindible: su FALTA lleva el plan a EN_RECOORDINACION.
+// Ana pasa a ser imprescindible: su FALTA es crítica y abre la votación exprés.
 const makeEssential = () =>
   request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true });
 
@@ -68,12 +63,13 @@ async function confirmedPlan(): Promise<Proposal> {
   return res.body;
 }
 
-// Plan confirmado en el que falta Ana (imprescindible): queda EN_RECOORDINACION.
+// Plan confirmado en el que falta Ana (imprescindible): yo, el único que vota, elige REAGENDAR y queda EN_RECOORDINACION.
 async function recoordinatingPlan(): Promise<Proposal> {
   const p = await confirmedPlan();
   await makeEssential();
-  const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
-  if (res.body.state !== 'EN_RECOORDINACION') throw new Error(`reportar falló: ${res.status} ${JSON.stringify(res.body)}`);
+  await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+  const res = await request(app).put(`/api/proposals/${p.id}/express-vote`).set(bearer(yo.token)).send({ option: 'REAGENDAR' });
+  if (res.body.state !== 'EN_RECOORDINACION') throw new Error(`reagendar falló: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;
 }
 
@@ -251,14 +247,19 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
     expect(res.body.state).toBe('CONFIRMADO');
   });
 
-  it('FALTA de un imprescindible → ALTA y el plan pasa a EN_RECOORDINACION', async () => {
+  it('FALTA de un imprescindible → ALTA, abre la votación exprés y el plan sigue CONFIRMADO', async () => {
     const p = await confirmedPlan();
     await makeEssential();
     const res = await report(p, ana.token, { type: 'FALTA', reason: 'Estoy enferma' });
-    expect(res.body.state).toBe('EN_RECOORDINACION');
-    expect(res.body.incidences[0].criticality).toBe('ALTA');
-    // En EN_RECOORDINACION se siguen aceptando reportes.
-    expect((await report(p, yo.token, { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 10 })).status).toBe(201);
+    expect(res.body.state).toBe('CONFIRMADO');
+    expect(res.body.incidences[0]).toMatchObject({ criticality: 'ALTA', criticalReason: 'el grupo lo marcó como imprescindible' });
+    expect(res.body.expressVote).toMatchObject({ status: 'ABIERTA', eligibleVoters: 1 });
+  });
+
+  it('409 INVALID_STATE en EN_RECOORDINACION: no hay fecha a la que faltar', async () => {
+    const p = await recoordinatingPlan();
+    const res = await report(p, yo.token, { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 10 });
+    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
   it('FALTA de alguien no imprescindible → MEDIA y sigue CONFIRMADO', async () => {
@@ -294,125 +295,6 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
   });
 });
 
-describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
-  const resolve = (p: Proposal, token: string, body: object) => postTo(`${p.id}/incidences/resolve`, token, body);
-  const withIncidence = async () => {
-    const p = await confirmedPlan();
-    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
-    return p;
-  };
-
-  it('Mantener: incidencias resueltas; sigue CONFIRMADO con su franja y su fecha', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      state: 'CONFIRMADO', chosenWindowId: p.chosenWindowId, scheduledAt: p.scheduledAt, scheduledDate: p.scheduledDate,
-    });
-    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
-  });
-
-  it('Cancelar: CANCELADO', async () => {
-    const p = await withIncidence();
-    expect((await resolve(p, yo.token, { newState: 'CANCELADO' })).body.state).toBe('CANCELADO');
-  });
-
-  it('Reprogramar: PROPUESTO sin votos ni franja elegida, con plazo nuevo, y se vuelve a votar', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
-    });
-    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0, 0]);
-    expect(res.body.incidences.every((i: { resolved: boolean }) => i.resolved)).toBe(true);
-    expect((await vote(res.body, 3, ana.token)).status).toBe(200);
-  });
-
-  it('Reprogramar exige un plazo nuevo y futuro', async () => {
-    const p = await withIncidence();
-    const sinPlazo = await resolve(p, yo.token, { newState: 'PROPUESTO', windows: NEW_WINDOWS });
-    expect(sinPlazo.body.error.details).toContainEqual(
-      expect.objectContaining({ path: ['votingDeadline'], message: 'Para reprogramar indica una nueva fecha límite' }),
-    );
-    const pasado = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: new Date(2026, 8, 28).toISOString(), windows: NEW_WINDOWS });
-    expect(pasado.body.error.details).toContainEqual(
-      expect.objectContaining({ path: ['votingDeadline'], message: 'La fecha límite debe ser futura' }),
-    );
-  });
-
-  it('Reprogramar sin windows: 400; con windows válidas reemplaza las franjas, borra los votos y vuelve a PROPUESTO', async () => {
-    const p = await withIncidence();
-    const sin = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
-    expect([sin.status, sin.body.error.code]).toEqual([400, 'VALIDATION_ERROR']);
-    expect(sin.body.error.details).toContainEqual(expect.objectContaining({ path: ['windows'] }));
-    const una = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: [win(3, '11:00', '13:00')] });
-    expect(una.status).toBe(400);
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
-    expect(res.status).toBe(200);
-    expect(res.body.state).toBe('PROPUESTO');
-    expect(res.body.windows.map((w: { date: string }) => w.date)).toEqual([dateOf(3), dateOf(4)]);
-    expect(res.body.windows.map((w: { id: string }) => w.id)).not.toContain(p.windows[0].id);
-    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
-  });
-
-  it('Reprogramar con el plazo después de la primera franja: 400', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: new Date(2026, 9, 9).toISOString(), windows: NEW_WINDOWS });
-    expect(res.status).toBe(400);
-    expect(res.body.error.details).toContainEqual(expect.objectContaining({ path: ['votingDeadline'] }));
-  });
-
-  it('el plazo solo se valida al reprogramar: con CONFIRMADO o CANCELADO se ignora', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO', votingDeadline: new Date(2026, 8, 28).toISOString() });
-    expect([res.status, res.body.state]).toEqual([200, 'CONFIRMADO']);
-    const cancelado = await resolve(p, yo.token, { newState: 'CANCELADO', votingDeadline: 'no-es-una-fecha' });
-    expect([cancelado.status, cancelado.body.state]).toEqual([200, 'CANCELADO']);
-  });
-
-  it('de EN_RECOORDINACION a CONFIRMADO', async () => {
-    const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
-    expect(res.body.state).toBe('CONFIRMADO');
-  });
-
-  it('de EN_RECOORDINACION a PROPUESTO: sin votos ni franja elegida, con el plazo nuevo e incidencias resueltas', async () => {
-    const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
-    });
-    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0, 0]);
-    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
-  });
-
-  it('de EN_RECOORDINACION a CANCELADO: incidencias resueltas', async () => {
-    const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'CANCELADO' });
-    expect([res.status, res.body.state]).toEqual([200, 'CANCELADO']);
-    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
-  });
-
-  it('409 INVALID_STATE al resolver un plan CANCELADO', async () => {
-    const p = await cancelledPlan();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
-    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
-  });
-
-  it('403 si no la gestiono; 400 con un estado inválido; 409 si no está confirmada', async () => {
-    const p = await withIncidence();
-    expect((await resolve(p, ana.token, { newState: 'CANCELADO' })).body.error.code).toBe('NOT_MANAGER');
-    const invalido = await resolve(p, yo.token, { newState: 'EN_RECOORDINACION' });
-    expect(invalido.body.error.details).toContainEqual(
-      expect.objectContaining({ path: ['newState'], message: 'Estado inválido: CONFIRMADO, CANCELADO o PROPUESTO' }),
-    );
-    const enVotacion = await threeWindows();
-    expect((await resolve(enVotacion, yo.token, { newState: 'CANCELADO' })).body.error.code).toBe('INVALID_STATE');
-  });
-});
-
 // Otra petición cambia el estado entre la comprobación de la ruta y su escritura (en Neon, dos conexiones a la vez):
 // la escritura solo se aplica si el plan sigue en el estado comprobado; si no, 409 INVALID_STATE y no pisa nada.
 describe('cambios de estado a la vez (M4)', () => {
@@ -435,21 +317,10 @@ describe('cambios de estado a la vez (M4)', () => {
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
   });
 
-  it('resolver las incidencias de un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y las incidencias sin resolver', async () => {
-    const p = await confirmedPlan();
-    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
-    cancelledMeanwhile(p);
-    const res = await postTo(`${p.id}/incidences/resolve`, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
-    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
-    expect(await stateOf(p)).toBe('CANCELADO');
-    expect(await db.many('SELECT resolved FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([{ resolved: false }]);
-    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
-  });
-
   it('reportar un imprevisto en un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y no se guarda', async () => {
     const p = await confirmedPlan();
     // Se cuela justo antes de que se guarde la incidencia (o de que se bloquee el plan para guardarla).
-    interleave(db, /^(INSERT INTO incidences|SELECT state FROM proposals WHERE id = \$1 FOR UPDATE)/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+    interleave(db, /^(INSERT INTO incidences|SELECT state, scheduled_at, group_id FROM proposals WHERE id = \$1 FOR UPDATE)/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
     const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await stateOf(p)).toBe('CANCELADO');
@@ -462,24 +333,27 @@ describe('cambios de estado a la vez (M4)', () => {
     const calls = recordQueries(db);
     await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
     expect(calls.find((c) => c.inTransaction)).toEqual({
-      sql: 'SELECT state FROM proposals WHERE id = $1 FOR UPDATE', params: [p.id], inTransaction: true,
+      sql: 'SELECT state, scheduled_at, group_id FROM proposals WHERE id = $1 FOR UPDATE', params: [p.id], inTransaction: true,
     });
   });
 
-  it('la FALTA de un imprescindible re-coordina el plan aunque otra petición lo acabe de volver a CONFIRMADO', async () => {
-    const p = await recoordinatingPlan();
-    // La ruta lo leyó EN_RECOORDINACION; una votación exprés «Mantener» se cuela antes de que se bloquee el plan.
-    interleave(db, /^SELECT state FROM proposals WHERE id = \$1 FOR UPDATE/, "UPDATE proposals SET state = 'CONFIRMADO' WHERE id = $1", [p.id]);
-    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Sigo enferma' });
-    expect(res.status).toBe(201);
+  it('reportar en un plan que una votación acaba de mandar a recoordinar: 409 y no se guarda', async () => {
+    const p = await confirmedPlan();
+    // La ruta lo leyó CONFIRMADO; el cierre de una votación (REAGENDAR) se cuela antes de que se bloquee el plan.
+    interleave(db, /^SELECT state, scheduled_at, group_id FROM proposals WHERE id = \$1 FOR UPDATE/, "UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await stateOf(p)).toBe('EN_RECOORDINACION');
+    expect(await db.many('SELECT id FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([]);
   });
 
-  it('la FALTA de un imprescindible no reabre como EN_RECOORDINACION un plan que otra petición acaba de cancelar', async () => {
+  it('una ausencia crítica en un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y no abre votación', async () => {
     const p = await confirmedPlan();
     await makeEssential();
-    cancelledMeanwhile(p);
-    await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+    interleave(db, /^SELECT state, scheduled_at, group_id FROM proposals WHERE id = \$1 FOR UPDATE/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await stateOf(p)).toBe('CANCELADO');
+    expect(await db.many('SELECT id FROM express_votes WHERE proposal_id = $1', [p.id])).toEqual([]);
   });
 });
