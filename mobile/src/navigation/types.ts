@@ -2,6 +2,7 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { DrawerScreenProps } from '@react-navigation/drawer';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { TimeBlock } from '@hueckoapp/shared';
 
 import type { OcrImage } from '../api/ai';
 import type { ProposalPrefill } from '../utils/ai';
@@ -25,7 +26,7 @@ export type DrawerParamList = {
 // Pantallas que se apilan sobre el drawer (sin menú, con cabecera nativa y botón atrás).
 export type AppStackParamList = {
   Main: NavigatorScreenParams<DrawerParamList>;
-  AddSchedule: { initialDay?: number } | undefined;
+  AddSchedule: { initialDay?: number; block?: TimeBlock } | undefined;
   OcrReview: { image: OcrImage };
   GroupDetail: { groupId: string; name: string };
   ProximityInvite: { groupId: string; name: string };

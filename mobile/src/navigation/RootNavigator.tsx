@@ -46,7 +46,7 @@ export function RootNavigator() {
       }}
     >
       <AppStack.Screen name="Main" component={AppDrawer} options={{ headerShown: false }} />
-      <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
+      <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={({ route }) => ({ title: route.params?.block ? 'Editar bloque' : 'Nuevo bloque' })} />
       <AppStack.Screen name="OcrReview" component={OcrReviewScreen} options={{ title: 'Revisar escaneo' }} />
       <AppStack.Screen name="GroupDetail" component={GroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
       <AppStack.Screen name="ProximityInvite" component={ProximityInviteScreen} options={{ title: 'Acercar para invitar' }} />
