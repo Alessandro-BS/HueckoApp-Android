@@ -254,13 +254,15 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
     expect(body.windows).toEqual([CAND[5], CAND[2]]);
   });
 
-  it('si solo hay 1 candidata → 409 NO_COMMON_WINDOWS', async () => {
+  it('si solo hay 1 candidata → 409 NO_COMMON_WINDOWS, sin llamar a la IA', async () => {
     // El domingo 11 a las 06:00 solo queda su franja (08:00-20:00) de la semana del 5 de octubre: no se llega a 2.
-    const { app: tight } = await makeTestApp({ now: () => new Date(2026, 9, 11, 6, 0), ai: fakeAiJson(DRAFT_REPLY).client });
+    const fake = fakeAiJson(DRAFT_REPLY);
+    const { app: tight } = await makeTestApp({ now: () => new Date(2026, 9, 11, 6, 0), ai: fake.client });
     const { yo, group } = await setupSeedGroup(tight);
     const res = await request(tight).post(`/api/groups/${group.id}/ai/proposal-draft`).set(bearer(yo.token)).send({ text: 'Estudiar', week: '2026-10-05' });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('NO_COMMON_WINDOWS');
+    expect(fake.calls).toHaveLength(0);
   });
 
   it('el plazo se adelanta a 1 h antes de la franja elegida', async () => {

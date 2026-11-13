@@ -47,6 +47,9 @@ export function aiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   return router;
 }
 
+const noCommonWindows = () =>
+  new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común en esas fechas: elige las franjas a mano.');
+
 // Montado en /api/groups detrás de requireAuth, después de groupsRouter y groupProposalsRouter.
 export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
   const router = Router();
@@ -61,6 +64,8 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
     const { text, week } = proposalDraftInputSchema.parse(req.body);
     const at = now();
     const windows = await candidateWindows(group, blocks, week, at);
+    // Sin 2 candidatas no hay borrador posible: 409 antes de gastar una llamada a la IA.
+    if (windows.length < MIN_DRAFT_WINDOWS) throw noCommonWindows();
     const answer = await askAi(
       ai,
       { task: 'proposal-draft', prompt: draftPrompt({ text, group, windows, now: at }), schema: DRAFT_JSON_SCHEMA },
@@ -69,9 +74,7 @@ export function groupAiRouter({ db, ai, aiLimiter, now }: ResolvedDeps) {
     );
     // De 2 a 5 opciones: las de la IA y, si faltan, las mejores franjas de los candidatos.
     const options = draftWindows(windows, [answer, ...answer.alternatives], at);
-    if (options.length < MIN_DRAFT_WINDOWS) {
-      throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común en esas fechas: elige las franjas a mano.');
-    }
+    if (options.length < MIN_DRAFT_WINDOWS) throw noCommonWindows();
     const draft: ProposalDraft = {
       title: answer.title,
       category: answer.category,
