@@ -144,3 +144,26 @@ it('sin organizadores lo dice', async () => {
   await renderScreen();
   expect(await screen.findByText('Sin organizadores')).toBeTruthy();
 });
+
+it('una propuesta que se canceló sola (autoClosed) se puede moderar; una cancelada a mano no', async () => {
+  mocked.getAdminGroup.mockResolvedValue(
+    makeGroupDetail({
+      proposals: [
+        makeAdminProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: true }),
+        makeAdminProposal({ id: 'mano', title: 'Cancelada a mano', state: 'CANCELADO', autoClosed: false }),
+      ],
+    }),
+  );
+  mocked.cancelProposalAsAdmin.mockResolvedValue(makeAdminProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: false }));
+  await renderScreen();
+  expect(await screen.findByLabelText('Cancelar «Sin votos»')).toBeTruthy();
+  expect(screen.queryByLabelText('Cancelar «Cancelada a mano»')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Cancelar «Sin votos»'));
+  expect(
+    screen.getByText('«Sin votos» se canceló sola porque nadie votó. Quedará cancelada por la administración (ya no se podrá replantear) y en el registro de acciones.'),
+  ).toBeTruthy();
+  await fireEvent.changeText(screen.getByLabelText('Motivo'), 'Spam');
+  await fireEvent.press(screen.getByText('Sí, cancelar'));
+  await waitFor(() => expect(mocked.cancelProposalAsAdmin).toHaveBeenCalledWith('auto', 'Spam'));
+  await waitFor(() => expect(screen.queryByText('Cancelar propuesta')).toBeNull());
+});

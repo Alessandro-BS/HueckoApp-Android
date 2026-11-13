@@ -107,7 +107,8 @@ export function AdminGroupDetailScreen({ navigation, route }: AppStackScreen<'Ad
                 <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
                   {`${p.createdBy.name} · ${voteCountLabel(p.voteCount)} · ${countLabel(p.incidenceCount, 'incidencia', 'incidencias')}`}
                 </Text>
-                {p.state !== 'CANCELADO' ? (
+                {/* Una que se canceló sola (nadie votó) también se modera: así quien la organiza ya no la replantea. */}
+                {p.state !== 'CANCELADO' || p.autoClosed ? (
                   <SecondaryButton
                     title="Cancelar propuesta"
                     icon="block"
