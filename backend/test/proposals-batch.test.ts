@@ -34,7 +34,7 @@ async function groupWithProposals(count: number) {
     await repo.voteIfOpen(id, yoId, martes.id, NOW);
     await repo.voteIfOpen(id, anaId, (i % 2 === 0 ? martes : jueves).id, NOW);
     if (i % 3 === 0) {
-      await repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29');
+      await repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29', NOW);
       await repo.reportIncidence(
         id,
         { userId: anaId, type: 'TARDANZA', reason: `Tráfico ${i}`, delayMinutes: 10, criticality: 'BAJA', criticalReason: null, createdAt: NOW.toISOString() },
