@@ -63,7 +63,7 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['GET', '/me/dashboard', () => dashboard.getDashboard(), undefined],
   ['POST', '/me/time-blocks/bulk', () => schedule.createTimeBlocksBulk([block]), { blocks: [block] }],
   ['GET', '/ai/status', () => ai.getAiStatus(), undefined],
-  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes'), { text: 'Estudiar el viernes' }],
+  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes', '2026-11-16'), { text: 'Estudiar el viernes', week: '2026-11-16' }],
   ['POST', '/groups/g1/ai/suggestions', () => ai.suggestPlans('g1'), undefined],
   ['POST', '/proposals/p1/ai/summary', () => ai.summarizeVoting('p1'), undefined],
   ['POST', '/proximity/invite', () => proximity.sendInvite('g1'), { groupId: 'g1' }],
@@ -83,7 +83,7 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
 
 it('las llamadas que usan la IA esperan hasta 45 s; el resto, lo normal', async () => {
   await ai.suggestPlans('g1');
-  await ai.draftProposal('g1', 'Estudiar');
+  await ai.draftProposal('g1', 'Estudiar', '2026-11-16');
   await ai.summarizeVoting('p1');
   await ai.getAiStatus();
   expect(calls.map((c) => c.timeout)).toEqual([45_000, 45_000, 45_000, 15_000]);

@@ -1,9 +1,8 @@
 // Fechas en la zona de la app (America/Lima), sin depender de la zona del teléfono. Misma semántica que el backend:
 // semanas que empiezan en lunes, día ISO 1 = lunes … 7 = domingo.
 
-const APP_TIME_ZONE = 'America/Lima';
-// Lima no tiene horario de verano: UTC-5 todo el año. Es el respaldo si Intl falla (Hermes en Android a veces no
-// soporta `timeZone` o `formatToParts`).
+// Lima no tiene horario de verano: UTC-5 todo el año. Se usa ese desfase fijo, sin Intl: un runtime que ignora
+// `timeZone` en silencio (Hermes en Android a veces) daría la fecha del teléfono. hasStarted hace lo mismo.
 const LIMA_OFFSET_MS = -5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKS_AHEAD = 4;
@@ -14,26 +13,8 @@ const WEEK_LABELS = ['Esta semana', 'Próxima semana', 'En 2 semanas', 'En 3 sem
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-const dateFromParts = (year: string, month: string, day: string) => `${year}-${month}-${day}`;
-
-// Fecha de Lima por Intl; null si no está disponible o devuelve partes inválidas.
-function limaTodayWithIntl(now: Date): string | null {
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(now);
-    const value = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-    const date = dateFromParts(value('year'), value('month'), value('day'));
-    return DATE_RE.test(date) && !Number.isNaN(new Date(`${date}T00:00:00Z`).getTime()) ? date : null;
-  } catch {
-    return null;
-  }
-}
-
-/** La fecha «YYYY-MM-DD» de `now` vista desde Lima. Nunca lanza. */
+/** La fecha «YYYY-MM-DD» de `now` vista desde Lima (UTC-5 fijo). Nunca lanza. */
 export function limaToday(now: Date): string {
-  const viaIntl = limaTodayWithIntl(now);
-  if (viaIntl) return viaIntl;
   const shifted = new Date(now.getTime() + LIMA_OFFSET_MS);
   return Number.isNaN(shifted.getTime()) ? '1970-01-01' : shifted.toISOString().slice(0, 10);
 }

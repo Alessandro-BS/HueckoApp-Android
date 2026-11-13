@@ -95,7 +95,8 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   };
 
   const generateDraft = async (text: string) => {
-    const result = await draft.generate(text);
+    // Con la semana del selector: la IA propone franjas de esa semana.
+    const result = await draft.generate(text, week);
     if (!result || !mounted.current) return;
     applyPrefill(prefillFromDraft(result));
     showToast('Borrador listo: revísalo antes de crear la propuesta.');

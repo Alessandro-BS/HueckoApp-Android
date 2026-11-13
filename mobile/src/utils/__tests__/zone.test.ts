@@ -7,16 +7,13 @@ it('limaToday: la fecha de Lima, no la de UTC', () => {
   expect(limaToday(new Date('2026-11-16T05:00:00Z'))).toBe('2026-11-16');
 });
 
-it('limaToday: respaldo UTC-5 si Intl no trae formatToParts, lanza o devuelve partes inválidas', () => {
+it('limaToday: UTC-5 fijo, sin Intl (un Intl que ignora timeZone, falla o no existe no la cambia)', () => {
   const now = new Date('2026-11-16T04:30:00Z');
   const fake = (impl: object) => jest.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => impl as Intl.DateTimeFormat);
-  fake({});
+  // Un runtime que ignora `timeZone` en silencio devuelve la fecha de UTC (16/11).
+  fake({ formatToParts: () => [{ type: 'year', value: '2026' }, { type: 'month', value: '11' }, { type: 'day', value: '16' }] });
   expect(limaToday(now)).toBe('2026-11-15');
   fake({ formatToParts: () => { throw new RangeError('timeZone'); } });
-  expect(limaToday(now)).toBe('2026-11-15');
-  fake({ formatToParts: () => [] });
-  expect(limaToday(now)).toBe('2026-11-15');
-  fake({ formatToParts: () => [{ type: 'year', value: 'x' }, { type: 'month', value: '1' }, { type: 'day', value: '2' }] });
   expect(limaToday(now)).toBe('2026-11-15');
   jest.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => { throw new Error('sin Intl'); });
   expect(limaToday(now)).toBe('2026-11-15');

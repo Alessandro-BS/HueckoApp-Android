@@ -328,6 +328,15 @@ it('un borrador de la IA con una sola franja exige añadir otra antes de crear',
   expect(mocked.createProposal).not.toHaveBeenCalled();
 });
 
+it('«Rellenar con IA» pide el borrador de la semana elegida', async () => {
+  mockedAi.draftProposal.mockResolvedValue(makeDraft());
+  await renderScreen();
+  await fireEvent.press(screen.getByText('Próxima semana'));
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Estudiar');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar', '2026-10-05'));
+});
+
 it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franja', async () => {
   const otro = { date: '2026-11-18', dayOfWeek: 3, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 3 };
   const base = makeDraft();
@@ -337,7 +346,8 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
   await fireEvent.press(screen.getByText('Rellenar con IA'));
 
   await waitFor(() => expect(screen.getByLabelText('Título del plan').props.value).toBe('Estudiar para el parcial'));
-  expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes en la biblioteca');
+  // Con la semana elegida en el selector (por defecto, la de hoy: lunes 28/9).
+  expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes en la biblioteca', '2026-09-28');
   expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca central');
   expect(screen.getByText('Mié 30 sep, 10:00')).toBeTruthy();
   expect(screen.getByText('Mar 17 nov · 08:00 - 20:00')).toBeTruthy();
@@ -407,7 +417,7 @@ it('guarda: con menos de 3 caracteres no pide borrador; control positivo con 3',
 
   await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'abc');
   await fireEvent.press(screen.getByText('Rellenar con IA'));
-  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'abc'));
+  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'abc', '2026-09-28'));
 });
 
 it('un borrador con plazo pasado sigue pasando por la validación del formulario', async () => {
