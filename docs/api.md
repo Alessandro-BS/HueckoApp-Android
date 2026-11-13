@@ -217,7 +217,7 @@ Reglas:
 ## Propuestas y votación
 
 ### `GET /groups/:id/proposals`
-`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app las oculta). Antes de responder cierra las votaciones de franjas vencidas del grupo (ver «Cierre automático») y después las votaciones exprés vencidas (ver «Votación exprés»). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app oculta las canceladas a mano y muestra las que se cancelaron solas, con `autoClosed`, para poder replantearlas). Antes de responder cierra las votaciones de franjas vencidas del grupo (ver «Cierre automático») y después las votaciones exprés vencidas (ver «Votación exprés»). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
 
 ### `POST /groups/:id/proposals`
 ```json

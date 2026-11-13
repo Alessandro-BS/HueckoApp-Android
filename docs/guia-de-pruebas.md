@@ -129,6 +129,8 @@ En el formulario de la propuesta de estudio:
 | 2 | Mueve su horario para que se cruce con otro bloque del mismo día y guarda | Mensaje del tipo **«Se solapa con …»** y la pantalla no se cierra | El servidor rechaza los bloques que se pisan (409) |
 | 3 | Corrige la hora para que no se cruce y guarda | Se guarda y vuelve al horario | Sin solape, sin error |
 
+Ojo: si un bloque ya se cruzaba con otro antes de esta versión, guardarlo da el aviso de solape aunque solo le cambies el nombre; corrige primero la hora de uno de los dos.
+
 ## 🔟 Votar (con cada cuenta)
 
 | Cuenta | Qué hacer |
@@ -147,8 +149,8 @@ En el formulario de la propuesta de estudio:
 | 2 | Toca dos franjas, y luego una de ellas otra vez | Las dos quedan marcadas; al repetir una, se quita solo esa. En **Inicio**: «Votaste 2 franjas» / «Votaste 1 franja» | Con voto múltiple solo se retira la franja tocada |
 | 3 | Crea otra propuesta con el interruptor **apagado** y vota dos franjas distintas | La segunda mueve el voto; queda una sola marcada | Con voto único, votar otra franja mueve el voto |
 | 4 | Mira bajo el título de **Votar** | «La votación cierra el … Si nadie vota, el plan se cancela.» | Avisa del cierre automático |
-| 5 | **Cómo probar el cierre:** crea una propuesta con la fecha límite a pocos minutos (lo mínimo que deje el formulario), vota una franja y espera a que pase el plazo; luego reabre el plan (sal y entra, o desliza para actualizar) | El plan queda **Confirmado** con la franja más votada y el detalle dice «Confirmado al cerrar la votación» | Cierra sola, sin que nadie confirme |
-| 6 | Igual, pero **sin votar** con ninguna cuenta (entra como quien gestiona el plan) | «Cancelado: nadie votó antes del plazo» y el botón **Replantear** | Solo una cancelación automática se puede replantear; una cancelada a mano, no |
+| 5 | **Cómo probar el cierre:** con `test@test.com`, crea una propuesta con la fecha límite a pocos minutos (lo mínimo que deje el formulario), vota una franja con esa misma cuenta y espera a que pase el plazo; luego reabre el plan (sal y entra, o desliza para actualizar) | El plan queda **Confirmado** con la franja más votada y el detalle dice «Confirmado al cerrar la votación» | Cierra sola, sin que nadie confirme |
+| 6 | Igual, pero **sin votar** con ninguna cuenta. Pasado el plazo, con `test@test.com` (quien creó el plan) ve a **Grupos → el grupo → Planes**: el plan sigue en la lista con **Cancelado**; toca **Ver detalles** | «Cancelado: nadie votó antes del plazo» y el botón **Replantear** | Solo una cancelación automática se puede replantear (y sigue a la vista en Planes); una cancelada a mano desaparece de la lista y no se replantea |
 
 ## 1️⃣1️⃣ Resumen con IA y confirmar (`test@test.com`)
 
