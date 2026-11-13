@@ -38,6 +38,7 @@ export async function makeTestApp(options?: {
   ai?: AiClient;
   aiRateLimit?: number;
   proximityRateLimit?: number;
+  onBackgroundTask?: (task: Promise<void>) => void;
 }): Promise<{ app: Express; db: Db }> {
   const db = await makeTestDb();
   const app = createApp({
@@ -52,6 +53,7 @@ export async function makeTestApp(options?: {
     ai: options?.ai,
     aiRateLimit: options?.aiRateLimit ?? 10_000,
     proximityRateLimit: options?.proximityRateLimit ?? 10_000,
+    onBackgroundTask: options?.onBackgroundTask,
   });
   return { app, db };
 }

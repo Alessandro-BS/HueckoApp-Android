@@ -38,6 +38,8 @@ export type AppDeps = {
   proximityRateLimit?: number;
   // Minutos que dura una votación exprés (EXPRESS_VOTE_MINUTES; 60 si se omite).
   expressVoteMinutes?: number;
+  // Recibe las tareas que siguen tras responder (p. ej. la recomendación de la IA) para que los tests las esperen.
+  onBackgroundTask?: (task: Promise<void>) => void;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.

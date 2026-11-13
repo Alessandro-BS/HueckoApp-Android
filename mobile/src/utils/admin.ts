@@ -15,6 +15,7 @@ export const AI_TASK_LABEL: Record<AiTask, string> = {
   'proposal-draft': 'Borrador de propuesta',
   'plan-suggestions': 'Ideas de plan',
   'voting-summary': 'Resumen de votación',
+  'express-recommendation': 'Recomendación exprés',
 };
 
 export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {

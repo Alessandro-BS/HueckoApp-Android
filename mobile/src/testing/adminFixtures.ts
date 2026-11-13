@@ -49,6 +49,7 @@ export const makeAiUsage = (): AiUsage => ({
     { task: 'proposal-draft', calls: 1, ok: 1, successRate: 100, avgDurationMs: 900 },
     { task: 'plan-suggestions', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
     { task: 'voting-summary', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
+    { task: 'express-recommendation', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
   ],
 });
 

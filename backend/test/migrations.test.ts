@@ -398,3 +398,19 @@ describe('esquema: votación exprés', () => {
     expect(await count(db, 'express_vote_voters')).toBe(0);
   });
 });
+
+describe('migración 9: ai_calls admite la recomendación exprés', () => {
+  const insertCall = (db: Db, task: string) =>
+    db.query("INSERT INTO ai_calls (user_id, task, ok, duration_ms, created_at) VALUES (NULL, $1, TRUE, 10, '2026-11-13T10:00:00.000Z')", [task]);
+
+  it('acepta express-recommendation, conserva las filas anteriores y sigue rechazando tareas desconocidas', async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 8));
+    await insertCall(db, 'voting-summary');
+    await failsWith(insertCall(db, 'express-recommendation'), '23514'); // control: antes de la 9 no existe
+    await migrate(db);
+    await insertCall(db, 'express-recommendation');
+    await failsWith(insertCall(db, 'otra-tarea'), '23514');
+    expect(await count(db, 'ai_calls')).toBe(2);
+  });
+});

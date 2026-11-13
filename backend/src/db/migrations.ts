@@ -232,4 +232,10 @@ export const migrations: string[] = [
      voted_at TEXT COLLATE "C",
      PRIMARY KEY (vote_id, user_id)
    );`,
+
+  // 9 — La recomendación de la IA en la votación exprés se anota en ai_calls como una tarea más: el CHECK de `task`
+  // (inline en la migración 4, así que Postgres lo llamó ai_calls_task_check) se rehace con la tarea nueva.
+  `ALTER TABLE ai_calls DROP CONSTRAINT ai_calls_task_check;
+   ALTER TABLE ai_calls ADD CONSTRAINT ai_calls_task_check
+     CHECK (task IN ('schedule-ocr', 'proposal-draft', 'plan-suggestions', 'voting-summary', 'express-recommendation'));`,
 ];

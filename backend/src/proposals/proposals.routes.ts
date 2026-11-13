@@ -1,6 +1,8 @@
 import type { Group, Proposal, ProposalState, TimeWindowInput } from '@hueckoapp/shared';
 import { Router } from 'express';
 
+import { aiCallRecorder, aiCallsRepository } from '../ai/ai-calls.repository';
+import { recommendExpressVote } from '../ai/express-recommendation';
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { groupWeekWindows, windowAvailability } from '../availability/group-availability';
@@ -29,11 +31,12 @@ import {
 import { bestWindows, canCancel, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
-function proposalsContext({ db, now, expressVoteMinutes }: ResolvedDeps) {
+function proposalsContext({ db, now, expressVoteMinutes, ai, onBackgroundTask }: ResolvedDeps) {
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);
   const blocks = timeBlocksRepository(db);
   const expressVotes = expressVotesRepository(db);
+  const aiCalls = aiCallsRepository(db);
 
   // Cierre perezoso de la votación exprés: antes de leer, se cierran las vencidas del alcance (nunca lanza).
   const closeDue = (scope: CloseScope) => expressVotes.closeDueInScope(scope, now());
@@ -81,7 +84,7 @@ function proposalsContext({ db, now, expressVoteMinutes }: ResolvedDeps) {
   };
 
   return {
-    groups, proposals, blocks, expressVotes, expressVoteMinutes, now, closeDue, loadForMember, loadForMemberClosingDue, withAvailability, assertVotingOpen,
+    groups, proposals, blocks, expressVotes, aiCalls, ai, onBackgroundTask, expressVoteMinutes, now, closeDue, loadForMember, loadForMemberClosingDue, withAvailability, assertVotingOpen,
   };
 }
 
@@ -239,13 +242,34 @@ export function proposalsRouter(deps: ResolvedDeps) {
     });
     const criticality = criticalReason !== null ? 'ALTA' : criticalityFor(input.type, me.isEssential, input.delayMinutes);
     // El estado se vuelve a comprobar con el plan bloqueado (otra petición pudo cambiarlo mientras tanto).
-    const { saved } = await ctx.proposals.reportIncidence(
+    const { saved, openedVoteId } = await ctx.proposals.reportIncidence(
       proposal.id,
       { userId, ...input, criticality, criticalReason, createdAt: ctx.now().toISOString() },
       ctx.expressVoteMinutes,
     );
     if (!saved) throw notConfirmed();
-    res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
+    const body = await ctx.proposals.findById(proposal.id, userId);
+    res.status(201).json(body);
+    // Ausencia crítica con votación abierta: la IA recomienda qué votar, sin esperar (nunca lanza ni retrasa la respuesta).
+    if (openedVoteId !== null && body?.expressVote) {
+      const at = ctx.now();
+      const startsAt = body.scheduledAt ?? proposal.scheduledAt ?? '';
+      const task = recommendExpressVote(
+        { ai: ctx.ai, record: aiCallRecorder(ctx.aiCalls, userId, at), votes: ctx.expressVotes },
+        {
+          voteId: openedVoteId,
+          planTitle: body.title,
+          location: body.location?.name ?? null,
+          startsAt,
+          hoursLeft: startsAt ? Math.max(0, Math.round(((new Date(startsAt).getTime() - at.getTime()) / 3_600_000) * 10) / 10) : 0,
+          reason: body.expressVote.reason,
+          criticalReason: body.expressVote.criticalReason,
+          eligibleVoters: body.expressVote.eligibleVoters,
+          defaultResult: 'MANTENER',
+        },
+      );
+      ctx.onBackgroundTask?.(task);
+    }
   });
 
   // Votación exprés: un voto por votante, se puede cambiar mientras siga abierta. Si con él ya votaron todos, cierra.
