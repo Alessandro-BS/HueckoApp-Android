@@ -3,20 +3,15 @@ import { z } from 'zod';
 
 import { addDays, instant, isoDay, isRealDate, mondayOf, today, validWeeks } from '../common/zone';
 import type { timeBlocksRepository } from '../schedule/time-blocks.repository';
-import { endHour, startHour, weeklyWindows, windowsFor, type DayWindow, type MatcherGroup } from './matcher';
+import { endHour, startHour, windowsFor, type MatcherGroup } from './matcher';
 
 // Reglas añadidas sobre el matcher de Kotlin (domain spec G13 y B14), documentadas en docs/api.md:
 // - un bloque LIBRE no ocupa: marca tiempo libre;
-// - un puntual solo ocupa su fecha (weekAvailability / windowAvailability); groupAvailability, sin fecha, solo ve recurrentes.
-const busyBlocks = (blocks: readonly TimeBlock[]) => blocks.filter((b) => b.isRecurring && b.type !== 'LIBRE');
+// - un puntual solo ocupa su fecha (weekAvailability / windowAvailability).
 
 // Bloques que ocupan una fecha concreta: los recurrentes de su día de la semana y los puntuales de esa fecha.
 const busyOn = (blocks: readonly TimeBlock[], date: string): TimeBlock[] =>
   blocks.filter((b) => b.type !== 'LIBRE' && (b.isRecurring ? b.dayOfWeek === isoDay(date) : b.date === date));
-
-export function groupAvailability(group: MatcherGroup, blocks: readonly TimeBlock[]): DayWindow[] {
-  return weeklyWindows(group, busyBlocks(blocks));
-}
 
 /**
  * G2: % de disponibilidad de una franja cualquiera (p. ej. añadida a mano a una propuesta), en una fecha concreta.

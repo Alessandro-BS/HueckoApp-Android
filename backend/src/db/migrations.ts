@@ -173,7 +173,8 @@ export const migrations: string[] = [
   // Corre sobre datos reales: no cambia el estado de ninguna propuesta ni toca los votos (apuntan a la franja por id).
   // - La franja elegida de un plan confirmado toma su scheduled_date.
   // - Las demás, la próxima vez que ocurre su day_of_week desde el día (en Lima) en que se creó la propuesta, ese mismo
-  //   día incluido: 0 a 6 días después.
+  //   día incluido: 0 a 6 días después. Una franja del mismo día de la creación que ya había empezado a esa hora
+  //   queda con esa fecha, ya pasada: confirmarla da WINDOW_STARTED y basta con replantear la propuesta.
   // day_of_week se conserva y desde ahora el código siempre lo deriva de date.
   // El UNIQUE viejo se declaró sin nombre en la migración 3: su nombre lo generó Postgres (y lo recorta a 63 bytes),
   // así que se busca en el catálogo por sus columnas. Si no aparece exactamente uno, la migración falla (STRICT).

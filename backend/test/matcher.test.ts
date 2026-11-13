@@ -1,7 +1,6 @@
 import type { TimeBlock } from '@hueckoapp/shared';
 import { describe, expect, it } from 'vitest';
 
-import { groupAvailability } from '../src/availability/group-availability';
 import { endHour, startHour, weeklyWindows, windowsFor, type DayWindow, type MatcherBlock } from '../src/availability/matcher';
 
 const b = (userId: string, dayOfWeek: number | null, startTime: string, endTime: string): MatcherBlock => ({
@@ -123,34 +122,11 @@ describe('windowsFor — casos límite (E6)', () => {
     expect(windowsFor({ memberIds: ids, availabilityThreshold: 14 }, blocks, 1)).toEqual([]);
   });
 
-  it('el matcher portado cuenta LIBRE como ocupado (por eso groupAvailability lo filtra antes)', () => {
+  it('el matcher portado cuenta LIBRE como ocupado (por eso group-availability lo filtra antes)', () => {
     const libre: TimeBlock = {
       id: 'x', userId: 'A', label: 'Libre', type: 'LIBRE', startTime: '08:00', endTime: '20:00',
       isRecurring: true, dayOfWeek: 1, date: null,
     };
     expect(windowsFor({ memberIds: ['A', 'B'], availabilityThreshold: 80 }, [libre], 1)).toEqual([]);
-  });
-});
-
-describe('groupAvailability — reglas nuevas (G13/B14)', () => {
-  const tb = (over: Partial<TimeBlock>): TimeBlock => ({
-    id: 'x', userId: 'A', label: 'x', type: 'CLASE', startTime: '08:00', endTime: '20:00',
-    isRecurring: true, dayOfWeek: 1, date: null, ...over,
-  });
-
-  it('ignora bloques LIBRE y puntuales; cruza el resto', () => {
-    const blocks = [
-      tb({ userId: 'A', type: 'LIBRE', dayOfWeek: 1 }),
-      tb({ userId: 'A', type: 'PUNTUAL', isRecurring: false, dayOfWeek: null, date: '2026-09-28' }),
-      tb({ userId: 'B', type: 'TRABAJO', dayOfWeek: 2 }),
-    ];
-    expect(groupAvailability({ memberIds: ['A', 'B'], availabilityThreshold: 80 }, blocks)).toEqual([
-      w(1, 8, 20, 100, 2),
-      w(3, 8, 20, 100, 2),
-      w(4, 8, 20, 100, 2),
-      w(5, 8, 20, 100, 2),
-      w(6, 8, 20, 100, 2),
-      w(7, 8, 20, 100, 2),
-    ]);
   });
 });
