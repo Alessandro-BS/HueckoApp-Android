@@ -10,7 +10,7 @@ const mockGroup: Group = {
 };
 
 jest.mock('../../../hooks/useGroup', () => ({
-  useGroup: () => ({ group: mockGroup, loading: false, refreshing: false, error: null, reload: jest.fn(), setEssential: jest.fn(), leave: jest.fn() }),
+  useGroup: () => ({ group: mockGroup, loading: false, refreshing: false, error: null, reload: jest.fn(), setEssential: jest.fn(), setMemberRole: jest.fn(), leave: jest.fn() }),
 }));
 jest.mock('../../../hooks/useAvailability', () => ({
   useAvailability: () => ({ windows: [], loaded: true, loading: false, refreshing: false, error: null, reload: jest.fn() }),

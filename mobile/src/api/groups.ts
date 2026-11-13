@@ -1,4 +1,4 @@
-import type { Group, GroupMember, GroupSummary, MatchWindow } from '@hueckoapp/shared';
+import type { Group, GroupMember, GroupSummary, MatchWindow, UpdateMemberInput } from '@hueckoapp/shared';
 
 import { api } from './client';
 
@@ -16,8 +16,8 @@ export const createGroup = async (input: CreateGroupInput) => (await api.post<Gr
 export const joinGroup = async (inviteCode: string) =>
   (await api.post<Group>('/groups/join', { inviteCode: inviteCode.trim().toUpperCase() })).data;
 
-export const setMemberEssential = async (groupId: string, userId: string, isEssential: boolean) =>
-  (await api.patch<GroupMember>(`${groupPath(groupId)}/members/${encodeURIComponent(userId)}`, { isEssential })).data;
+export const updateMember = async (groupId: string, userId: string, input: UpdateMemberInput) =>
+  (await api.patch<GroupMember>(`${groupPath(groupId)}/members/${encodeURIComponent(userId)}`, input)).data;
 
 export const leaveGroup = async (groupId: string): Promise<void> => {
   await api.delete(`${groupPath(groupId)}/members/me`);
