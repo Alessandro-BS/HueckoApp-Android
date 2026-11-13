@@ -148,10 +148,17 @@ describe('POST /api/groups/:id/proposals', () => {
     ]);
   });
 
-  it('sin franjas, el plazo también tiene que cerrar antes de la primera elegida', async () => {
-    const res = await post({}); // DEADLINE (sábado 3/10) es posterior al jueves 1/10 08:00
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatchObject({ code: 'VALIDATION_ERROR', message: 'La votación debe cerrar antes de la primera franja' });
+  it('sin franjas, solo elige franjas que empiezan después del plazo', async () => {
+    const deadline = '2026-10-01T12:00:00-05:00'; // jueves 1/10 al mediodía: el jueves 08:00 ya no vale
+    const res = await post({ votingDeadline: deadline });
+    expect(res.status).toBe(201);
+    expect(res.body.windows.length).toBeGreaterThanOrEqual(2);
+    for (const w of (res.body as Proposal).windows) expect(w.date > '2026-10-01').toBe(true);
+  });
+
+  it('sin franjas y con menos de 2 huecos después del plazo: 409 NO_COMMON_WINDOWS', async () => {
+    const res = await post({}); // DEADLINE (sábado 3/10, 20:00): después solo queda el domingo 4/10
+    expect([res.status, res.body.error.code]).toEqual([409, 'NO_COMMON_WINDOWS']);
   });
 
   it('sin franjas y con un solo hueco en común en la semana: 409 NO_COMMON_WINDOWS', async () => {

@@ -77,12 +77,14 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
     const { group } = await loadGroupForMember(ctx.groups, req.params.id, userId);
     const now = ctx.now();
     const input = createProposalSchema(now).parse(req.body);
-    // Con franjas: el % lo calcula el servidor (G2). Sin franjas: las 3 mejores de la semana `week` (C5), sin las que ya empezaron.
+    // Con franjas: el % lo calcula el servidor (G2). Sin franjas: las 3 mejores de la semana `week` (C5) entre las que
+    // empiezan después del plazo (así nunca elige una que el plazo deja fuera; tampoco las que ya empezaron).
+    const deadlineAt = new Date(input.votingDeadline).getTime();
     const windows = input.windows
       ? await ctx.withAvailability(group, input.windows)
-      : bestWindows(await groupWeekWindows(group, ctx.blocks, input.week, now)).map(({ date, startTime, endTime, availabilityPercentage }) => ({
-          date, startTime, endTime, availabilityPercentage,
-        }));
+      : bestWindows(
+          (await groupWeekWindows(group, ctx.blocks, input.week, now)).filter((w) => instant(w.date, w.startTime).getTime() > deadlineAt),
+        ).map(({ date, startTime, endTime, availabilityPercentage }) => ({ date, startTime, endTime, availabilityPercentage }));
     // Sin al menos 2 huecos en común no se crea el plan: con menos no hay nada que elegir.
     if (windows.length < WINDOW_LIMITS.min) {
       throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.');

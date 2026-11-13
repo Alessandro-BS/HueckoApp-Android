@@ -222,7 +222,7 @@ Reglas:
 Cuerpo = `ProposalInput` de `shared`. Reglas:
 - `title` obligatorio, 1–80 caracteres tras `trim` («El título no puede estar vacío.»).
 - `location` opcional (`null` u omitido = sin lugar). `name` 1–100 tras `trim`; `latitude` (−90…90) y `longitude` (−180…180) van **juntas** o ambas `null`/omitidas.
-- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura») y **anterior al inicio de la primera franja** («La votación debe cerrar antes de la primera franja»; también con las franjas que elige el servidor). Se guarda y se devuelve en UTC.
+- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura») y **anterior al inicio de la primera franja** («La votación debe cerrar antes de la primera franja»). Sin `windows`, el servidor solo elige franjas que empiezan después de este plazo. Se guarda y se devuelve en UTC.
 - `windows` opcional: **de 2 a 5** («Elige entre 2 y 5 franjas»); cada una `{ date, startTime, endTime }` (`TimeWindowInput`) con estas reglas, todas `400 VALIDATION_ERROR`:
   - `date` `YYYY-MM-DD` real (en `America/Lima`) de esta semana o las 3 siguientes («Elige una fecha entre esta semana y las próximas 3»);
   - `startTime`/`endTime` en `HH:mm` con `startTime < endTime` («La hora de fin debe ser posterior a la de inicio»);
@@ -230,7 +230,7 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
   - sin repetidas («Hay franjas repetidas») ni solapadas el mismo día («Hay franjas que se solapan el mismo día»; una que acaba justo cuando empieza otra no se solapa).
   El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`), con los bloques recurrentes de ese día de la semana y los puntuales de esa fecha.
 - `week` opcional (`YYYY-MM-DD`; cualquier día se normaliza a su lunes; por defecto, la semana actual): **solo se usa si `windows` viene vacío u omitido**, y entonces solo valen esta semana y las 3 siguientes (`400` «Elige una semana entre esta y las próximas 3»). Con `windows` se ignora.
-- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability?week=` (sin las que ya empezaron): mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas. Si salen menos de 2, **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
+- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability?week=` que empiezan después del `votingDeadline` (así tampoco entran las que ya empezaron): mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas. Si salen menos de 2 (también porque el plazo deja fuera las demás), **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
 - Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
 
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
