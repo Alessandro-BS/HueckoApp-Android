@@ -251,6 +251,20 @@ export function proposalsRepository(db: Db) {
       });
     },
 
+    // Replantear: igual que replaceWindows, pero solo si la propuesta sigue en PROPUESTO (false si otra petición la
+    // confirmó o canceló mientras tanto; entonces no se toca nada).
+    async replanWindows(proposalId: string, windows: NewWindow[], votingDeadline: string): Promise<boolean> {
+      return db.transaction(async () => {
+        const { rowCount } = await db.query(
+          "UPDATE proposals SET voting_deadline = $1 WHERE id = $2 AND state = 'PROPUESTO'",
+          [votingDeadline, proposalId],
+        );
+        if (rowCount === 0) return false;
+        await this.replaceWindows(proposalId, windows, votingDeadline);
+        return true;
+      });
+    },
+
     // Un voto por persona y propuesta: votar otra franja lo mueve; la misma, no cambia nada (G1).
     // `createdAt` (ISO del reloj de la app) se escribe explícito; al mover el voto se actualiza también.
     async vote(proposalId: string, userId: string, windowId: string, createdAt: string): Promise<void> {

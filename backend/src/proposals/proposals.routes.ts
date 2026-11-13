@@ -232,7 +232,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
     if (proposal.state !== 'PROPUESTO') throw invalidState();
     assertDeadlineBeforeWindows(input.votingDeadline, input.windows);
     const windows = await ctx.withAvailability(group, input.windows);
-    await ctx.proposals.replaceWindows(proposal.id, windows, new Date(input.votingDeadline).toISOString());
+    if (!(await ctx.proposals.replanWindows(proposal.id, windows, new Date(input.votingDeadline).toISOString()))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 

@@ -4,7 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/db';
-import { bearer, createProposal, dateOf, DEADLINE, makeClock, makeTestApp, NOW, setupSeedGroup, voteFor, win } from './helpers';
+import { bearer, createProposal, interleave, dateOf, DEADLINE, makeClock, makeTestApp, NOW, setupSeedGroup, voteFor, win } from './helpers';
 
 const NEW_DEADLINE = new Date(2026, 9, 4, 20, 0).toISOString();
 const NEW_WINDOWS = [win(3, '11:00', '13:00'), win(4, '16:00', '18:00')];
@@ -73,5 +73,22 @@ describe('POST /api/proposals/:id/replan', () => {
   it('400 con menos de 2 franjas o sin plazo', async () => {
     expect((await replan(yo.token, { votingDeadline: NEW_DEADLINE, windows: [NEW_WINDOWS[0]] })).status).toBe(400);
     expect((await replan(yo.token, { windows: NEW_WINDOWS })).status).toBe(400);
+  });
+
+  it('409 INVALID_STATE si la propuesta está CANCELADA', async () => {
+    await request(app).post(`/api/proposals/${p.id}/cancel`).set(bearer(yo.token)).send({});
+    const res = await replan(yo.token);
+    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
+  });
+
+  // Otra petición cancela justo entre la comprobación de la ruta y la escritura: 409 y no se toca nada.
+  it('replantear una propuesta que otra petición acaba de cancelar: 409, sigue CANCELADA con sus franjas y votos', async () => {
+    await voteFor(app, p.id, p.windows[0].id, ana.token);
+    interleave(db, /^UPDATE proposals SET voting_deadline/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+    const res = await replan(yo.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await db.one('SELECT state FROM proposals WHERE id = $1', [p.id])).toEqual({ state: 'CANCELADO' });
+    expect(await db.one('SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
+    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 1 });
   });
 });
