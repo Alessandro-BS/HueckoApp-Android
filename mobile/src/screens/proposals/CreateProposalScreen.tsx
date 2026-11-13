@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createProposal } from '../../api/proposals';
-import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, SecondaryButton, TextField } from '../../components';
+import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, SecondaryButton, TextField, WeekSelector } from '../../components';
 import { features } from '../../config';
 import { useAction } from '../../hooks/useAction';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
@@ -15,9 +15,14 @@ import { prefillFromDraft, prefillWindows, type ProposalPrefill } from '../../ut
 import { today } from '../../utils/clock';
 import { windowLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
+import { weekOptions } from '../../utils/zone';
 import { AiDraftCard } from './AiDraftCard';
 import { PlacePickerModal, type PickedPlace } from './PlacePickerModal';
 import { WindowEditor } from './WindowEditor';
+
+const MIN_WINDOWS = 2;
+const MAX_WINDOWS = 5;
+export const DEADLINE_AFTER_WINDOW = 'La votación debe cerrar antes de la primera franja';
 
 type Coords = { latitude: number; longitude: number };
 
@@ -28,6 +33,7 @@ function FieldLabel({ children }: { children: string }) {
 export function CreateProposalScreen({ navigation, route }: AppStackScreen<'CreateProposal'>) {
   const { groupId, groupName, prefill } = route.params;
   const [now] = useState(today);
+  const [week, setWeek] = useState(() => weekOptions(now)[0].week);
   const [title, setTitle] = useState(prefill?.title ?? '');
   const [placeName, setPlaceName] = useState(prefill?.placeName ?? '');
   const [coords, setCoords] = useState<Coords | null>(null);
@@ -49,7 +55,15 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const draft = useProposalDraft(groupId);
 
   const deadlineError = deadline && deadline.getTime() <= now.getTime() ? 'La fecha límite debe ser futura' : undefined;
-  const formValid = title.trim().length > 0 && deadline !== null && !deadlineError && (auto || windows.length > 0);
+  // El plazo debe ser anterior al inicio de la primera franja (el servidor responde 400 si no).
+  const firstStart = windows.reduce<number | null>((min, w) => {
+    const start = new Date(`${w.date}T${w.startTime}:00-05:00`).getTime();
+    return min === null || start < min ? start : min;
+  }, null);
+  const afterWindow = !auto && deadline !== null && firstStart !== null && deadline.getTime() >= firstStart;
+  const windowCountOk = auto || (windows.length >= MIN_WINDOWS && windows.length <= MAX_WINDOWS);
+  const formValid =
+    title.trim().length > 0 && deadline !== null && !deadlineError && !afterWindow && windowCountOk;
 
   // Escribir el lugar a mano descarta las coordenadas de «Usar mi ubicación actual».
   const changePlace = (text: string) => {
@@ -102,7 +116,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
       title: title.trim(),
       location: name ? { name, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null } : null,
       votingDeadline: deadline.toISOString(),
-      windows: auto ? [] : windows,
+      ...(auto ? { windows: [], week } : { windows }),
     });
     if (result.ok) {
       showToast('Propuesta creada.');
@@ -165,11 +179,13 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           onChange={setDeadline}
           minimumDate={now}
           placeholder="Elige fecha y hora"
-          error={deadlineError}
+          error={deadlineError ?? (afterWindow ? DEADLINE_AFTER_WINDOW : undefined)}
           helperText="Después de esta hora ya no se puede votar."
         />
 
         <View style={styles.section}>
+          <FieldLabel>Semana</FieldLabel>
+          <WeekSelector value={week} onChange={setWeek} now={now} />
           <FieldLabel>Franjas horarias</FieldLabel>
           <View style={styles.options}>
             <ChoiceChip label="Que Huecko proponga las 3 mejores" selected={auto} onPress={() => setAuto(true)} />
@@ -199,12 +215,25 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
                   </Pressable>
                 </View>
               ))}
-              <WindowEditor
-                variant="secondary"
-                submitLabel="Añadir franja"
-                existing={windows}
-                onSubmit={(w) => setWindows((prev) => [...prev, w])}
-              />
+              {windows.length < MAX_WINDOWS ? (
+                <WindowEditor
+                  variant="secondary"
+                  week={week}
+                  now={now}
+                  submitLabel="Añadir franja"
+                  existing={windows}
+                  onSubmit={(w) => setWindows((prev) => [...prev, w])}
+                />
+              ) : (
+                <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+                  Ya tienes {MAX_WINDOWS} franjas: quita una para añadir otra.
+                </Text>
+              )}
+              {!windowCountOk ? (
+                <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+                  Elige entre {MIN_WINDOWS} y {MAX_WINDOWS} franjas
+                </Text>
+              ) : null}
             </>
           )}
         </View>

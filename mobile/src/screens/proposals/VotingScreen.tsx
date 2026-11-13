@@ -14,6 +14,8 @@ import { showToast } from '../../utils/toast';
 import { AddWindowSheet } from './AddWindowSheet';
 import { ProposalHeader } from './ProposalHeader';
 
+const MAX_WINDOWS = 5;
+
 export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
   const { proposalId } = route.params;
   const { proposal, loading, refreshing, error, failedLoads, reload, toggleVote, voting, voteError, addWindow } = useProposal(proposalId);
@@ -73,7 +75,7 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
             ))}
           </View>
         )}
-        {open ? (
+        {open && proposal.windows.length < MAX_WINDOWS ? (
           <Pressable accessibilityRole="button" onPress={() => setAdding(true)} style={styles.addButton}>
             <MaterialIcons name="add" size={20} color={colors.primary} />
             <Text style={[typography.titleSmall, { color: colors.primary }]}>Agregar franja horaria</Text>
@@ -82,6 +84,8 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
       </ScrollView>
       {adding ? (
         <AddWindowSheet
+          votingDeadline={proposal.votingDeadline}
+          now={now}
           existing={proposal.windows}
           onAdd={addWindow}
           onDone={() => {

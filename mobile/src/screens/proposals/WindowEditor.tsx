@@ -4,9 +4,17 @@ import { StyleSheet, Text, View, type TextInput } from 'react-native';
 
 import { DaySelector, PrimaryButton, SecondaryButton, TextField } from '../../components';
 import { colors, typography } from '../../theme';
+import { today } from '../../utils/clock';
+import { dateFor, hasStarted, shortDate } from '../../utils/zone';
 import { endTimeHint, isValidRange, startTimeHint } from '../../utils/time';
 
 type Props = {
+  /** Lunes «YYYY-MM-DD» de la semana en la que se elige el día. */
+  week: string;
+  /** Solo para tests: por defecto, el reloj de la app. */
+  now?: Date;
+  /** La franja debe empezar después de este instante (p. ej. el cierre de la votación). */
+  notBefore?: Date;
   submitLabel: string;
   onSubmit: (window: TimeWindowInput) => void;
   /** Franjas que ya están: no se deja repetir una idéntica (el servidor respondería 409). */
@@ -16,49 +24,49 @@ type Props = {
 };
 
 export const DUPLICATE_WINDOW = 'Esa franja ya está en la lista.';
-
-// TODO(franjas-con-fecha Task 8): el editor aún elige solo el día de la semana; la franja se envía con la fecha de la
-// próxima vez que ocurre ese día en Lima (hoy si la hora de inicio aún no llegó). El selector de semana la reemplaza.
-const limaNow = (now: Date) => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(now);
-  const value = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-  return { date: `${value('year')}-${value('month')}-${value('day')}`, time: `${value('hour')}:${value('minute')}` };
-};
-
-export function nextDateOf(dayOfWeek: number, startTime: string, now: Date = new Date()): string {
-  const { date, time } = limaNow(now);
-  const today = new Date(`${date}T00:00:00Z`);
-  const isoToday = ((today.getUTCDay() + 6) % 7) + 1;
-  let offset = (dayOfWeek - isoToday + 7) % 7;
-  if (offset === 0 && startTime <= time) offset = 7;
-  return new Date(today.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
-}
+export const OVERLAP_WINDOW = 'Se cruza con otra franja del mismo día.';
+export const STARTED_WINDOW = 'Esa franja ya empezó.';
+export const BEFORE_DEADLINE_WINDOW = 'Debe empezar después del cierre de la votación.';
 
 // Día + hora de inicio y fin, con la misma validación que «Nuevo bloque» (arregla UI spec §6 quirk 13).
 // Valores iniciales de AddWindowBottomSheet (UI spec §2.7): lunes, 09:00–11:00.
-export function WindowEditor({ submitLabel, onSubmit, existing = [], loading = false, variant = 'primary' }: Props) {
-  const [dayOfWeek, setDayOfWeek] = useState(1);
+export function WindowEditor({ week, now: nowProp, notBefore, submitLabel, onSubmit, existing = [], loading = false, variant = 'primary' }: Props) {
+  const now = nowProp ?? today();
+  const [chosenDay, setChosenDay] = useState(1);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('11:00');
   const endRef = useRef<TextInput>(null);
 
+  // Un día no se puede elegir si ya pasó entero (o si acabó antes de `notBefore`).
+  const isDisabled = (d: number) =>
+    hasStarted(dateFor(week, d), '23:59', now) || (notBefore !== undefined && hasStarted(dateFor(week, d), '23:59', notBefore));
+  const dayOfWeek = isDisabled(chosenDay) ? ([1, 2, 3, 4, 5, 6, 7].find((d) => !isDisabled(d)) ?? chosenDay) : chosenDay;
+  const date = dateFor(week, dayOfWeek);
+
   const startHint = startTimeHint(startTime);
   const endHint = endTimeHint(startTime, endTime);
   const rangeValid = isValidRange(startTime, endTime);
-  const date = rangeValid ? nextDateOf(dayOfWeek, startTime) : null;
-  const duplicate = existing.some((w) => w.date === date && w.startTime === startTime && w.endTime === endTime);
-  const valid = rangeValid && !duplicate;
+  const duplicate = rangeValid && existing.some((w) => w.date === date && w.startTime === startTime && w.endTime === endTime);
+  const overlap =
+    rangeValid && !duplicate && existing.some((w) => w.date === date && startTime < w.endTime && w.startTime < endTime);
+  const started = rangeValid && hasStarted(date, startTime, now);
+  const beforeDeadline = rangeValid && !started && notBefore !== undefined && hasStarted(date, startTime, notBefore);
+  const valid = rangeValid && !duplicate && !overlap && !started && !beforeDeadline;
 
   const submit = () => {
-    if (!valid || loading || !date) return;
+    if (!valid || loading) return;
     onSubmit({ date, startTime, endTime });
   };
 
   return (
     <View style={styles.editor}>
-      <DaySelector selected={dayOfWeek} onSelect={setDayOfWeek} captionFor={() => ''} />
+      <DaySelector
+        selected={dayOfWeek}
+        onSelect={setChosenDay}
+        captionFor={(d) => String(Number(dateFor(week, d).slice(8)))}
+        isDisabled={isDisabled}
+      />
+      <Text style={[typography.titleSmall, { color: colors.onSurface }]}>{shortDate(date)}</Text>
       <View style={styles.row}>
         <View style={styles.flex}>
           <TextField
@@ -89,6 +97,9 @@ export function WindowEditor({ submitLabel, onSubmit, existing = [], loading = f
         </View>
       </View>
       {duplicate ? <Text style={[typography.bodySmall, { color: colors.error }]}>{DUPLICATE_WINDOW}</Text> : null}
+      {overlap ? <Text style={[typography.bodySmall, { color: colors.error }]}>{OVERLAP_WINDOW}</Text> : null}
+      {started ? <Text style={[typography.bodySmall, { color: colors.error }]}>{STARTED_WINDOW}</Text> : null}
+      {beforeDeadline ? <Text style={[typography.bodySmall, { color: colors.error }]}>{BEFORE_DEADLINE_WINDOW}</Text> : null}
       {variant === 'primary' ? (
         <PrimaryButton title={submitLabel} onPress={submit} disabled={!valid} loading={loading} />
       ) : (

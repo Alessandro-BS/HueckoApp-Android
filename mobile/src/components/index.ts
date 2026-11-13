@@ -11,6 +11,7 @@ export { SectionHeader } from './SectionHeader';
 export { TextField } from './TextField';
 export { ChoiceChip } from './ChoiceChip';
 export { DaySelector } from './DaySelector';
+export { WeekSelector } from './WeekSelector';
 export { LoadState } from './LoadState';
 export { TimeBlockItem } from './TimeBlockItem';
 export { DateTimeField } from './DateTimeField';
