@@ -4,6 +4,9 @@ import type { ExpressOption, ExpressVote, ProposalState } from '@hueckoapp/share
 
 import type { Db } from '../db/db';
 import { isUniqueViolation } from '../db/errors';
+import { groupMemberIds, planInfo } from '../notifications/audience';
+import { expressResultMessage } from '../notifications/messages';
+import { enqueueMessage } from '../notifications/outbox.repository';
 import { EXPRESS_OPTIONS, quorumFor, tally } from './express-rules';
 
 type VoteRow = {
@@ -186,6 +189,7 @@ export function expressVotesRepository(db: Db) {
      * recuento, la marca CERRADA, aplica el resultado (solo si el plan sigue CONFIRMADO) y deja resueltas todas las
      * incidencias del plan. Todo o nada, con el plan y la votación bloqueados (en ese orden, como reportar); el UPDATE
      * de cierre exige que siga ABIERTA, así que dos cierres a la vez aplican el resultado una sola vez. true si cerró.
+     * Con el plan CONFIRMADO, avisa del resultado (EXPRESS_RESULT) a todos los miembros en la misma transacción.
      */
     closeDue(proposalId: string, now: Date): Promise<boolean> {
       return db.transaction(async () => {
@@ -213,6 +217,13 @@ export function expressVotesRepository(db: Db) {
         if (rowCount === 0) return false;
         if (plan.state === 'CONFIRMADO') await applyResult(db, proposalId, result);
         await db.query('UPDATE incidences SET resolved = TRUE WHERE proposal_id = $1', [proposalId]);
+        // El resultado solo cuenta (y solo se avisa, a todos los miembros) si el plan seguía CONFIRMADO: si quien
+        // gestiona lo canceló con la votación abierta, el grupo ya recibió PLAN_CANCELLED y la decisión no cambia nada.
+        // Un CANCELAR avisa solo con EXPRESS_RESULT, sin un PLAN_CANCELLED aparte: un aviso por hecho.
+        if (plan.state === 'CONFIRMADO') {
+          const message = expressResultMessage(await planInfo(db, proposalId), result, byDefault);
+          await enqueueMessage(db, await groupMemberIds(db, plan.group_id), message, now);
+        }
         return true;
       });
     },
