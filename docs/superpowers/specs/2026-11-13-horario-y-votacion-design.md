@@ -59,7 +59,12 @@ eligió hacerlo como Nakusuo (hoja de ruta del 2026-11-13: fase 4 de 11; todo an
    - se confirma aunque la franja ganadora ya haya empezado cuando alguien consulta (al vencer el plazo era válida: el
      plazo siempre es anterior a la primera franja);
    - `auto_closed = true`; `scheduledAt` y `scheduledDate` como al confirmar a mano.
-   Confirmar a mano antes del plazo no cambia.
+   Confirmar a mano antes del plazo no cambia. Quien gestiona puede **replantear** una propuesta que se canceló sola
+   por falta de votos (`CANCELADO` con `auto_closed`): vuelve a `PROPUESTO` con franjas y plazo nuevos y
+   `auto_closed = false` (así sigue existiendo «replantear una votación vencida», que hoy se puede). Una cancelada a mano
+   no se replantea.
+   Votar y quitar el voto vuelven a comprobar estado y plazo con la propuesta bloqueada (`FOR UPDATE`): un voto nunca
+   entra después de que el cierre hizo el recuento.
 2. **Voto múltiple.** Al crear, `multipleVotes` (por defecto `true`):
    - activado: votar una franja la suma a mis votos; votar otra vez la misma no cambia nada; se quita una con
      `DELETE ?windowId=`;
@@ -104,6 +109,8 @@ Antes de desplegar, comprobar en Neon el nombre de la clave:
     `409 INVALID_STATE` con la propuesta ya cerrada);
   - en el admin: `GET /admin/groups/:id` cierra las de ese grupo; `GET /admin/stats`, `/admin/stats/timeseries`,
     `/admin/stats/popular-hours` y `/admin/reports` cierran todas las vencidas antes de calcular.
+- `POST /proposals/:id/replan` admite también `CANCELADO` con `autoClosed` (y lo deja en `false`); el resto de
+  `CANCELADO` → `409 INVALID_STATE` como hoy.
 - `PUT /me/time-blocks/:id` (cuerpo `TimeBlockInput`): `200 TimeBlock` · `400 VALIDATION_ERROR` ·
   `404 TIME_BLOCK_NOT_FOUND` (no existe o no es mío) · `409 TIME_BLOCK_OVERLAP`.
 - `409 TIME_BLOCK_OVERLAP` en `POST /me/time-blocks`, `PUT` y `POST /me/time-blocks/bulk`, con
@@ -126,7 +133,7 @@ Antes de desplegar, comprobar en Neon el nombre de la clave:
   sirvan» y cada franja se marca y desmarca sola; en Inicio «Votaste N franjas». Con voto único, como hoy.
   `myVoteWindowIds` sustituye a `myVoteWindowId` en `useProposal`, `useDashboard`, `VoteWindowRow` y los fixtures.
 - **Cierre:** en el detalle, con `autoClosed`: «Confirmado al cerrar la votación» (`CONFIRMADO`) o «Cancelado: nadie votó
-  antes del plazo» (`CANCELADO`). En votación: «La votación cierra el {fecha y hora}. Si nadie vota, el plan se
+  antes del plazo» (`CANCELADO`), y en este último caso quien gestiona ve «Replantear». En votación: «La votación cierra el {fecha y hora}. Si nadie vota, el plan se
   cancela.».
 
 ## Mis decisiones (no las tomó el usuario; revisables)
@@ -135,6 +142,8 @@ Antes de desplegar, comprobar en Neon el nombre de la clave:
   Nakusuo (votos → más temprana): un solo criterio en la app.
 - Confirmar aunque la franja ganadora ya empezó al consultar (el cierre es lógico, a la hora del plazo).
 - Solapes con las combinaciones de Nakusuo, también `LIBRE` y puntual contra recurrente.
+- Replantear una propuesta cancelada sola por falta de votos (sin esto, el cierre automático quitaría el replanteo de
+  una votación vencida, que hoy existe).
 - `DELETE ?windowId=` en vez de un cuerpo (algunos clientes no envían cuerpo en `DELETE`).
 - El admin cierra las vencidas antes de estadísticas e informes para no contar como «en votación» planes ya cerrados.
 
