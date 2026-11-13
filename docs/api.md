@@ -251,7 +251,7 @@ Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra l
 
 ### `PUT /proposals/:id/vote`
 `{ "windowId": "..." }`. Un voto por persona y propuesta: votar otra franja **mueve** el voto; votar la misma otra vez **no cambia nada** (idempotente). El «tocar otra vez retira el voto» de la app Kotlin se hace desde la app con `DELETE`.
-`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta.
+`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta (también si un replanteo la borró justo antes de guardar el voto).
 
 ### `DELETE /proposals/:id/vote`
 Retira mi voto (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
@@ -269,6 +269,7 @@ Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan»)
 - con `windowId`: se confirma esa franja, tenga votos o no (`404 WINDOW_NOT_FOUND` si no es de la propuesta);
 - sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de fecha y hora más tempranas. Si nadie votó → `409 NO_VOTES`.
 - si la franja elegida (con o sin `windowId`) ya empezó → `409 WINDOW_STARTED` «Esa franja ya empezó: replantea la propuesta.»
+- el estado y la franja se vuelven a comprobar al guardar, con el plan bloqueado: si otra petición lo canceló o lo **replanteó** justo antes (la franja elegida ya no existe), `409 INVALID_STATE` y no se toca nada; un replanteo que llega justo después espera y lo ve ya `CONFIRMADO`.
 
 Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = el instante de inicio de esa franja (su `date` y `startTime` en `America/Lima`, en UTC) y `scheduledDate` (`"YYYY-MM-DD"`) = su `date`, para que la app la muestre sin depender de la zona del teléfono. No depende de la variable `TZ` del servidor. Desde ese momento no se puede votar. `200 Proposal` · `409 WINDOW_STARTED`
 

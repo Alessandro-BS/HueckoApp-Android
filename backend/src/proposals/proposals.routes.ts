@@ -110,6 +110,8 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
   return router;
 }
 
+const windowNotFound = () => new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
+
 // Montado en /api/proposals detrás de requireAuth.
 export function proposalsRouter(deps: ResolvedDeps) {
   const router = Router();
@@ -124,10 +126,11 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const { proposal } = await ctx.loadForMember(req.params.id, userId);
     const { windowId } = voteSchema.parse(req.body);
     ctx.assertVotingOpen(proposal);
-    if (!proposal.windows.some((w) => w.id === windowId)) {
-      throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
-    }
-    await ctx.proposals.vote(proposal.id, userId, windowId, ctx.now().toISOString());
+    if (!proposal.windows.some((w) => w.id === windowId)) throw windowNotFound();
+    // Si un replanteo borró la franja justo ahora, su clave foránea falla: 404 como si no existiera.
+    await ctx.proposals.vote(proposal.id, userId, windowId, ctx.now().toISOString()).catch((error: unknown) => {
+      throw isForeignKeyViolation(error, 'votes_window_id_proposal_id_fkey') ? windowNotFound() : error;
+    });
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
@@ -174,7 +177,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const { windowId } = confirmSchema.parse(req.body ?? {});
     if (proposal.state !== 'PROPUESTO') throw invalidState();
     const chosen = windowId !== undefined ? proposal.windows.find((w) => w.id === windowId) : pickWinner(proposal.windows);
-    if (!chosen && windowId !== undefined) throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
+    if (!chosen && windowId !== undefined) throw windowNotFound();
     if (!chosen) throw new ApiError(409, 'NO_VOTES', 'Nadie ha votado todavía: elige la franja para confirmar.');
     // Un plan no se confirma para una franja que ya empezó (o pasó): hay que replantearlo con franjas nuevas.
     if (instant(chosen.date, chosen.startTime).getTime() <= ctx.now().getTime()) {

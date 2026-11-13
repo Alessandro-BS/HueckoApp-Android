@@ -4,7 +4,8 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/db';
-import { bearer, createProposal, interleave, dateOf, DEADLINE, makeClock, makeTestApp, NOW, setupSeedGroup, voteFor, win } from './helpers';
+import { proposalsRepository } from '../src/proposals/proposals.repository';
+import { bearer, createProposal, interleave, interleaveWith, dateOf, DEADLINE, makeClock, makeTestApp, NOW, setupSeedGroup, voteFor, win } from './helpers';
 
 const NEW_DEADLINE = new Date(2026, 9, 4, 20, 0).toISOString();
 const NEW_WINDOWS = [win(3, '11:00', '13:00'), win(4, '16:00', '18:00')];
@@ -90,5 +91,34 @@ describe('POST /api/proposals/:id/replan', () => {
     expect(await db.one('SELECT state FROM proposals WHERE id = $1', [p.id])).toEqual({ state: 'CANCELADO' });
     expect(await db.one('SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
     expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 1 });
+  });
+
+  // Un replanteo que se cuela entre la lectura de confirmar y su escritura: la franja elegida ya no existe.
+  const replanMeanwhile = () =>
+    proposalsRepository(db).replanWindows(
+      p.id,
+      NEW_WINDOWS.map((w) => ({ ...w, availabilityPercentage: 100 })),
+      NEW_DEADLINE,
+    );
+
+  it('confirmar mientras otra petición replantea: 409, sigue PROPUESTO con las franjas nuevas', async () => {
+    await voteFor(app, p.id, p.windows[0].id, ana.token);
+    interleaveWith(db, /^(SELECT id, state FROM proposals WHERE id = \$1 FOR UPDATE|UPDATE proposals SET state = 'CONFIRMADO')/, replanMeanwhile);
+    const res = await request(app).post(`/api/proposals/${p.id}/confirm`).set(bearer(yo.token)).send({});
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await db.one('SELECT state, chosen_window_id, scheduled_at FROM proposals WHERE id = $1', [p.id])).toEqual({
+      state: 'PROPUESTO',
+      chosen_window_id: null,
+      scheduled_at: null,
+    });
+    const windows = await db.many<{ date: string }>('SELECT date FROM proposal_windows WHERE proposal_id = $1 ORDER BY date', [p.id]);
+    expect(windows.map((w) => w.date)).toEqual([dateOf(3), dateOf(4)]);
+  });
+
+  it('votar una franja que un replanteo acaba de borrar: 404 WINDOW_NOT_FOUND, sin voto', async () => {
+    interleaveWith(db, /^INSERT INTO votes/, replanMeanwhile);
+    const res = await voteFor(app, p.id, p.windows[0].id, ana.token);
+    expect([res.status, res.body.error?.code]).toEqual([404, 'WINDOW_NOT_FOUND']);
+    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
   });
 });

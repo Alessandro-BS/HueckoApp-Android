@@ -62,11 +62,17 @@ export async function makeTestApp(options?: {
  */
 export function interleave(db: Db, before: RegExp, sql: string, params: readonly SqlParam[] = []): void {
   const original = db.query.bind(db);
+  interleaveWith(db, before, () => original(sql, params));
+}
+
+/** Como interleave, pero la otra petición es `run` (p. ej. un método de un repositorio con varias consultas). */
+export function interleaveWith(db: Db, before: RegExp, run: () => Promise<unknown>): void {
+  const original = db.query.bind(db);
   let done = false;
   vi.spyOn(db, 'query').mockImplementation((async (text: string, values?: readonly SqlParam[]) => {
     if (!done && before.test(text)) {
       done = true;
-      await original(sql, params);
+      await run();
     }
     return original(text, values);
   }) as Db['query']);

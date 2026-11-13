@@ -283,13 +283,22 @@ export function proposalsRepository(db: Db) {
 
     // Los cambios de estado solo se aplican si el plan sigue en el estado que la ruta comprobó: false si otra petición
     // lo cambió mientras tanto (p. ej. un admin lo canceló), y la ruta responde 409 en vez de pisarlo o resucitarlo.
-    async confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<boolean> {
-      const { rowCount } = await db.query(
-        `UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $1, scheduled_at = $2, scheduled_date = $3
-         WHERE id = $4 AND state = 'PROPUESTO'`,
-        [windowId, scheduledAt, scheduledDate, id],
-      );
-      return rowCount > 0;
+    // Confirmar, además, bloquea el plan y comprueba que la franja elegida sigue en él: un replanteo que llegó entre la
+    // lectura de la ruta y aquí ya la borró (con READ COMMITTED, un EXISTS dentro del UPDATE no lo vería). Si el
+    // replanteo llega después, espera al candado y ve el plan ya CONFIRMADO.
+    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<boolean> {
+      return db.transaction(async () => {
+        const row = await db.one<{ state: ProposalState }>('SELECT id, state FROM proposals WHERE id = $1 FOR UPDATE', [id]);
+        if (!row || row.state !== 'PROPUESTO') return false;
+        const window = await db.one('SELECT id FROM proposal_windows WHERE id = $1 AND proposal_id = $2', [windowId, id]);
+        if (!window) return false;
+        const { rowCount } = await db.query(
+          `UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $1, scheduled_at = $2, scheduled_date = $3
+           WHERE id = $4 AND state = 'PROPUESTO'`,
+          [windowId, scheduledAt, scheduledDate, id],
+        );
+        return rowCount > 0;
+      });
     },
 
     async cancel(id: string): Promise<boolean> {
