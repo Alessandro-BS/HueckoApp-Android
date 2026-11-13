@@ -21,14 +21,18 @@ export const MAX_ATTEMPTS = 5;
 const RETRYABLE_TICKET_ERRORS: ReadonlySet<string> = new Set(['MessageRateExceeded']);
 
 type Claimed = { id: string; user_id: string; title: string; body: string; data: string; attempts: number };
-/** `retryError`: error de transporte del lote o ticket reintentable; `ticketError`: el primer ticket de error. */
-type Outcome = { ok: boolean; retryError: string | null; ticketError: string | null };
+/**
+ * `retryError`: error de transporte del lote o ticket reintentable; `ticketError`: el primer ticket de error;
+ * `brokenError`: el aviso no se pudo armar (p. ej. `data` ilegible).
+ */
+type Outcome = { ok: boolean; retryError: string | null; ticketError: string | null; brokenError: string | null };
 type Result = 'sent' | 'retry' | 'abandoned';
 
 /**
  * Una pasada. `sent`: avisos que quedan resueltos (algún celular lo recibió, la persona no tiene celulares o todos sus
  * tickets son errores definitivos, como tokens muertos); `failed`: avisos con un error reintentable (transporte o
- * MessageRateExceeded), que se reintentan pasado el reclamo o se abandonan al quinto intento. Nunca lanza.
+ * MessageRateExceeded), que se reintentan pasado el reclamo o se abandonan al quinto intento, y los que no se pueden
+ * armar (se abandonan enseguida). Nunca lanza.
  */
 export async function flushNotifications(db: Db, push: PushClient, now: Date): Promise<{ sent: number; failed: number }> {
   try {
@@ -47,15 +51,22 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
   // Ya fuera de la transacción: los celulares de cada destinatario y un mensaje por celular.
   const devices = devicesRepository(db);
   const tokens = await devices.tokensOf([...new Set(claimed.map((n) => n.user_id))]);
+  const outcomes: Outcome[] = claimed.map(() => ({ ok: false, retryError: null, ticketError: null, brokenError: null }));
   const outgoing: { notification: number; message: PushMessage }[] = [];
   claimed.forEach((n, i) => {
-    const data = JSON.parse(n.data) as NotificationData;
+    // Un aviso que no se puede armar fallaría igual siempre: se abandona solo, sin frenar a los demás.
+    let data: NotificationData;
+    try {
+      data = parseData(n.data);
+    } catch (error) {
+      outcomes[i]!.brokenError = `data ilegible: ${error instanceof Error ? error.message : String(error)}`;
+      return;
+    }
     for (const to of tokens.get(n.user_id) ?? []) {
       outgoing.push({ notification: i, message: { to, title: n.title, body: n.body, data, channelId: 'planes', priority: 'high', sound: 'default' } });
     }
   });
 
-  const outcomes: Outcome[] = claimed.map(() => ({ ok: false, retryError: null, ticketError: null }));
   const deadTokens = new Set<string>();
   for (let i = 0; i < outgoing.length; i += PUSH_BATCH_SIZE) {
     const batch = outgoing.slice(i, i + PUSH_BATCH_SIZE);
@@ -83,11 +94,9 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
       if (code === 'DeviceNotRegistered') deadTokens.add(message.to);
     });
   }
-  for (const token of deadTokens) await devices.removeToken(token);
-
-  // Por aviso: algún ok → enviado; error reintentable (transporte o MessageRateExceeded) → un intento más, con el
-  // reclamo puesto como espera (o se abandona al quinto); si no (sin celulares, o solo tickets de error definitivos
-  // como DeviceNotRegistered) no hay nada que reintentar: queda enviado con el error, si lo hubo.
+  // Por aviso: ilegible → abandonado; algún ok → enviado; error reintentable (transporte o MessageRateExceeded) → un
+  // intento más, con el reclamo puesto como espera (o se abandona al quinto); si no (sin celulares, o solo tickets de
+  // error definitivos como DeviceNotRegistered) no hay nada que reintentar: queda enviado con el error, si lo hubo.
   // Una UPDATE por resultado y error (casi siempre una o dos), no una por aviso.
   const updates = new Map<string, { result: Result; error: string | null; ids: string[] }>();
   const add = (result: Result, error: string | null, id: string) => {
@@ -99,8 +108,11 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
   let sent = 0;
   let failed = 0;
   claimed.forEach((n, i) => {
-    const { ok, retryError, ticketError } = outcomes[i]!;
-    if (ok || retryError === null) {
+    const { ok, retryError, ticketError, brokenError } = outcomes[i]!;
+    if (brokenError !== null) {
+      failed++;
+      add('abandoned', brokenError, n.id);
+    } else if (ok || retryError === null) {
       sent++;
       add('sent', ok ? null : ticketError, n.id);
     } else {
@@ -108,8 +120,23 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
       add(n.attempts + 1 >= MAX_ATTEMPTS ? 'abandoned' : 'retry', retryError, n.id);
     }
   });
-  for (const { result, error, ids } of updates.values()) await record(db, result, error, ids, at);
+  // Todos los resultados de la pasada o ninguno: si algo falla, los avisos siguen reclamados y se reintentan al vencer
+  // el reclamo, sin quedar unos anotados y otros no. Los tokens muertos se borran después: si anotar falla, siguen ahí
+  // y el reintento vuelve a enterarse de que están muertos.
+  await db.transaction(async () => {
+    for (const { result, error, ids } of updates.values()) await record(db, result, error, ids, at);
+  });
+  for (const token of deadTokens) await devices.removeToken(token);
   return { sent, failed };
+}
+
+/** El `data` guardado (JSON de NotificationData). Lanza si no es un objeto con `kind`. */
+function parseData(text: string): NotificationData {
+  const data: unknown = JSON.parse(text);
+  if (typeof data !== 'object' || data === null || typeof (data as { kind?: unknown }).kind !== 'string') {
+    throw new Error('no es un objeto con kind');
+  }
+  return data as NotificationData;
 }
 
 /** Reclama en una transacción corta: al volver, las filas ya llevan claimed_at y nadie más las toma en 5 min. */

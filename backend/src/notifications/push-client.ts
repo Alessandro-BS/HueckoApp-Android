@@ -16,13 +16,19 @@ export type PushMessage = {
 /** Un ticket por mensaje, en el mismo orden. `details.error === 'DeviceNotRegistered'`: ese token ya no sirve. */
 export type PushTicket = { status: 'ok'; id: string } | { status: 'error'; message: string; details?: { error?: string } };
 
-/** Error de red, espera agotada, 429 o 5xx: no se sabe si llegó; el lote se reintenta más tarde. */
+/**
+ * Error de red, espera agotada, 429, 5xx o cualquier 4xx que no sea 400/413 (p. ej. 401 con un EXPO_ACCESS_TOKEN mal
+ * puesto): no se sabe si llegó o el problema no es del lote; se reintenta más tarde.
+ */
 export class PushTransportError extends Error {
   override name = 'PushTransportError';
 }
 
 export interface PushClient {
-  /** Hasta 100 mensajes por llamada (más también funciona: el cliente de Expo los parte). */
+  /**
+   * Un lote de **como mucho 100** mensajes (PUSH_BATCH_SIZE): quien llama parte los lotes, así un fallo nunca deja sin
+   * saber qué pasó con un lote anterior. Con más de 100, el de Expo rechaza sin enviar nada.
+   */
   send(messages: PushMessage[]): Promise<PushTicket[]>;
 }
 
@@ -58,12 +64,13 @@ export function createExpoPushClient({
       clearTimeout(timer);
     }
 
-    if (response.status === 429 || response.status >= 500) throw new PushTransportError(`Expo respondió ${response.status}`);
-    if (!response.ok) {
-      // 400 (u otro 4xx): el lote está mal y reintentarlo daría lo mismo; cada mensaje recibe el error.
+    if (response.status === 400 || response.status === 413) {
+      // El lote mismo está mal (inválido o demasiado grande): reintentarlo daría lo mismo; cada mensaje recibe el error.
       const message = `Expo respondió ${response.status}: ${errorsOf(payload) ?? 'petición rechazada'}`;
       return batch.map((): PushTicket => ({ status: 'error', message }));
     }
+    // Cualquier otro fallo (429, 5xx, 401, 403…) no dice nada del lote: se reintenta.
+    if (!response.ok) throw new PushTransportError(`Expo respondió ${response.status}: ${errorsOf(payload) ?? response.statusText}`);
     const data = (payload as { data?: unknown } | undefined)?.data;
     if (!Array.isArray(data) || data.length !== batch.length) {
       throw new PushTransportError(`Expo respondió ${response.status} sin un ticket por mensaje`);
@@ -73,11 +80,10 @@ export function createExpoPushClient({
 
   return {
     async send(messages) {
-      const tickets: PushTicket[] = [];
-      for (let i = 0; i < messages.length; i += PUSH_BATCH_SIZE) {
-        tickets.push(...(await sendBatch(messages.slice(i, i + PUSH_BATCH_SIZE))));
+      if (messages.length > PUSH_BATCH_SIZE) {
+        throw new Error(`Expo acepta como mucho ${PUSH_BATCH_SIZE} mensajes por envío (llegaron ${messages.length}).`);
       }
-      return tickets;
+      return messages.length === 0 ? [] : sendBatch(messages);
     },
   };
 }

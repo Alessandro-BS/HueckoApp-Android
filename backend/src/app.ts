@@ -73,10 +73,11 @@ export function createApp(appDeps: AppDeps) {
 
   const api = express.Router();
   if (appDeps.push) {
-    // Lo que una petición encoló sale al terminarla, sin hacerla esperar.
+    // Lo que una petición encoló sale al terminarla, sin hacerla esperar. También tras los GET (las lecturas cierran
+    // votaciones vencidas y encolan sus avisos), salvo /health, que no toca la base.
     const flusher = createFlushScheduler({ db: deps.db, push: appDeps.push, now: deps.now, onBackgroundTask: deps.onBackgroundTask });
-    api.use((_req, res, next) => {
-      res.on('finish', () => flusher.kick());
+    api.use((req, res, next) => {
+      if (!(req.method === 'GET' && req.path === '/health')) res.on('finish', () => flusher.kick());
       next();
     });
   }

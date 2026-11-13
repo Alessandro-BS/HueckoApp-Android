@@ -32,16 +32,23 @@ function fakeFetch(reply?: (body: PushMessage[], call: number) => Response | Pro
 }
 
 describe('createExpoPushClient', () => {
-  it('parte 150 mensajes en dos peticiones (100 + 50) y devuelve los 150 tickets en orden', async () => {
+  it('100 mensajes van en una sola petición y vuelven 100 tickets en orden', async () => {
     const { fetchImpl, calls } = fakeFetch();
-    const tickets = await createExpoPushClient({ fetchImpl }).send(messages(150));
+    const tickets = await createExpoPushClient({ fetchImpl }).send(messages(100));
 
-    expect(calls.map((c) => c.body.length)).toEqual([100, 50]);
-    expect(calls.map((c) => c.url)).toEqual([EXPO_URL, EXPO_URL]);
-    expect(calls.every((c) => c.init.method === 'POST')).toBe(true);
-    expect(calls[1]!.body[0]).toEqual(message(100));
-    expect(tickets).toHaveLength(150);
-    expect(tickets).toEqual(messages(150).map((m) => ({ status: 'ok', id: `ticket-${m.body}` })));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(EXPO_URL);
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(calls[0]!.body).toEqual(messages(100));
+    expect(tickets).toEqual(messages(100).map((m) => ({ status: 'ok', id: `ticket-${m.body}` })));
+  });
+
+  it('más de 100 mensajes en una llamada: rechaza sin hacer ninguna petición (quien llama parte los lotes)', async () => {
+    const { fetchImpl, calls } = fakeFetch();
+    const sending = createExpoPushClient({ fetchImpl }).send(messages(101));
+    await expect(sending).rejects.toThrow(/100/);
+    await expect(sending).rejects.not.toBeInstanceOf(PushTransportError);
+    expect(calls).toHaveLength(0);
   });
 
   it('cabeceras de la API; Authorization solo con token', async () => {
@@ -79,8 +86,8 @@ describe('createExpoPushClient', () => {
     ]);
   });
 
-  it('503 y 429 → PushTransportError (se reintenta)', async () => {
-    for (const status of [503, 500, 429]) {
+  it('5xx, 429 y cualquier 4xx que no sea 400 ni 413 (p. ej. 401 por un token de acceso mal puesto) → PushTransportError', async () => {
+    for (const status of [503, 500, 429, 401, 403, 404, 408]) {
       const { fetchImpl } = fakeFetch(async () => new Response('caído', { status }));
       await expect(createExpoPushClient({ fetchImpl }).send(messages(1))).rejects.toBeInstanceOf(PushTransportError);
     }
@@ -111,12 +118,18 @@ describe('createExpoPushClient', () => {
     await expect(createExpoPushClient({ fetchImpl }).send(messages(2))).rejects.toBeInstanceOf(PushTransportError);
   });
 
-  it('400 → un ticket de error por cada mensaje del lote (no se reintenta)', async () => {
+  it('400 y 413 → un ticket de error por cada mensaje del lote (no se reintenta)', async () => {
     const { fetchImpl } = fakeFetch(async () =>
       Response.json({ errors: [{ code: 'VALIDATION_ERROR', message: '"to" must be a string' }] }, { status: 400 }),
     );
     const tickets = await createExpoPushClient({ fetchImpl }).send(messages(3));
     expect(tickets).toHaveLength(3);
     for (const ticket of tickets) expect(ticket).toEqual({ status: 'error', message: expect.stringContaining('"to" must be a string') });
+
+    const tooLarge = fakeFetch(async () => new Response('Payload Too Large', { status: 413 }));
+    expect(await createExpoPushClient({ fetchImpl: tooLarge.fetchImpl }).send(messages(2))).toEqual([
+      { status: 'error', message: expect.stringContaining('413') },
+      { status: 'error', message: expect.stringContaining('413') },
+    ]);
   });
 });

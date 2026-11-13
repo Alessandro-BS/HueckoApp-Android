@@ -43,7 +43,12 @@ export function createFlushScheduler({
         return;
       }
       running = true;
-      onBackgroundTask?.(run());
+      const task = run();
+      try {
+        onBackgroundTask?.(task);
+      } catch (error) {
+        logFlushError(error);
+      }
     },
   };
 }

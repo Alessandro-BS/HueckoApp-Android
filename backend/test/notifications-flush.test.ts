@@ -3,14 +3,14 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Db } from '../src/db/db';
+import type { Db, SqlParam } from '../src/db/db';
 import { devicesRepository } from '../src/notifications/devices.repository';
 import { flushNotifications } from '../src/notifications/flush';
 import { createFlushScheduler } from '../src/notifications/flush-scheduler';
 import { enqueue, type OutboxItem } from '../src/notifications/outbox.repository';
 import type { PushMessage } from '../src/notifications/push-client';
 import {
-  bearer, createGroup, createProposal, DEADLINE, fakePush, interleave, joinGroup, makeTestApp, NOW, registerUser, win,
+  bearer, createGroup, createProposal, DEADLINE, fakePush, interleave, joinGroup, makeTestApp, NOW, recordQueries, registerUser, win,
 } from './helpers';
 
 // El envío: reclama los avisos pendientes en una transacción corta, la cierra, llama a Expo (aquí, un cliente falso) y
@@ -231,7 +231,7 @@ describe('flushNotifications', () => {
     expect(seen).toEqual([{ inTransaction: false, claimedAt: later(1).toISOString() }]);
   });
 
-  it('el reclamo usa FOR UPDATE SKIP LOCKED: si otro envío ya reclamó las filas, este no las manda', async () => {
+  it('si otro envío ya reclamó los avisos (claimed_at reciente), este no los envía', async () => {
     await addDevice(ana, TOKEN_A1);
     await enqueue(db, [item(ana), item(ana, 'Otro')], NOW);
     // Otro envío reclamó las filas y confirmó justo antes del SELECT de este.
@@ -270,6 +270,59 @@ describe('flushNotifications', () => {
     vi.spyOn(db, 'transaction').mockRejectedValueOnce(new Error('base caída'));
     await expect(flushNotifications(db, push, later(2))).resolves.toEqual({ sent: 0, failed: 0 });
   });
+
+  it('un aviso con `data` ilegible se abandona solo, sin frenar a los demás', async () => {
+    await addDevice(ana, TOKEN_A1);
+    await enqueue(db, [item(ana, 'Roto'), item(ana, 'Nulo'), item(ana, 'Bueno')], NOW);
+    await db.query("UPDATE notifications SET data = '{no es json' WHERE body = 'Roto'");
+    await db.query("UPDATE notifications SET data = 'null' WHERE body = 'Nulo'");
+    const push = fakePush();
+
+    expect(await flushNotifications(db, push, later(1))).toEqual({ sent: 1, failed: 2 });
+    expect(push.calls.flat().map((m) => m.body)).toEqual(['Bueno']);
+    const byBody = new Map((await db.many<Row & { body: string }>('SELECT * FROM notifications')).map((r) => [r.body, r]));
+    for (const body of ['Roto', 'Nulo']) {
+      expect(byBody.get(body)).toMatchObject({ sent_at: later(1).toISOString(), last_error: expect.stringContaining('data') });
+    }
+    expect(byBody.get('Bueno')).toMatchObject({ sent_at: later(1).toISOString(), last_error: null });
+    expect(await flushNotifications(db, push, later(30))).toEqual({ sent: 0, failed: 0 });
+  });
+
+  it('anota los resultados juntos en una transacción y después borra los tokens muertos', async () => {
+    await addDevice(ana, TOKEN_A1);
+    await addDevice(carlos, TOKEN_C);
+    await enqueue(db, [item(ana), item(carlos)], NOW);
+    // Ana: MessageRateExceeded (se reintenta); Carlos: su único token, DeviceNotRegistered (queda enviado).
+    const push = fakePush((m) => (m.to === TOKEN_A1 ? 'MessageRateExceeded' : 'DeviceNotRegistered'));
+    const calls = recordQueries(db);
+
+    await flushNotifications(db, push, later(1));
+    const afterClaim = calls.slice(calls.findIndex((c) => /SET claimed_at = \$1 WHERE/.test(c.sql)) + 1);
+    const writes = afterClaim.filter((c) => /^\s*(UPDATE|DELETE)/.test(c.sql));
+    expect(writes.map((c) => [c.sql.match(/^\s*(\w+ \w+ \w+)/)![1], c.inTransaction])).toEqual([
+      ['UPDATE notifications SET', true],
+      ['UPDATE notifications SET', true],
+      ['DELETE FROM push_devices', false],
+    ]);
+  });
+
+  it('si anotar un resultado falla, no queda ninguno a medias ni se borran tokens: todo se reintenta al vencer el reclamo', async () => {
+    await addDevice(ana, TOKEN_A1);
+    await addDevice(carlos, TOKEN_C);
+    await enqueue(db, [item(ana), item(carlos)], NOW);
+    const push = fakePush((m) => (m.to === TOKEN_A1 ? 'MessageRateExceeded' : 'DeviceNotRegistered'));
+    const query = db.query.bind(db);
+    vi.spyOn(db, 'query').mockImplementation((async (sql: string, params?: readonly SqlParam[]) => {
+      // La segunda UPDATE (la de «enviado», la de Carlos) falla; la primera (reintento de Ana) ya se había hecho.
+      if (/COALESCE\(\$2, last_error\)/.test(sql)) throw new Error('base caída a mitad');
+      return query(sql, params);
+    }) as Db['query']);
+
+    expect(await flushNotifications(db, push, later(1))).toEqual({ sent: 0, failed: 0 });
+    vi.mocked(db.query).mockRestore();
+    for (const row of await rows()) expect(row).toMatchObject({ sent_at: null, attempts: 0, claimed_at: later(1).toISOString() });
+    expect(await tokensOf(carlos)).toEqual([TOKEN_C]);
+  });
 });
 
 describe('createFlushScheduler', () => {
@@ -292,8 +345,9 @@ describe('createFlushScheduler', () => {
       return send(messages);
     };
     const tasks: Promise<void>[] = [];
-    // Cada envío abre una sola transacción (la del reclamo): contarlas cuenta los envíos.
-    const flushes = vi.spyOn(db, 'transaction');
+    // Cada pasada reclama una vez: contar los SELECT … SKIP LOCKED cuenta las pasadas.
+    const query = vi.spyOn(db, 'query');
+    const claims = () => query.mock.calls.filter(([sql]) => /SKIP LOCKED/.test(sql)).length;
     const scheduler = createFlushScheduler({ db, push, now: () => later(1), onBackgroundTask: (t) => tasks.push(t) });
 
     scheduler.kick();
@@ -307,7 +361,7 @@ describe('createFlushScheduler', () => {
     await Promise.all(tasks);
 
     expect(tasks).toHaveLength(1);
-    expect(flushes).toHaveBeenCalledTimes(2);
+    expect(claims()).toBe(2);
     expect(maxInFlight).toBe(1);
     expect(push.calls.flat().map((m) => m.body)).toEqual([item(ana).body, 'Nuevo']);
 
@@ -315,7 +369,25 @@ describe('createFlushScheduler', () => {
     scheduler.kick();
     await Promise.all(tasks);
     expect(tasks).toHaveLength(2);
-    expect(flushes).toHaveBeenCalledTimes(3);
+    expect(claims()).toBe(3);
+  });
+
+  it('kick() no lanza aunque onBackgroundTask lance, y el envío sigue', async () => {
+    await addDevice(ana, TOKEN_A1);
+    await enqueue(db, [item(ana)], NOW);
+    const push = fakePush();
+    const scheduler = createFlushScheduler({
+      db,
+      push,
+      now: () => later(1),
+      onBackgroundTask: () => {
+        throw new Error('el observador falló');
+      },
+    });
+
+    expect(() => scheduler.kick()).not.toThrow();
+    await vi.waitFor(async () => expect(await pending()).toEqual([]));
+    expect(push.calls).toHaveLength(1);
   });
 
   it('nunca lanza: un envío que falla no corta los siguientes', async () => {
@@ -366,6 +438,23 @@ describe('envío inmediato tras cada petición', () => {
       },
     ]);
     expect(await pending()).toEqual([]);
+  });
+
+  it('GET /api/health no pide envío; cualquier otra petición, también un GET, sí', async () => {
+    const tasks: Promise<void>[] = [];
+    ({ app, db } = await makeTestApp({ now: () => NOW, push: fakePush(), onBackgroundTask: (t) => tasks.push(t) }));
+    const yo = await registerUser(app, { name: 'Yo' });
+    await vi.waitFor(() => expect(tasks).toHaveLength(1));
+    await Promise.all(tasks);
+
+    await request(app).get('/api/health').expect(200);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(tasks).toHaveLength(1);
+
+    // Las lecturas también cierran votaciones vencidas (y encolan sus avisos): piden envío.
+    await request(app).get('/api/me/dashboard').set(bearer(yo.token)).expect(200);
+    await vi.waitFor(() => expect(tasks).toHaveLength(2));
+    await Promise.all(tasks);
   });
 
   it('sin cliente inyectado no se pide ningún envío', async () => {
