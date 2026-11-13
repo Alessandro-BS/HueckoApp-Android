@@ -8,6 +8,7 @@ import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
 import { addDays } from '../src/common/zone';
 import type { Db, SqlParam } from '../src/db/db';
+import { type PushClient, type PushMessage, type PushTicket, PushTransportError } from '../src/notifications/push-client';
 import { openTestDatabase } from './db';
 
 export const TEST_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres';
@@ -39,6 +40,7 @@ export async function makeTestApp(options?: {
   aiRateLimit?: number;
   proximityRateLimit?: number;
   onBackgroundTask?: (task: Promise<void>) => void;
+  push?: PushClient;
 }): Promise<{ app: Express; db: Db }> {
   const db = await makeTestDb();
   const app = createApp({
@@ -54,6 +56,8 @@ export async function makeTestApp(options?: {
     aiRateLimit: options?.aiRateLimit ?? 10_000,
     proximityRateLimit: options?.proximityRateLimit ?? 10_000,
     onBackgroundTask: options?.onBackgroundTask,
+    // Sin `push` no se envía nada en segundo plano (la mayoría de los tests).
+    push: options?.push,
   });
   return { app, db };
 }
@@ -121,6 +125,38 @@ export const failingAi = (): AiClient => ({
     throw new Error('tiempo de espera agotado');
   },
 });
+
+/** Qué responde el Expo falso a cada mensaje: ticket ok, ticket DeviceNotRegistered, o el lote falla (red/429/5xx). */
+export type FakePushReply = 'ok' | 'DeviceNotRegistered' | 'transport';
+export type FakePushBehaviour = FakePushReply | ((message: PushMessage) => FakePushReply);
+export type FakePush = PushClient & { calls: PushMessage[][]; reply(next: FakePushBehaviour): void };
+
+/**
+ * Expo falso, sin red: es un PushClient (makeTestApp({ push: fakePush() })) que guarda cada lote recibido en `calls`
+ * (también los que fallan) y responde según `behaviour`, que `reply(...)` cambia a mitad del test.
+ */
+export function fakePush(behaviour: FakePushBehaviour = 'ok'): FakePush {
+  const replyOf = (b: FakePushBehaviour) => (typeof b === 'function' ? b : () => b);
+  let reply = replyOf(behaviour);
+  let ticketCount = 0;
+  const calls: PushMessage[][] = [];
+  return {
+    calls,
+    reply(next) {
+      reply = replyOf(next);
+    },
+    async send(messages) {
+      calls.push([...messages]);
+      const replies = messages.map((m) => reply(m));
+      if (replies.includes('transport')) throw new PushTransportError('Expo respondió 503');
+      return messages.map((m, i): PushTicket =>
+        replies[i] === 'ok'
+          ? { status: 'ok', id: `ticket-${++ticketCount}` }
+          : { status: 'error', message: `"${m.to}" is not a registered push notification recipient`, details: { error: 'DeviceNotRegistered' } },
+      );
+    },
+  };
+}
 
 // Reloj que el test mueve a mano: makeTestApp({ now: clock.now }) y después clock.set(...).
 export function makeClock(start: Date) {

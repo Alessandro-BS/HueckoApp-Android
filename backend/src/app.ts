@@ -14,6 +14,8 @@ import type { Db } from './db/db';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { createFlushScheduler } from './notifications/flush-scheduler';
+import type { PushClient } from './notifications/push-client';
 import { pushDevicesRouter } from './notifications/push-devices.routes';
 import { EXPRESS_VOTE_MINUTES_DEFAULT } from './proposals/express-rules';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
@@ -41,6 +43,9 @@ export type AppDeps = {
   expressVoteMinutes?: number;
   // Recibe las tareas que siguen tras responder (p. ej. la recomendación de la IA) para que los tests las esperen.
   onBackgroundTask?: (task: Promise<void>) => void;
+  // Cliente de la Expo Push API. Con él, al terminar cada petición a /api se envían los avisos pendientes en segundo
+  // plano; sin él (la mayoría de los tests) no se envía nada.
+  push?: PushClient;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
@@ -67,6 +72,14 @@ export function createApp(appDeps: AppDeps) {
   app.use(express.json({ limit: '1mb' }));
 
   const api = express.Router();
+  if (appDeps.push) {
+    // Lo que una petición encoló sale al terminarla, sin hacerla esperar.
+    const flusher = createFlushScheduler({ db: deps.db, push: appDeps.push, now: deps.now, onBackgroundTask: deps.onBackgroundTask });
+    api.use((_req, res, next) => {
+      res.on('finish', () => flusher.kick());
+      next();
+    });
+  }
   api.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
