@@ -220,7 +220,7 @@ describe('solapes al crear', () => {
   it('comprueba tras el bloqueo: un guardado concurrente ya confirmado se ve', async () => {
     interleave(
       db,
-      /SELECT id FROM users WHERE id = \$1 FOR UPDATE/,
+      /SELECT id FROM users WHERE id = \$1 FOR NO KEY UPDATE/,
       `INSERT INTO time_blocks (id, user_id, label, type, start_time, end_time, is_recurring, day_of_week, date)
        VALUES ('otro', $1, 'Otro', 'CLASE', '09:00', '10:00', TRUE, 1, NULL)`,
       [me.id],

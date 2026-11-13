@@ -119,7 +119,7 @@ Antes de desplegar, comprobar en Neon el nombre de la clave:
 - `409 TIME_BLOCK_OVERLAP` en `POST /me/time-blocks`, `PUT` y `POST /me/time-blocks/bulk`, con
   `details: { blockId }` (el bloque guardado con el que choca) o, en `bulk`, `details: { path: ["blocks", i],
   blockId | otherIndex }` (con un bloque guardado o con otro del lote). Mientras se guarda se bloquea la fila del
-  usuario (`SELECT … FROM users WHERE id = $1 FOR UPDATE`).
+  usuario (`SELECT … FROM users WHERE id = $1 FOR NO KEY UPDATE`).
 - Efectos colaterales: confirmar, el resumen con IA y `voteCount` ya cuentan filas por franja; el prompt del resumen dice
   si cada persona podía votar varias. En el admin, «votos» de un usuario pasa a `COUNT(DISTINCT proposal_id)`.
 - `docs/api.md`: §Mi horario, §Propuestas y votación (cierre automático, voto múltiple), tabla de errores

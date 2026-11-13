@@ -32,7 +32,9 @@ const toTimeBlock = (row: TimeBlockRow): TimeBlock => ({
 // Recurrentes primero (por día y hora); después los puntuales (por fecha y hora); si empatan, orden de inserción.
 const ORDER = 'ORDER BY is_recurring DESC, day_of_week, date, start_time, seq';
 
-const lockUser = (db: Db, userId: string) => db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+// Ordena los guardados de bloques de una misma persona (dos a la vez no se pisan sin verse). NO KEY UPDATE: no frena
+// las escrituras que solo apuntan al usuario (votos, bloques, miembros…), como sí haría FOR UPDATE.
+const lockUser = (db: Db, userId: string) => db.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [userId]);
 
 export type BulkOverlap = { index: number; overlap: TimeBlock } | { index: number; otherIndex: number };
 
