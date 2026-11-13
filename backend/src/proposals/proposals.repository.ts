@@ -5,8 +5,9 @@ import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Prop
 import { isoDay } from '../common/zone';
 import type { Db } from '../db/db';
 import { MEMBER_ORDER } from '../groups/groups.repository';
-import { groupMemberIds, planInfo, userName } from '../notifications/audience';
+import { planInfo, userName } from '../notifications/audience';
 import { expressOpenedMessage, newProposalMessage, planCancelledMessage, planConfirmedMessage } from '../notifications/messages';
+import { notifyGroup } from '../notifications/notify';
 import { enqueueMessage } from '../notifications/outbox.repository';
 import { expiresAtFor } from './express-rules';
 import { expressVotesRepository } from './express-votes.repository';
@@ -258,11 +259,8 @@ export function proposalsRepository(db: Db) {
           ],
         );
         for (const w of input.windows) await insertWindow(id, w);
-        const recipients = await groupMemberIds(db, input.groupId, { except: input.createdBy });
-        if (recipients.length > 0) {
-          const message = newProposalMessage(await planInfo(db, id), await userName(db, input.createdBy));
-          await enqueueMessage(db, recipients, message, new Date(input.createdAt));
-        }
+        const creatorName = await userName(db, input.createdBy);
+        await notifyGroup(db, id, (plan) => newProposalMessage(plan, creatorName), { except: input.createdBy }, new Date(input.createdAt));
       });
       return id;
     },
@@ -368,8 +366,7 @@ export function proposalsRepository(db: Db) {
           [windowId, scheduledAt, scheduledDate, id],
         );
         if (rowCount === 0) return false;
-        const plan = await planInfo(db, id);
-        await enqueueMessage(db, await groupMemberIds(db, plan.groupId, { except: actorId }), planConfirmedMessage(plan), now);
+        await notifyGroup(db, id, planConfirmedMessage, { except: actorId }, now);
         return true;
       });
     },
@@ -382,8 +379,7 @@ export function proposalsRepository(db: Db) {
       return db.transaction(async () => {
         const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = $1 AND state <> 'CANCELADO'", [id]);
         if (rowCount === 0) return false;
-        const plan = await planInfo(db, id);
-        await enqueueMessage(db, await groupMemberIds(db, plan.groupId, { except: actorId }), planCancelledMessage(plan, { noVotes: false }), now);
+        await notifyGroup(db, id, (plan) => planCancelledMessage(plan, { noVotes: false }), { except: actorId }, now);
         return true;
       });
     },

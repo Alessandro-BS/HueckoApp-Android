@@ -1,9 +1,8 @@
 import type { ProposalState } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
-import { groupMemberIds, planInfo } from '../notifications/audience';
 import { planCancelledMessage, planConfirmedMessage } from '../notifications/messages';
-import { enqueueMessage } from '../notifications/outbox.repository';
+import { notifyGroup } from '../notifications/notify';
 import { type CloseScope, expressVotesRepository, logCloseError, SCOPE_FILTER } from './express-votes.repository';
 import { windowsWithVotes } from './proposals.repository';
 import { pickWinner, scheduleFor } from './rules';
@@ -44,9 +43,7 @@ export function closeProposalIfDue(db: Db, proposalId: string, now: Date): Promi
     }
     if (rowCount === 0) return false;
     // Nadie lo hizo a mano: avisa a todos los miembros, en la misma transacción.
-    const plan = await planInfo(db, proposalId);
-    const message = winner ? planConfirmedMessage(plan) : planCancelledMessage(plan, { noVotes: true });
-    await enqueueMessage(db, await groupMemberIds(db, row.group_id), message, now);
+    await notifyGroup(db, proposalId, (plan) => (winner ? planConfirmedMessage(plan) : planCancelledMessage(plan, { noVotes: true })), {}, now);
     return true;
   });
 }

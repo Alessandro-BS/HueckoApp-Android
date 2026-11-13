@@ -4,9 +4,8 @@ import type { ExpressOption, ExpressVote, ProposalState } from '@hueckoapp/share
 
 import type { Db } from '../db/db';
 import { isUniqueViolation } from '../db/errors';
-import { groupMemberIds, planInfo } from '../notifications/audience';
 import { expressResultMessage } from '../notifications/messages';
-import { enqueueMessage } from '../notifications/outbox.repository';
+import { notifyGroup } from '../notifications/notify';
 import { EXPRESS_OPTIONS, quorumFor, tally } from './express-rules';
 
 type VoteRow = {
@@ -220,10 +219,7 @@ export function expressVotesRepository(db: Db) {
         // El resultado solo cuenta (y solo se avisa, a todos los miembros) si el plan seguía CONFIRMADO: si quien
         // gestiona lo canceló con la votación abierta, el grupo ya recibió PLAN_CANCELLED y la decisión no cambia nada.
         // Un CANCELAR avisa solo con EXPRESS_RESULT, sin un PLAN_CANCELLED aparte: un aviso por hecho.
-        if (plan.state === 'CONFIRMADO') {
-          const message = expressResultMessage(await planInfo(db, proposalId), result, byDefault);
-          await enqueueMessage(db, await groupMemberIds(db, plan.group_id), message, now);
-        }
+        if (plan.state === 'CONFIRMADO') await notifyGroup(db, proposalId, (info) => expressResultMessage(info, result, byDefault), {}, now);
         return true;
       });
     },

@@ -4,6 +4,8 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/db';
+import { enqueue, type OutboxItem } from '../src/notifications/outbox.repository';
+import { proposalsRepository } from '../src/proposals/proposals.repository';
 import { registerAdmin } from './admin-fixtures';
 import {
   AFTER_DEADLINE,
@@ -84,6 +86,27 @@ async function planWithExpressVote(): Promise<Proposal> {
 const expressVote = (p: Proposal, member: Member, option: string) =>
   request(app).put(`/api/proposals/${p.id}/express-vote`).set(bearer(member.token)).send({ option }).expect(200);
 
+describe('enqueue', () => {
+  const item = (dedupeKey?: string): OutboxItem => ({
+    userId: ana.user.id,
+    kind: 'REMINDER',
+    title: 'Proyecto Integrador',
+    body: '«Plan» empieza a las 16:00.',
+    data: { kind: 'REMINDER', proposalId: 'p1', groupId: group.id, screen: 'PLAN' },
+    dedupeKey,
+  });
+
+  it('devuelve las filas insertadas: la misma dedupe_key una sola vez (1 y después 0)', async () => {
+    expect(await enqueue(db, [item('reminder:p1')], NOW)).toBe(1);
+    expect(await enqueue(db, [item('reminder:p1')], later(1))).toBe(0);
+    expect(await db.one("SELECT COUNT(*) AS n FROM notifications WHERE dedupe_key = 'reminder:p1'")).toEqual({ n: 1 });
+    // En un mismo lote cuentan solo las nuevas; sin clave nunca chocan.
+    expect(await enqueue(db, [item('reminder:p1'), item('reminder:p2'), item(), item()], NOW)).toBe(3);
+    expect(await db.one('SELECT COUNT(*) AS n FROM notifications')).toEqual({ n: 4 });
+    expect(await enqueue(db, [], NOW)).toBe(0);
+  });
+});
+
 describe('crear una propuesta', () => {
   it('NEW_PROPOSAL a cada miembro menos quien la creó, pendiente y con screen VOTING', async () => {
     const p = await newPlan();
@@ -155,6 +178,18 @@ describe('confirmar y cancelar a mano', () => {
     });
   });
 
+  it('Review Focus 2: otra cancelación se cuela antes del UPDATE de cancel: la segunda no escribe avisos', async () => {
+    const p = await confirmedPlan();
+    // Ana (organizadora) cancela justo antes del UPDATE de la petición de yo: sus avisos se guardan y los de yo no.
+    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ role: 'ORGANIZER' }).expect(200);
+    interleaveWith(db, /^UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = \$1 AND state <> 'CANCELADO'/, () =>
+      proposalsRepository(db).cancel(p.id, ana.user.id, clock.now()),
+    );
+    const res = await post(`${p.id}/cancel`, yo.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(recipients(await notifications('PLAN_CANCELLED'))).toEqual(ids(yo, carlos));
+  });
+
   it('cancelar una ya cancelada (409): ningún aviso nuevo', async () => {
     const p = await newPlan();
     await post(`${p.id}/cancel`, yo.token).expect(200);
@@ -178,6 +213,18 @@ describe('moderación del admin', () => {
     const rows = await notifications('PLAN_CANCELLED');
     expect(recipients(rows)).toEqual(ids(yo, ana, carlos));
     expect(rows[0].body).toBe('«Reunión de avance» se canceló.');
+  });
+
+  it('Review Focus 2: si el registro de acciones falla después de encolar, la cancelación y sus avisos se deshacen', async () => {
+    const admin = await registerAdmin(app, db, { email: 'admin@correo.com' });
+    const p = await confirmedPlan();
+    interleaveWith(db, /^INSERT INTO admin_audit_log/, async () => {
+      throw new Error('fallo simulado');
+    });
+    const res = await request(app).post(`/api/admin/proposals/${p.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Contenido inapropiado' });
+    expect(res.status).toBe(500);
+    expect((await getPlan(p)).body.state).toBe('CONFIRMADO');
+    expect(await notifications('PLAN_CANCELLED')).toEqual([]);
   });
 
   it('moderar una propuesta que ya se canceló sola: ningún aviso nuevo', async () => {
