@@ -272,6 +272,8 @@ export function proposalsRepository(db: Db) {
     // sus incidencias y sus votaciones cerradas, en la misma transacción. Desde PROPUESTO se conservan: un plan que el
     // flujo viejo de /resolve reprogramó sigue PROPUESTO con sus incidencias resueltas, y son su historial.
     // El estado previo se lee bloqueando la fila (FOR UPDATE) para que nadie lo cambie antes del UPDATE.
+    // Un CANCELADO solo se replantea si se canceló solo al cerrar la votación (auto_closed), aunque `fromStates` lo
+    // incluya: una cancelada a mano no vuelve. Al replantear, auto_closed vuelve a false.
     async replanWindows(
       proposalId: string,
       windows: NewWindow[],
@@ -281,7 +283,8 @@ export function proposalsRepository(db: Db) {
       return db.transaction(async () => {
         const previous = await db.one<{ state: ProposalState }>('SELECT state FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
         const { rowCount } = await db.query(
-          "UPDATE proposals SET voting_deadline = $1, state = 'PROPUESTO' WHERE id = $2 AND state = ANY($3)",
+          `UPDATE proposals SET voting_deadline = $1, state = 'PROPUESTO', auto_closed = FALSE
+           WHERE id = $2 AND state = ANY($3) AND (state <> 'CANCELADO' OR auto_closed)`,
           [votingDeadline, proposalId, fromStates],
         );
         if (rowCount === 0) return false;
@@ -344,8 +347,10 @@ export function proposalsRepository(db: Db) {
       });
     },
 
+    // Cancelar a mano (quien gestiona o el admin) deja auto_closed en false, aunque el plan se hubiera confirmado solo:
+    // «CANCELADO con auto_closed» significa solo «se canceló sola porque nadie votó», la única cancelada que se replantea.
     async cancel(id: string): Promise<boolean> {
-      const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO' WHERE id = $1 AND state <> 'CANCELADO'", [id]);
+      const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = $1 AND state <> 'CANCELADO'", [id]);
       return rowCount > 0;
     },
 

@@ -40,15 +40,16 @@ export type OpenExpressVote = {
 // solo plan se cierra con closeDue, después de comprobar el acceso.)
 export type CloseScope = { groupId: string } | { userId: string };
 
-const SCOPE_FILTER = {
+export const SCOPE_FILTER = {
   groupId: 'p.group_id = $1',
   userId: 'p.group_id IN (SELECT group_id FROM group_members WHERE user_id = $1)',
 } as const;
 
-// Lo que el resultado hace con el plan, solo si sigue CONFIRMADO (si alguien lo canceló, no se toca).
+// Lo que el resultado hace con el plan, solo si sigue CONFIRMADO (si alguien lo canceló, no se toca). Cancelar deja
+// auto_closed en false: «CANCELADO con auto_closed» significa solo «nadie votó antes del plazo» (y se puede replantear).
 async function applyResult(db: Db, proposalId: string, result: ExpressOption): Promise<void> {
   if (result === 'CANCELAR') {
-    await db.query("UPDATE proposals SET state = 'CANCELADO' WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
+    await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
   } else if (result === 'REAGENDAR') {
     // Recoordinación: sin franja elegida ni fecha, y sin los votos de fecha (quien gestiona propone franjas nuevas).
     await db.query(

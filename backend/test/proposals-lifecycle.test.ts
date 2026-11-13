@@ -134,10 +134,12 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     });
   });
 
-  it('409 WINDOW_STARTED si la franja elegida ya empezó; las que no empezaron se confirman', async () => {
+  // El plazo siempre es anterior a la primera franja, así que una franja empezada con la votación abierta solo existe en
+  // datos migrados de antes de las fechas: la del martes se mueve al martes 29/9 a las 10:00 (justo NOW).
+  it('409 WINDOW_STARTED si la franja elegida ya empezó (datos migrados); las que no empezaron se confirman', async () => {
     const p = await threeWindows();
     await vote(p, 2, ana.token);
-    clock.set(new Date('2026-10-06T21:00:00.000Z')); // martes 6/10 16:00 en Lima: justo empieza la del martes
+    await db.query("UPDATE proposal_windows SET date = '2026-09-29', start_time = '10:00', end_time = '12:00' WHERE id = $1", [windowOf(p, 2).id]);
     const empezada = await postTo(`${p.id}/confirm`, yo.token);
     expect([empezada.status, empezada.body.error.code, empezada.body.error.message]).toEqual([
       409, 'WINDOW_STARTED', 'Esa franja ya empezó: replantea la propuesta.',
@@ -146,7 +148,7 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect(conId.body.error.code).toBe('WINDOW_STARTED');
     expect((await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body.state).toBe('PROPUESTO');
     const jueves = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 4).id });
-    expect([jueves.status, jueves.body.scheduledDate]).toEqual([200, '2026-10-08']);
+    expect([jueves.status, jueves.body.scheduledDate, jueves.body.autoClosed]).toEqual([200, '2026-10-08', false]);
   });
 
   it('409 NO_VOTES sin votos ni windowId; 404 WINDOW_NOT_FOUND con una franja ajena', async () => {
@@ -181,14 +183,30 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect([res2.status, res2.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
-  it('se puede confirmar después del plazo', async () => {
+  // Antes se podía confirmar a mano después del plazo; ahora, al vencer, la votación se cierra sola con la más votada
+  // (lo mismo que habría elegido confirmar sin windowId) y confirmar ya no vale.
+  it('después del plazo ya se confirmó sola con la más votada: confirmar → 409 INVALID_STATE', async () => {
     const p = await threeWindows();
     await vote(p, 4, ana.token);
     clock.set(AFTER_DEADLINE);
     const res = await postTo(`${p.id}/confirm`, yo.token);
-    expect(res.status).toBe(200);
-    expect(res.body.scheduledAt).toBe(new Date(2026, 9, 8, 10, 0).toISOString());
-    expect(res.body.scheduledDate).toBe('2026-10-08');
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    const now = await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token));
+    expect(now.body).toMatchObject({
+      state: 'CONFIRMADO',
+      autoClosed: true,
+      chosenWindowId: windowOf(p, 4).id,
+      scheduledAt: new Date(2026, 9, 8, 10, 0).toISOString(),
+      scheduledDate: '2026-10-08',
+    });
+  });
+
+  it('se puede confirmar a mano hasta justo antes del plazo', async () => {
+    const p = await threeWindows();
+    await vote(p, 4, ana.token);
+    clock.set(new Date(new Date(DEADLINE).getTime() - 1));
+    const res = await postTo(`${p.id}/confirm`, yo.token);
+    expect([res.status, res.body.state, res.body.autoClosed, res.body.scheduledDate]).toEqual([200, 'CONFIRMADO', false, '2026-10-08']);
   });
 });
 

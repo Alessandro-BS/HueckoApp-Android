@@ -122,7 +122,7 @@ export type Proposal = {
   state: ProposalState;
   windows: TimeWindow[];           // ordenadas por fecha y hora
   multipleVotes: boolean;          // true: se pueden votar varias franjas; false: un voto por persona (votar otra lo mueve)
-  autoClosed: boolean;             // true si el servidor cerró la votación solo (reservado; hasta ahora siempre false)
+  autoClosed: boolean;             // true si la votación se cerró sola al vencer el plazo (CONFIRMADO, o CANCELADO si nadie votó)
   myVoteWindowIds: string[];       // franjas que votó el usuario actual, en el orden de `windows`
   canManage: boolean;              // true si el usuario actual puede confirmar, cancelar o replantear (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
@@ -154,7 +154,8 @@ export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes
 // Voto en la votación exprés (PUT /proposals/:id/express-vote); se puede cambiar mientras siga abierta.
 export type ExpressVoteInput = { option: ExpressOption };
 
-// Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; se borran los votos.
+// Replantear una propuesta en votación, en recoordinación o cancelada sola porque nadie votó: franjas (2 a 5) y plazo
+// nuevos; se borran los votos.
 export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };
 
 // Propuesta con el nombre de su grupo (Inicio y /me/upcoming-plans).

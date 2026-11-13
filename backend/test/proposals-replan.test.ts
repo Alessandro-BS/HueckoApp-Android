@@ -44,13 +44,41 @@ describe('POST /api/proposals/:id/replan', () => {
     expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
   });
 
-  it('una propuesta migrada con todas las franjas pasadas se puede replantear', async () => {
+  // Con el plazo vencido y sin votos, al cargarla se cancela sola (CANCELADO con autoClosed) y por eso se replantea.
+  it('una propuesta migrada con todas las franjas pasadas y sin votos se cancela sola y se puede replantear', async () => {
     await db.query("UPDATE proposal_windows SET date = $2 WHERE id = $1", [p.windows[0].id, '2026-01-05']);
     await db.query("UPDATE proposal_windows SET date = $2 WHERE id = $1", [p.windows[1].id, '2026-01-06']);
     await db.query("UPDATE proposals SET voting_deadline = '2026-01-03T00:00:00.000Z' WHERE id = $1", [p.id]);
     const res = await replan(yo.token);
-    expect([res.status, res.body.state]).toEqual([200, 'PROPUESTO']);
+    expect([res.status, res.body.state, res.body.autoClosed]).toEqual([200, 'PROPUESTO', false]);
     expect(res.body.windows.map((w: { date: string }) => w.date)).toEqual([dateOf(3), dateOf(4)]);
+  });
+
+  // Con votos, el cierre la confirma con la más votada aunque la franja ya pasó (regla 1): ya no se replantea.
+  it('una propuesta migrada con todas las franjas pasadas y con votos se confirma sola: replantear → 409', async () => {
+    await voteFor(app, p.id, p.windows[0].id, yo.token);
+    await db.query("UPDATE proposal_windows SET date = $2 WHERE id = $1", [p.windows[0].id, '2026-01-05']);
+    await db.query("UPDATE proposal_windows SET date = $2 WHERE id = $1", [p.windows[1].id, '2026-01-06']);
+    await db.query("UPDATE proposals SET voting_deadline = '2026-01-03T00:00:00.000Z' WHERE id = $1", [p.id]);
+    const res = await replan(yo.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await db.one('SELECT state, chosen_window_id, auto_closed FROM proposals WHERE id = $1', [p.id])).toEqual({
+      state: 'CONFIRMADO',
+      chosen_window_id: p.windows[0].id,
+      auto_closed: true,
+    });
+  });
+
+  // Dos peticiones a la vez: entre la lectura de la ruta (CANCELADO con autoClosed) y el UPDATE, alguien la canceló a
+  // mano (auto_closed = false): el UPDATE la ve con el estado bloqueado y no la replantea.
+  it('replantear una cancelada sola que mientras tanto pasó a cancelada a mano: 409 y no se toca', async () => {
+    await db.query("UPDATE proposals SET voting_deadline = '2026-09-29T14:00:00.000Z' WHERE id = $1", [p.id]); // 9:00 en Lima, antes de NOW
+    expect((await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body).toMatchObject({ state: 'CANCELADO', autoClosed: true });
+    interleave(db, /^SELECT state FROM proposals WHERE id = \$1 FOR UPDATE/, 'UPDATE proposals SET auto_closed = FALSE WHERE id = $1', [p.id]);
+    const res = await replan(yo.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await db.one('SELECT state, auto_closed FROM proposals WHERE id = $1', [p.id])).toEqual({ state: 'CANCELADO', auto_closed: false });
+    expect(await db.one('SELECT COUNT(*) AS n FROM proposal_windows WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
   });
 
   it('409 INVALID_STATE si la propuesta no está en votación', async () => {

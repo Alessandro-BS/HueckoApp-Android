@@ -146,12 +146,12 @@ Cuerpo = `TimeBlockInput` de `shared`. Reglas:
 `204` · `404 TIME_BLOCK_NOT_FOUND` si el bloque no existe o no es del usuario.
 
 ### `GET /me/upcoming-plans`
-`200 ProposalWithGroup[]`: propuestas `CONFIRMADO` de todos mis grupos cuyo `scheduledAt` todavía no llegó, de la más próxima a la más lejana. Cada una lleva `groupName`. Antes de responder cierra las votaciones exprés vencidas de mis grupos (ver «Votación exprés»).
+`200 ProposalWithGroup[]`: propuestas `CONFIRMADO` de todos mis grupos cuyo `scheduledAt` todavía no llegó, de la más próxima a la más lejana. Cada una lleva `groupName`. Antes de responder cierra las votaciones de franjas vencidas de mis grupos (ver «Cierre automático») y después las votaciones exprés vencidas (ver «Votación exprés»).
 
 ### `GET /me/dashboard`
-Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`. Antes de calcularlo cierra las votaciones exprés vencidas de mis grupos (ver «Votación exprés»).
+Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`. Antes de calcularlo cierra las votaciones de franjas vencidas de mis grupos (ver «Cierre automático») y después las votaciones exprés vencidas (ver «Votación exprés»).
 - `metrics.activeGroups`: grupos de los que soy miembro.
-- `metrics.openVotes`: propuestas `PROPUESTO` de mis grupos (aunque su plazo haya pasado: siguen pendientes de hora hasta que alguien las confirme).
+- `metrics.openVotes`: propuestas `PROPUESTO` de mis grupos (las vencidas se cierran antes de calcular: son las que siguen en votación).
 - `metrics.matchingHours`: suma, sobre las franjas de las propuestas de mis grupos **que no están `CANCELADO`** (cualquier otro estado cuenta, también `EN_RECOORDINACION`) con `availabilityPercentage ≥ 80` (fijo, no el umbral del grupo), de `hora(endTime) − hora(startTime)` en horas enteras (se truncan los minutos), sin deduplicar solapes. Es la fórmula de la app Kotlin salvo que aquí las canceladas no cuentan.
 - `metrics.totalBlocks`: mis bloques de horario (recurrentes y puntuales).
 - `nextPlan`: el primero de `/me/upcoming-plans` con `attendees`, uno por miembro del grupo; su estado sale de su primera incidencia sin resolver: `TARDANZA` → `RETRASADO`, `FALTA`/`IMPREVISTO` → `NO_ASISTE`, ninguna → `PUNTUAL`. `null` si no hay.
@@ -213,7 +213,7 @@ Reglas:
 ## Propuestas y votación
 
 ### `GET /groups/:id/proposals`
-`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app las oculta). Antes de responder cierra las votaciones exprés vencidas del grupo (ver «Votación exprés»). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+`200 Proposal[]` del grupo, **las más recientes primero** (`createdAt` descendente). Devuelve todas, también las `CANCELADO` (la app las oculta). Antes de responder cierra las votaciones de franjas vencidas del grupo (ver «Cierre automático») y después las votaciones exprés vencidas (ver «Votación exprés»). `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
 
 ### `POST /groups/:id/proposals`
 ```json
@@ -243,8 +243,16 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
 
 ### `GET /proposals/:id`
-`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowIds` son las franjas que votó quien pregunta (en el orden de `windows`; vacío si ninguna), `multipleVotes` dice si se pueden votar varias, `autoClosed` si el servidor cerró la votación solo (por ahora siempre `false`) y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»). `expressVote` es su votación exprés más reciente (la abierta o la última cerrada; `null` si nunca tuvo); si está abierta y ya venció, se cierra antes de responder (ver «Votación exprés»).
-`404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
+`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowIds` son las franjas que votó quien pregunta (en el orden de `windows`; vacío si ninguna), `multipleVotes` dice si se pueden votar varias, `autoClosed` si la votación se cerró sola al vencer el plazo (ver «Cierre automático») y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»). `expressVote` es su votación exprés más reciente (la abierta o la última cerrada; `null` si nunca tuvo); si está abierta y ya venció, se cierra antes de responder (ver «Votación exprés»). Si sigue `PROPUESTO` y ya llegó su `votingDeadline`, antes se cierra su votación de franjas (ver «Cierre automático»).
+`404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`, que también cierran primero la votación vencida: después de comprobar el acceso y antes de todo lo demás.)
+
+### Cierre automático
+Una propuesta `PROPUESTO` cuyo `votingDeadline` ya llegó se cierra sola:
+- gana la franja más votada; si empatan, la de mayor `availabilityPercentage`; si siguen, la de fecha y hora más tempranas (la misma regla que `POST /proposals/:id/confirm` sin `windowId`). Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` y `scheduledDate` como al confirmar a mano, **aunque la franja ya haya empezado** cuando alguien consulta (al vencer el plazo era válida: el plazo siempre es anterior a la primera franja);
+- solo cuentan los votos de quienes **siguen** en el grupo; si no queda ninguno → `CANCELADO` (y quien gestiona puede replantearla: ver `POST /proposals/:id/replan`);
+- en los dos casos `autoClosed: true`. Confirmar a mano antes del plazo deja `autoClosed: false`; cancelar a mano (también desde la administración) o por una votación exprés lo devuelve a `false`, así que `CANCELADO` con `autoClosed: true` significa solo «nadie votó antes del plazo».
+
+No hay procesos en segundo plano: se cierra **al consultar**, en una transacción con la propuesta bloqueada que vuelve a comprobar estado y plazo, así que dos consultas a la vez la cierran **una sola vez**. Lo hacen `GET /proposals/:id` y todas las rutas `/proposals/:id/...` (votar, quitar el voto, añadir franja, confirmar, cancelar, reportar, votación exprés y replantear), `GET /groups/:id/proposals` (las del grupo), `GET /me/dashboard` y `GET /me/upcoming-plans` (las de mis grupos) y, en la administración, `GET /admin/groups/:id` (las de ese grupo) y `GET /admin/stats`, `/admin/stats/timeseries`, `/admin/stats/popular-hours` y `/admin/reports` (todas, antes de calcular). Si un cierre falla, se anota y la consulta responde igual (la siguiente lo reintenta); votar y confirmar siguen rechazándose tras el plazo. El resultado no depende de cuándo se mire: votar y quitar el voto comprueban estado y plazo con la propuesta bloqueada, así que ningún voto entra después del recuento.
 
 **Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.
 
@@ -259,7 +267,7 @@ Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra l
 
 ### `PUT /proposals/:id/vote`
 `{ "windowId": "..." }`. Según `Proposal.multipleVotes`: con `true`, cada voto **suma** una franja a las que ya votaste; con `false`, votar otra franja **mueve** el único voto. Votar la misma otra vez **no cambia nada** (idempotente). Retirar un voto se hace con `DELETE`.
-`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta (también si un replanteo la borró justo antes de guardar el voto).
+`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` (entonces ya se cerró sola: ver «Cierre automático») · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta (también si un replanteo la borró justo antes de guardar el voto).
 
 ### `DELETE /proposals/:id/vote`
 Retira mis votos: con `?windowId=` solo el de esa franja; sin parámetros, todos los míos en la propuesta (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
@@ -273,7 +281,7 @@ El servidor calcula su `availabilityPercentage` con los horarios **actuales** de
 `201 Proposal` · `400 VALIDATION_ERROR` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» (misma `date`, `startTime` y `endTime`) · `409 VOTING_CLOSED`
 
 ### `POST /proposals/:id/confirm`
-Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan») y solo si está `PROPUESTO` (`409 INVALID_STATE`); se puede confirmar antes o después del plazo. `{ "windowId": "..." }` es opcional:
+Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan») y solo si está `PROPUESTO` y **antes** del `votingDeadline` (`409 INVALID_STATE`): al vencer el plazo la votación se cierra sola (ver «Cierre automático») y ya no se confirma a mano. `{ "windowId": "..." }` es opcional:
 - con `windowId`: se confirma esa franja, tenga votos o no (`404 WINDOW_NOT_FOUND` si no es de la propuesta);
 - sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de fecha y hora más tempranas. Si nadie votó → `409 NO_VOTES`.
 - si la franja elegida (con o sin `windowId`) ya empezó → `409 WINDOW_STARTED` «Esa franja ya empezó: replantea la propuesta.»
@@ -312,7 +320,7 @@ Votar en la votación exprés abierta del plan. Cuerpo = `ExpressVoteInput`: `{ 
 `200 Proposal` · `400 VALIDATION_ERROR` «Elige CANCELAR, REAGENDAR o MANTENER» · `403 NOT_A_VOTER` «No puedes votar en esta votación.» (quien avisó o quien no estaba en el grupo al abrirse; quien ya salió del grupo recibe antes `403 NOT_A_MEMBER`) · `409 VOTING_CLOSED` «La votación ya cerró.» (el plan no tiene votación abierta, ya venció o el plan ya no está `CONFIRMADO`: p. ej. quien gestiona lo canceló con la votación abierta).
 
 ### `POST /proposals/:id/replan`
-Replantea una propuesta **en votación** (`PROPUESTO`) o **en recoordinación** (`EN_RECOORDINACION`, lo que deja una votación exprés con resultado REAGENDAR): reemplaza sus franjas y su plazo por otros nuevos y el plan vuelve a `PROPUESTO`. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo en esos dos estados (`409 INVALID_STATE`). Sirve también cuando todas las franjas ya pasaron (p. ej. propuestas anteriores a las fechas). Desde `EN_RECOORDINACION` se borran además las incidencias del plan y sus votaciones exprés cerradas (la respuesta trae `incidences: []` y `expressVote: null`), todo en la misma transacción que el cambio de franjas; desde `PROPUESTO` se conservan (p. ej. las incidencias resueltas de un plan que se reprogramó con el flujo anterior a la votación exprés); el estado se vuelve a comprobar al guardar, así que si otra petición lo canceló justo antes, `409 INVALID_STATE` y no se toca nada. Cancelar también funciona desde `EN_RECOORDINACION`. Cuerpo = `ReplanInput`:
+Replantea una propuesta **en votación** (`PROPUESTO`), **en recoordinación** (`EN_RECOORDINACION`, lo que deja una votación exprés con resultado REAGENDAR) o **cancelada sola porque nadie votó** (`CANCELADO` con `autoClosed: true`, ver «Cierre automático»): reemplaza sus franjas y su plazo por otros nuevos y el plan vuelve a `PROPUESTO` con `autoClosed: false`. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo en esos estados (`409 INVALID_STATE`, también con una `CANCELADO` a mano). Antes se cierra la votación si venció: una `PROPUESTO` vencida sin votos se replantea ya `CANCELADO` con `autoClosed`; si alguien la votó, ya está `CONFIRMADO` y no se replantea. Sirve también cuando todas las franjas ya pasaron (p. ej. propuestas sin votos anteriores a las fechas). Desde `EN_RECOORDINACION` se borran además las incidencias del plan y sus votaciones exprés cerradas (la respuesta trae `incidences: []` y `expressVote: null`), todo en la misma transacción que el cambio de franjas; desde `PROPUESTO` se conservan (p. ej. las incidencias resueltas de un plan que se reprogramó con el flujo anterior a la votación exprés); el estado se vuelve a comprobar al guardar (y que una `CANCELADO` siga con `autoClosed`), así que si otra petición lo canceló justo antes, `409 INVALID_STATE` y no se toca nada. Cancelar también funciona desde `EN_RECOORDINACION`. Cuerpo = `ReplanInput`:
 ```json
 { "votingDeadline": "2026-10-04T20:00:00.000Z",
   "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" },
@@ -443,6 +451,7 @@ Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Toda
 - **Listas paginadas:** `?page=` (desde 1; por defecto 1, también si llega vacío: `?page=`) y, donde se indica, `?search=` (≤ 100 caracteres; busca el texto tal cual, sin distinguir mayúsculas en letras sin tilde; `%` y `_` son literales). 20 por página. Responden `Page<T>`: `{ "items": [...], "page": 1, "pageSize": 20, "total": 57 }`. Parámetros inválidos → `400 VALIDATION_ERROR`.
 - **Registro de acciones:** toda escritura de esta sección se anota en el registro (`GET /admin/audit`) en la misma transacción: si no se puede anotar, la acción no se hace.
 - Fechas de las respuestas en ISO 8601 UTC. Los periodos de estadísticas e informes se piden como días `YYYY-MM-DD` (ver abajo).
+- **Votaciones vencidas:** `GET /admin/groups/:id` cierra antes las votaciones de franjas vencidas de ese grupo, y `GET /admin/stats`, `/admin/stats/timeseries`, `/admin/stats/popular-hours` y `/admin/reports`, todas las vencidas antes de calcular (ver «Cierre automático»): un plan ya cerrado no cuenta como `PROPUESTO`.
 
 ### Estadísticas e informes: fechas y zona horaria
 - Los periodos van en `?from=&to=` como **días de calendario** `YYYY-MM-DD`, **ambos incluidos** (`?from=2026-09-01&to=2026-09-30`). `from = to` es un periodo de un día. `to` no puede ser anterior a `from` y el periodo dura como mucho **366 días**. Una fecha con otro formato (también un instante ISO), que no existe (`2026-02-30`) o con un año fuera de **2000–9999** («El año debe estar entre 2000 y 9999.») → `400 VALIDATION_ERROR` con el campo en `details`.
