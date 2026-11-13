@@ -17,9 +17,10 @@ it('la copia de Inicio vuelve tal cual se guardó', async () => {
 
 it.each([
   ['de una versión anterior (sin versión)', { dashboard: makeDashboard(), blocks: [] }],
+  ['de la versión 1 (Proposal con myVoteWindowId)', { v: 1, data: { dashboard: makeDashboard(), blocks: [] } }],
   ['de otra versión', { v: 99, data: { dashboard: makeDashboard(), blocks: [] } }],
-  ['con otra forma', { v: 1, data: { dashboard: { metrics: null }, blocks: [] } }],
-  ['que no es un objeto', { v: 1, data: 'hola' }],
+  ['con otra forma', { v: 2, data: { dashboard: { metrics: null }, blocks: [] } }],
+  ['que no es un objeto', { v: 2, data: 'hola' }],
 ])('una copia %s se ignora en vez de romper Inicio', async (_, stored) => {
   await AsyncStorage.setItem('hueckoapp.dashboard.u1', JSON.stringify(stored));
   expect(await dashboardCache.get('u1')).toBeNull();

@@ -93,3 +93,36 @@ describe('proposalsRepository: franjas con fecha', () => {
     expect(after.myVoteWindowIds).toEqual([before.windows[0].id]);
   });
 });
+
+describe('proposalsRepository: voteIfOpen y unvoteIfOpen (comprobación con la propuesta bloqueada)', () => {
+  const votesOf = async (db: Awaited<ReturnType<typeof setup>>['db'], id: string) =>
+    (await db.many<{ user_id: string; window_id: string }>('SELECT user_id, window_id FROM votes WHERE proposal_id = $1 ORDER BY window_id', [id])).length;
+
+  it.each([
+    ['ahora justo en el plazo', 'PROPUESTO', new Date(DEADLINE)],
+    ['ahora pasado el plazo', 'PROPUESTO', new Date(new Date(DEADLINE).getTime() + 60_000)],
+    ['propuesta CONFIRMADO', 'CONFIRMADO', NOW],
+    ['propuesta CANCELADO', 'CANCELADO', NOW],
+  ] as const)('%s: CLOSED y no escribe ni borra votos', async (_, state, now) => {
+    const { db, repo, create, ana, beto } = await setup();
+    const id = await create([win('2026-09-30', '16:00', '18:00'), win('2026-10-01', '10:00', '12:00')]);
+    const [first, second] = (await repo.findById(id, ana.id))!.windows;
+    expect(await repo.voteIfOpen(id, ana.id, first.id, NOW)).toBe('OK');
+    await db.query('UPDATE proposals SET state = $1 WHERE id = $2', [state, id]);
+
+    expect(await repo.voteIfOpen(id, beto.id, second.id, now)).toBe('CLOSED');
+    expect(await repo.voteIfOpen(id, ana.id, second.id, now)).toBe('CLOSED');
+    expect(await repo.unvoteIfOpen(id, ana.id, first.id, now)).toBe('CLOSED');
+    expect(await repo.unvoteIfOpen(id, ana.id, null, now)).toBe('CLOSED');
+    // Solo queda el voto de Ana a la primera franja, intacto.
+    expect(await db.many('SELECT user_id, window_id FROM votes WHERE proposal_id = $1', [id])).toEqual([{ user_id: ana.id, window_id: first.id }]);
+  });
+
+  it('una propuesta que no existe devuelve CLOSED y no escribe nada', async () => {
+    const { db, repo, ana } = await setup();
+    expect(await repo.voteIfOpen('no-existe', ana.id, 'w', NOW)).toBe('CLOSED');
+    expect(await repo.unvoteIfOpen('no-existe', ana.id, null, NOW)).toBe('CLOSED');
+    expect(await votesOf(db, 'no-existe')).toBe(0);
+    expect(await db.one('SELECT COUNT(*) AS n FROM votes')).toEqual({ n: 0 });
+  });
+});

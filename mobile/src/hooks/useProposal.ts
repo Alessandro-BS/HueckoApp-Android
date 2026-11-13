@@ -32,6 +32,7 @@ export function useProposal(proposalId: string) {
     [mutate],
   );
 
+  // Provisional hasta la Task 5 (alternar varios votos): por ahora solo se mira el primero.
   const myVote = data?.myVoteWindowIds[0] ?? null;
   const { toggle, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
     currentVote: () => myVote,
