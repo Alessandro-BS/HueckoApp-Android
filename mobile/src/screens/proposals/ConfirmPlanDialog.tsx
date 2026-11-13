@@ -2,7 +2,8 @@ import type { TimeWindow } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { AppDialog, ChoiceChip, ErrorBanner } from '../../components';
+import { ApiError } from '../../api/client';
+import { AppDialog, ChoiceChip, ErrorBanner, SecondaryButton } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import { colors, typography } from '../../theme';
 import { voteCountLabel, windowLabel } from '../../utils/proposals';
@@ -14,15 +15,26 @@ type Props = {
   onConfirm: (windowId?: string) => Promise<unknown>;
   onDone: () => void;
   onDismiss: () => void;
+  /** Si la franja ya empezó (WINDOW_STARTED), se ofrece replantear la propuesta. */
+  onReplan?: () => void;
 };
 
 // C2: quien organiza el plan elige la franja o deja «La más votada» (el servidor desempata).
 // Sin votos hay que elegir una franja: el servidor respondería 409 NO_VOTES. Sin franjas no hay nada que
 // confirmar: se explica cómo agregar una.
-export function ConfirmPlanDialog({ windows, onConfirm, onDone, onDismiss }: Props) {
+export function ConfirmPlanDialog({ windows, onConfirm, onDone, onDismiss, onReplan }: Props) {
   const anyVotes = windows.some((w) => w.voteCount > 0);
   const [choice, setChoice] = useState<string | null>(anyVotes ? MOST_VOTED : null);
-  const action = useAction(onConfirm);
+  const [started, setStarted] = useState(false);
+  const action = useAction(async (windowId?: string) => {
+    setStarted(false);
+    try {
+      return await onConfirm(windowId);
+    } catch (e) {
+      setStarted(e instanceof ApiError && e.code === 'WINDOW_STARTED');
+      throw e;
+    }
+  });
 
   const confirm = async () => {
     if (!choice) return;
@@ -64,6 +76,11 @@ export function ConfirmPlanDialog({ windows, onConfirm, onDone, onDismiss }: Pro
       {action.error ? (
         <View style={styles.error}>
           <ErrorBanner message={action.error} />
+        </View>
+      ) : null}
+      {started && onReplan ? (
+        <View style={styles.error}>
+          <SecondaryButton title="Replantear" icon="event-repeat" onPress={onReplan} />
         </View>
       ) : null}
     </AppDialog>

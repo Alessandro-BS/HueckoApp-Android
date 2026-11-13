@@ -206,3 +206,15 @@ it('sin red muestra los últimos datos guardados con un aviso, en vez del error'
   expect(screen.getByText('6 h')).toBeTruthy();
   expect(screen.queryByText('Reintentar')).toBeNull();
 });
+
+it('Inicio muestra la fecha de la próxima franja de cada grupo', async () => {
+  const base = makeDashboard();
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({
+      groups: [{ ...base.groups[0], nextWindow: { date: '2026-11-20', dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 80 } }],
+    }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('2 miembros · Vie 20 nov · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.getByText('80%')).toBeTruthy();
+});

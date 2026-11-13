@@ -13,16 +13,13 @@ import type { AppStackScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
 import { prefillFromDraft, prefillWindows, type ProposalPrefill } from '../../utils/ai';
 import { today } from '../../utils/clock';
+import { deadlineAfterFirstWindow, DEADLINE_AFTER_WINDOW, MAX_WINDOWS, MIN_WINDOWS } from '../../utils/planWindows';
 import { windowLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { weekOptions } from '../../utils/zone';
 import { AiDraftCard } from './AiDraftCard';
 import { PlacePickerModal, type PickedPlace } from './PlacePickerModal';
 import { WindowEditor } from './WindowEditor';
-
-const MIN_WINDOWS = 2;
-const MAX_WINDOWS = 5;
-export const DEADLINE_AFTER_WINDOW = 'La votación debe cerrar antes de la primera franja';
 
 type Coords = { latitude: number; longitude: number };
 
@@ -55,12 +52,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const draft = useProposalDraft(groupId);
 
   const deadlineError = deadline && deadline.getTime() <= now.getTime() ? 'La fecha límite debe ser futura' : undefined;
-  // El plazo debe ser anterior al inicio de la primera franja (el servidor responde 400 si no).
-  const firstStart = windows.reduce<number | null>((min, w) => {
-    const start = new Date(`${w.date}T${w.startTime}:00-05:00`).getTime();
-    return min === null || start < min ? start : min;
-  }, null);
-  const afterWindow = !auto && deadline !== null && firstStart !== null && deadline.getTime() >= firstStart;
+  const afterWindow = !auto && deadlineAfterFirstWindow(deadline, windows);
   const windowCountOk = auto || (windows.length >= MIN_WINDOWS && windows.length <= MAX_WINDOWS);
   const formValid =
     title.trim().length > 0 && deadline !== null && !deadlineError && !afterWindow && windowCountOk;

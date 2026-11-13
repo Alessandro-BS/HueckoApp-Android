@@ -13,6 +13,7 @@ import { today } from '../../utils/clock';
 import { CRITICALITY_BADGE, INCIDENCE_LABEL, isUpcoming, isVotingOpen, openIncidence } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { ConfirmPlanDialog } from './ConfirmPlanDialog';
+import { ReplanSheet } from './ReplanSheet';
 import { confirmCancelPlan } from './confirmCancelPlan';
 import { ExpressVoteCard } from './ExpressVoteCard';
 import { ProposalHeader } from './ProposalHeader';
@@ -41,10 +42,10 @@ function IncidenceRow({ incidence }: { incidence: Incidence }) {
 
 export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDetail'>) {
   const { proposalId } = route.params;
-  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, resolve } = useProposal(proposalId);
+  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, resolve, replan } = useProposal(proposalId);
   useRefreshOnFocus(reload);
   useRefreshErrorToast(error, proposal !== undefined, failedLoads);
-  const [sheet, setSheet] = useState<'confirm' | 'incidence' | null>(null);
+  const [sheet, setSheet] = useState<'confirm' | 'incidence' | 'replan' | null>(null);
 
   if (!proposal) {
     return (
@@ -143,6 +144,19 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
           onDone={() => {
             setSheet(null);
             showToast('Plan confirmado.');
+          }}
+          onReplan={() => setSheet('replan')}
+          onDismiss={() => setSheet(null)}
+        />
+      ) : null}
+      {sheet === 'replan' ? (
+        <ReplanSheet
+          title="Replantear propuesta"
+          submitLabel="Replantear votación"
+          onSubmit={async (input) => {
+            await replan(input);
+            setSheet(null);
+            showToast('Propuesta replanteada: se borraron los votos.');
           }}
           onDismiss={() => setSheet(null)}
         />

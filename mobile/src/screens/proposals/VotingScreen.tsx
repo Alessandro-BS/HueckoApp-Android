@@ -2,7 +2,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ErrorBanner, HueckoCard, LoadState, SectionHeader, VoteWindowRow } from '../../components';
+import { ErrorBanner, HueckoCard, LoadState, SecondaryButton, SectionHeader, VoteWindowRow } from '../../components';
 import { useProposal } from '../../hooks/useProposal';
 import { useRefreshErrorToast } from '../../hooks/useRefreshErrorToast';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
@@ -13,15 +13,17 @@ import { isVotingOpen } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { AddWindowSheet } from './AddWindowSheet';
 import { ProposalHeader } from './ProposalHeader';
+import { ReplanSheet } from './ReplanSheet';
 
 const MAX_WINDOWS = 5;
 
 export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
   const { proposalId } = route.params;
-  const { proposal, loading, refreshing, error, failedLoads, reload, toggleVote, voting, voteError, addWindow } = useProposal(proposalId);
+  const { proposal, loading, refreshing, error, failedLoads, reload, toggleVote, voting, voteError, addWindow, replan } = useProposal(proposalId);
   useRefreshOnFocus(reload);
   useRefreshErrorToast(error, proposal !== undefined, failedLoads);
   const [adding, setAdding] = useState(false);
+  const [replanning, setReplanning] = useState(false);
 
   if (!proposal) {
     return (
@@ -81,7 +83,23 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
             <Text style={[typography.titleSmall, { color: colors.primary }]}>Agregar franja horaria</Text>
           </Pressable>
         ) : null}
+        {proposal.canManage && proposal.state === 'PROPUESTO' ? (
+          <SecondaryButton title="Replantear" icon="event-repeat" onPress={() => setReplanning(true)} />
+        ) : null}
       </ScrollView>
+      {replanning ? (
+        <ReplanSheet
+          title="Replantear propuesta"
+          submitLabel="Replantear votación"
+          // Lanza si el servidor rechaza: la hoja muestra el error y se queda abierta.
+          onSubmit={async (input) => {
+            await replan(input);
+            setReplanning(false);
+            showToast('Propuesta replanteada: se borraron los votos.');
+          }}
+          onDismiss={() => setReplanning(false)}
+        />
+      ) : null}
       {adding ? (
         <AddWindowSheet
           votingDeadline={proposal.votingDeadline}

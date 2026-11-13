@@ -1,4 +1,4 @@
-import type { IncidenceInput, Proposal, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
+import type { IncidenceInput, Proposal, ReplanInput, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
 import { useCallback } from 'react';
 
 import {
@@ -7,6 +7,7 @@ import {
   confirmProposal,
   getProposal,
   removeVote,
+  replanProposal,
   reportIncidence as postIncidence,
   resolveIncidences,
   voteWindow,
@@ -51,9 +52,11 @@ export function useProposal(proposalId: string) {
     [proposalId, apply],
   );
 
+  const replan = useCallback(async (input: ReplanInput) => apply(await replanProposal(proposalId, input)), [proposalId, apply]);
+
   return {
     proposal: data, loading, refreshing, error, failedLoads, reload,
     toggleVote, voting, voteError, clearVoteError,
-    addWindow, confirm, cancel, reportIncidence, resolve,
+    addWindow, confirm, cancel, reportIncidence, resolve, replan,
   };
 }

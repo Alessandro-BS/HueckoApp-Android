@@ -112,3 +112,51 @@ it('con 5 franjas ya no se ofrece agregar otra', async () => {
   expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.queryByText('Agregar franja horaria')).toBeNull();
 });
+
+const pickDeadline = async (date: Date) => {
+  await fireEvent.press(screen.getByLabelText('Nueva fecha límite de votación'));
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, date);
+};
+const addNewWindow = async (day: string, start: string, end: string) => {
+  await fireEvent.press(screen.getByText(day));
+  await fireEvent.changeText(screen.getByLabelText('Hora de inicio (HH:mm)'), start);
+  await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), end);
+  await fireEvent.press(screen.getByText('Añadir franja'));
+};
+
+it('quien gestiona ve «Replantear» en una propuesta en votación; llama a replanProposal', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ canManage: true }));
+  mocked.replanProposal.mockResolvedValue(
+    makeProposal({ windows: [makeWindow({ id: 'n1', date: '2026-10-02' }), makeWindow({ id: 'n2', date: '2026-10-03' })] }),
+  );
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Replantear'));
+  await pickDeadline(new Date(2026, 8, 30, 20, 0));
+  await addNewWindow('Vie', '18:00', '19:00');
+  await addNewWindow('Sáb', '10:00', '11:00');
+  await fireEvent.press(screen.getByLabelText('Replantear votación'));
+  await waitFor(() =>
+    expect(mocked.replanProposal).toHaveBeenCalledWith('prop_2', {
+      votingDeadline: new Date(2026, 8, 30, 20, 0).toISOString(),
+      windows: [
+        { date: '2026-10-02', startTime: '18:00', endTime: '19:00' },
+        { date: '2026-10-03', startTime: '10:00', endTime: '11:00' },
+      ],
+    }),
+  );
+  expect(showToast).toHaveBeenCalledWith('Propuesta replanteada: se borraron los votos.');
+  expect(screen.queryByText('Replantear propuesta')).toBeNull();
+});
+
+it('quien no gestiona no ve «Replantear», ni una propuesta que ya no está en votación', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ canManage: false }));
+  const first = await renderScreen();
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Replantear')).toBeNull();
+  first.unmount();
+  mocked.getProposal.mockResolvedValue(makeProposal({ state: 'CONFIRMADO', canManage: true }));
+  await renderScreen();
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Replantear')).toBeNull();
+});
