@@ -147,8 +147,8 @@ En el formulario de la propuesta de estudio:
 | 2 | Toca dos franjas, y luego una de ellas otra vez | Las dos quedan marcadas; al repetir una, se quita solo esa. En **Inicio**: «Votaste 2 franjas» / «Votaste 1 franja» | Con voto múltiple solo se retira la franja tocada |
 | 3 | Crea otra propuesta con el interruptor **apagado** y vota dos franjas distintas | La segunda mueve el voto; queda una sola marcada | Con voto único, votar otra franja mueve el voto |
 | 4 | Mira bajo el título de **Votar** | «La votación cierra el … Si nadie vota, el plan se cancela.» | Avisa del cierre automático |
-| 5 | Deja vencer el plazo con votos | El plan queda **Confirmado** con la franja más votada y el detalle dice «Confirmado al cerrar la votación» | Cierra sola, sin que nadie confirme |
-| 6 | Deja vencer el plazo sin ningún voto (con quien gestiona) | «Cancelado: nadie votó antes del plazo» y el botón **Replantear** | Solo una cancelación automática se puede replantear; una cancelada a mano, no |
+| 5 | **Cómo probar el cierre:** crea una propuesta con la fecha límite a pocos minutos (lo mínimo que deje el formulario), vota una franja y espera a que pase el plazo; luego reabre el plan (sal y entra, o desliza para actualizar) | El plan queda **Confirmado** con la franja más votada y el detalle dice «Confirmado al cerrar la votación» | Cierra sola, sin que nadie confirme |
+| 6 | Igual, pero **sin votar** con ninguna cuenta (entra como quien gestiona el plan) | «Cancelado: nadie votó antes del plazo» y el botón **Replantear** | Solo una cancelación automática se puede replantear; una cancelada a mano, no |
 
 ## 1️⃣1️⃣ Resumen con IA y confirmar (`test@test.com`)
 

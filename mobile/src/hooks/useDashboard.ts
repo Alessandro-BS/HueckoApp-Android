@@ -64,6 +64,7 @@ export function useDashboard(userId?: string) {
     votesOf: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowIds ?? NO_VOTES,
     isMultiple: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.multipleVotes ?? false,
     vote: async (id, windowId) => replacePending(await voteWindow(id, windowId)),
+    // Sin windowId se llama con un solo argumento: DELETE sin ?windowId= quita todos mis votos (voto único).
     unvote: async (id, windowId) => replacePending(windowId ? await removeVote(id, windowId) : await removeVote(id)),
   });
 

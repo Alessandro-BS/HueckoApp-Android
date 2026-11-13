@@ -263,7 +263,7 @@ it('sin autoClosed no muestra el aviso de cierre automático', async () => {
   expect(screen.queryByText('Confirmado al cerrar la votación')).toBeNull();
 });
 
-it('cancelado porque nadie votó: quien gestiona ve «Replantear», lo abre y replantea', async () => {
+it('cancelado porque nadie votó: quien gestiona ve «Replantear» y abre la hoja de replanteo', async () => {
   mocked.getProposal.mockResolvedValue(makeProposal({ createdBy: TEST_USER, state: 'CANCELADO', autoClosed: true }));
   mocked.replanProposal.mockResolvedValue(makeProposal({ createdBy: TEST_USER }));
   await renderScreen('prop_2');

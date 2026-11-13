@@ -38,6 +38,7 @@ export function useProposal(proposalId: string) {
     votesOf: () => data?.myVoteWindowIds ?? NO_VOTES,
     isMultiple: () => data?.multipleVotes ?? false,
     vote: async (id, windowId) => apply(await voteWindow(id, windowId)),
+    // Sin windowId se llama con un solo argumento: DELETE sin ?windowId= quita todos mis votos (voto único).
     unvote: async (id, windowId) => apply(windowId ? await removeVote(id, windowId) : await removeVote(id)),
   });
   const toggleVote = useCallback((windowId: string) => toggle(proposalId, windowId), [toggle, proposalId]);
