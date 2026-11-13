@@ -14,6 +14,7 @@ import type { Db } from './db/db';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { pushDevicesRouter } from './notifications/push-devices.routes';
 import { EXPRESS_VOTE_MINUTES_DEFAULT } from './proposals/express-rules';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
 import { proximityRouter } from './proximity/proximity.routes';
@@ -73,6 +74,7 @@ export function createApp(appDeps: AppDeps) {
   // Un único middleware para todas las rutas con token: lee rol y estado de la base en cada petición (D2).
   const auth = requireAuth(deps.db, deps.jwtSecret);
   api.use('/me/time-blocks', auth, timeBlocksRouter(deps));
+  api.use('/me/push-devices', auth, pushDevicesRouter(deps));
   api.use('/me', auth, meRouter(deps));
   api.use('/groups', auth, groupsRouter(deps));
   // groupsRouter no tiene /:id/proposals: esas peticiones pasan de largo y las atiende este router.

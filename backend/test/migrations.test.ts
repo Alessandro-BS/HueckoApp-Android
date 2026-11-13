@@ -462,3 +462,40 @@ describe('migración 11: voto múltiple y cierre automático', () => {
     await failsWith(vote('u1', 'w2'), '23505');
   });
 });
+
+describe('migración 12: notificaciones push', () => {
+  const NOW_ISO = '2026-11-13T10:00:00.000Z';
+  const insertNotification = (db: Db, id: string, kind: string, dedupeKey: string | null = null) =>
+    db.query(
+      'INSERT INTO notifications (id, user_id, kind, title, body, data, dedupe_key, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, 'u1', kind, 'T', 'B', '{}', dedupeKey, NOW_ISO],
+    );
+
+  it('crea push_devices y notifications desde la versión 11, con CHECK de kind y dedupe_key única', async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 11));
+    await db.exec("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')");
+    await failsWith(db.query('SELECT * FROM push_devices'), '42P01'); // control: antes de la 12 no existe
+    await migrate(db);
+    expect(await versions(db)).toEqual(ALL_VERSIONS);
+    await db.query("INSERT INTO push_devices (token, user_id, created_at, last_seen_at) VALUES ('ExponentPushToken[a]', 'u1', $1, $1)", [NOW_ISO]);
+    await insertNotification(db, 'n1', 'NEW_PROPOSAL', 'k1');
+    await failsWith(insertNotification(db, 'n2', 'OTRO'), '23514');
+    await failsWith(insertNotification(db, 'n3', 'REMINDER', 'k1'), '23505');
+    await insertNotification(db, 'n4', 'REMINDER'); // sin clave: varias a la vez valen
+    await insertNotification(db, 'n5', 'REMINDER');
+    expect(await db.one('SELECT attempts, claimed_at, sent_at, last_error FROM notifications WHERE id = $1', ['n1'])).toEqual({
+      attempts: 0, claimed_at: null, sent_at: null, last_error: null,
+    });
+  });
+
+  it('borrar un usuario borra sus dispositivos y sus avisos', async () => {
+    const db = await openTestDatabase();
+    await db.exec("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')");
+    await db.query("INSERT INTO push_devices (token, user_id, created_at, last_seen_at) VALUES ('ExponentPushToken[a]', 'u1', $1, $1)", [NOW_ISO]);
+    await insertNotification(db, 'n1', 'PLAN_CONFIRMED');
+    await db.query("DELETE FROM users WHERE id = 'u1'");
+    expect(await count(db, 'push_devices')).toBe(0);
+    expect(await count(db, 'notifications')).toBe(0);
+  });
+});

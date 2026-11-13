@@ -448,6 +448,18 @@ Cancela: un `WAITING` o `MATCHED` aún vigente pasa a `CANCELLED` en las dos mit
 
 ---
 
+## Notificaciones
+
+Avisos push (Expo) de los planes. Esta sección recoge, por ahora, el registro de celulares; los avisos, sus textos y destinatarios se documentan al añadirlos.
+
+### `PUT /me/push-devices`
+Registra el celular para recibir avisos. Cuerpo `PushDeviceInput` `{ "token": "ExponentPushToken[…]" }`; el token debe ser `ExponentPushToken[...]` o `ExpoPushToken[...]`. Si ya existía (también de otra cuenta), pasa a quien lo envía y se actualiza `last_seen_at`. `204` · `400 VALIDATION_ERROR` · `401`.
+
+### `DELETE /me/push-devices/:token`
+Borra ese token si es de quien lo pide (la app lo envía con `encodeURIComponent`, porque lleva corchetes). `204` siempre, también si no existe o es de otra persona (idempotente) · `401`.
+
+---
+
 ## Administración
 
 Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: sin token (o con uno inválido) → `401 UNAUTHORIZED`; cuenta suspendida → `403 ACCOUNT_SUSPENDED`; si no es `ADMIN` → `403 NOT_ADMIN`. Reglas comunes:
