@@ -19,7 +19,7 @@ const REPLY = {
 
 let app: Express;
 
-// Semilla + «Repaso antes de la entrega» (las 3 mejores franjas: Mar, Jue y Sáb 08–20) con el voto de Ana al jueves.
+// Semilla + «Repaso antes de la entrega» (las 3 mejores franjas de la semana siguiente: Mar, Jue y Sáb 08–20) con el voto de Ana al jueves.
 async function setup(ai?: AiClient) {
   ({ app } = await makeTestApp({ now: () => NOW, ai }));
   const seed = await setupSeedGroup(app);
@@ -44,10 +44,10 @@ describe('summaryData', () => {
       votacionAbierta: true,
       votosEmitidos: 1,
       franjas: [
-        // TODO(franjas-con-fecha Task 4): ordenadas por fecha; el martes 08:00 ya pasó (NOW) y cae la semana siguiente.
+        // Ordenadas por fecha (martes 6, jueves 8 y sábado 10 de octubre).
+        { franja: 'Mar 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
         { franja: 'Jue 08:00-20:00', votos: 1, disponibilidad: '100 %', elegida: false },
         { franja: 'Sáb 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
-        { franja: 'Mar 08:00-20:00', votos: 0, disponibilidad: '100 %', elegida: false },
       ],
       imprevistos: [],
     });

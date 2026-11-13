@@ -34,7 +34,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
 | 500 | Error inesperado del servidor |
@@ -215,15 +215,22 @@ Reglas:
   "title": "Estudiar para el parcial",
   "location": { "name": "Biblioteca", "latitude": -12.07, "longitude": -77.08 },
   "votingDeadline": "2026-10-03T23:59:00.000Z",
-  "windows": [ { "dayOfWeek": 5, "startTime": "16:00", "endTime": "18:00" } ]
+  "windows": [ { "date": "2026-10-09", "startTime": "16:00", "endTime": "18:00" },
+               { "date": "2026-10-10", "startTime": "10:00", "endTime": "12:00" } ]
 }
 ```
 Cuerpo = `ProposalInput` de `shared`. Reglas:
 - `title` obligatorio, 1–80 caracteres tras `trim` («El título no puede estar vacío.»).
 - `location` opcional (`null` u omitido = sin lugar). `name` 1–100 tras `trim`; `latitude` (−90…90) y `longitude` (−180…180) van **juntas** o ambas `null`/omitidas.
-- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura»). Se guarda y se devuelve en UTC.
-- `windows` opcional, hasta 10 y sin repetir; cada una `{ dayOfWeek 1–7, startTime, endTime }` en `HH:mm` con `startTime < endTime` (`TimeWindowInput`). El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`). Cada franja se guarda con la `date` de la próxima vez que ocurre ese día a esa hora (en `America/Lima`; hoy si aún no llegó la hora); lo mismo en `POST /proposals/:id/windows`.
-- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability`: mayor `availabilityPercentage`, luego mayor duración, luego día y hora más tempranos. Si el grupo no tiene ningún hueco en común, **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
+- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura») y **anterior al inicio de la primera franja** («La votación debe cerrar antes de la primera franja»; también con las franjas que elige el servidor). Se guarda y se devuelve en UTC.
+- `windows` opcional: **de 2 a 5** («Elige entre 2 y 5 franjas»); cada una `{ date, startTime, endTime }` (`TimeWindowInput`) con estas reglas, todas `400 VALIDATION_ERROR`:
+  - `date` `YYYY-MM-DD` real (en `America/Lima`) de esta semana o las 3 siguientes («Elige una fecha entre esta semana y las próximas 3»);
+  - `startTime`/`endTime` en `HH:mm` con `startTime < endTime` («La hora de fin debe ser posterior a la de inicio»);
+  - su inicio (`date` + `startTime` en Lima) posterior a ahora («La franja ya empezó»): p. ej. el lunes de esta semana estando a jueves se rechaza;
+  - sin repetidas («Hay franjas repetidas») ni solapadas el mismo día («Hay franjas que se solapan el mismo día»; una que acaba justo cuando empieza otra no se solapa).
+  El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`), con los bloques recurrentes de ese día de la semana y los puntuales de esa fecha.
+- `week` opcional (`YYYY-MM-DD`; cualquier día se normaliza a su lunes; por defecto, la semana actual): **solo se usa si `windows` viene vacío u omitido**, y entonces solo valen esta semana y las 3 siguientes (`400` «Elige una semana entre esta y las próximas 3»). Con `windows` se ignora.
+- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability?week=` (sin las que ya empezaron): mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas. Si salen menos de 2, **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
 - Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
 
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
@@ -250,16 +257,20 @@ Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra l
 Retira mi voto (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
 
 ### `POST /proposals/:id/windows`
-Añadir una franja a una propuesta en votación. Cualquier miembro. `{ "dayOfWeek": 5, "startTime": "18:00", "endTime": "19:30" }` (`TimeWindowInput`, mismas reglas de formato y orden).
+Añadir una franja a una propuesta en votación. Cualquier miembro. `{ "date": "2026-10-09", "startTime": "18:00", "endTime": "19:30" }` (`TimeWindowInput`, con las mismas reglas de una franja al crear: fecha de las 4 semanas válidas, horas, que no haya empezado). Además, todas `400 VALIDATION_ERROR`:
+- no puede solaparse con una franja que ya tiene la propuesta («Hay franjas que se solapan el mismo día»);
+- la propuesta no puede pasar de 5 franjas («Máximo 5 franjas»);
+- tiene que empezar después del `votingDeadline` vigente («La franja debe empezar después del cierre de la votación»).
 El servidor calcula su `availabilityPercentage` con los horarios **actuales** del grupo: para cada hora que toca la franja (mismo redondeo que `/availability`: inicio truncado, fin hacia arriba) calcula el % de miembros libres y se queda con el **peor**. No se aplica el umbral del grupo ni el rango 08–20. Los porcentajes no se recalculan después.
-`201 Proposal` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» · `409 VOTING_CLOSED`
+`201 Proposal` · `400 VALIDATION_ERROR` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» (misma `date`, `startTime` y `endTime`) · `409 VOTING_CLOSED`
 
 ### `POST /proposals/:id/confirm`
 Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan») y solo si está `PROPUESTO` (`409 INVALID_STATE`); se puede confirmar antes o después del plazo. `{ "windowId": "..." }` es opcional:
 - con `windowId`: se confirma esa franja, tenga votos o no (`404 WINDOW_NOT_FOUND` si no es de la propuesta);
-- sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de día y hora más tempranos. Si nadie votó → `409 NO_VOTES`.
+- sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de fecha y hora más tempranas. Si nadie votó → `409 NO_VOTES`.
+- si la franja elegida (con o sin `windowId`) ya empezó → `409 WINDOW_STARTED` «Esa franja ya empezó: replantea la propuesta.»
 
-Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = **la próxima vez que ocurre esa franja** (su día de la semana y hora de inicio) desde el momento de confirmar, y `scheduledDate` (`"YYYY-MM-DD"`) = esa misma fecha en la zona horaria del servidor, para que la app la muestre sin depender de la del teléfono. Si hoy es ese día y la hora aún no llegó, es hoy; si ya pasó, la semana siguiente. Se calcula en la zona horaria del servidor: la variable `TZ` del backend (`America/Lima` en `backend/.env.example`; si falta, la del PC). En producción `TZ` debe fijarse siempre. Desde ese momento no se puede votar. `200 Proposal`
+Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = el instante de inicio de esa franja (su `date` y `startTime` en `America/Lima`, en UTC) y `scheduledDate` (`"YYYY-MM-DD"`) = su `date`, para que la app la muestre sin depender de la zona del teléfono. No depende de la variable `TZ` del servidor. Desde ese momento no se puede votar. `200 Proposal` · `409 WINDOW_STARTED`
 
 ### `POST /proposals/:id/cancel`
 Solo quien gestiona el plan (`403 NOT_MANAGER`). Desde cualquier estado salvo `CANCELADO` (`409 INVALID_STATE`). Pasa a `CANCELADO`. `200 Proposal`

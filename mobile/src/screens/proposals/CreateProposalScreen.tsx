@@ -187,7 +187,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           ) : (
             <>
               {windows.map((w) => (
-                <View key={`${w.dayOfWeek}-${w.startTime}-${w.endTime}`} style={styles.windowRow}>
+                <View key={`${w.date}-${w.startTime}-${w.endTime}`} style={styles.windowRow}>
                   <Text style={[typography.titleSmall, styles.flex, { color: colors.onSurface }]}>{windowLabel(w)}</Text>
                   <Pressable
                     accessibilityRole="button"

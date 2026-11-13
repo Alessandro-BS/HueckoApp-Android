@@ -1,21 +1,74 @@
 import { z } from 'zod';
 
+import { weekSchema } from '../availability/group-availability';
+import { instant, isRealDate, mondayOf, validWeeks } from '../common/zone';
+import { ApiError } from '../middleware/errors';
 import { TIME_REGEX } from '../schedule/time-blocks.schemas';
 
 const time = z.string({ error: 'Formato HH:mm' }).regex(TIME_REGEX, 'Formato HH:mm');
 
-// Franja de una propuesta: mismas reglas de hora que los bloques de horario.
-export const timeWindowInputSchema = z
-  .object({
-    dayOfWeek: z.number({ error: 'Día inválido' }).int('Día inválido').min(1, 'Día inválido').max(7, 'Día inválido'),
-    startTime: time,
-    endTime: time,
-  })
-  .superRefine((w, ctx) => {
-    if (TIME_REGEX.test(w.startTime) && TIME_REGEX.test(w.endTime) && w.endTime <= w.startTime) {
-      ctx.addIssue({ code: 'custom', path: ['endTime'], message: 'La hora de fin debe ser posterior a la de inicio' });
-    }
-  });
+const DATE_MESSAGE = 'Elige una fecha entre esta semana y las próximas 3';
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+// Error de validación fuera de zod, con la misma forma de `details` (cada uno con su `path` y su `message`).
+export const validationError = (path: readonly (string | number)[], message: string) =>
+  new ApiError(400, 'VALIDATION_ERROR', message, [{ code: 'custom', path, message }]);
+
+/**
+ * Franja de una propuesta: una fecha real de las 4 semanas válidas (America/Lima), horas como los bloques de horario
+ * y un inicio posterior a `now`. Depende del reloj: se construye en cada petición.
+ */
+export const timeWindowInputSchema = (now: Date) =>
+  z
+    .object({
+      // Una sola comprobación: mondayOf de algo que no es una fecha real lanzaría un error (y sería un 500).
+      date: z
+        .string({ error: DATE_MESSAGE })
+        .refine((date) => DATE_REGEX.test(date) && isRealDate(date) && validWeeks(now).includes(mondayOf(date)), DATE_MESSAGE),
+      startTime: time,
+      endTime: time,
+    })
+    .superRefine((w, ctx) => {
+      if (!TIME_REGEX.test(w.startTime) || !TIME_REGEX.test(w.endTime)) return;
+      if (w.endTime <= w.startTime) {
+        ctx.addIssue({ code: 'custom', path: ['endTime'], message: 'La hora de fin debe ser posterior a la de inicio' });
+      } else if (DATE_REGEX.test(w.date) && isRealDate(w.date) && instant(w.date, w.startTime).getTime() <= now.getTime()) {
+        ctx.addIssue({ code: 'custom', path: ['startTime'], message: 'La franja ya empezó' });
+      }
+    });
+
+type WindowTimes = { date: string; startTime: string; endTime: string };
+
+const windowKey = (w: WindowTimes) => `${w.date}|${w.startTime}|${w.endTime}`;
+
+// Mismo día y los intervalos se cruzan (una que acaba justo cuando empieza la otra no se solapa).
+export const overlaps = (a: WindowTimes, b: WindowTimes) => a.date === b.date && a.startTime < b.endTime && b.startTime < a.endTime;
+
+/** Lista de franjas de una propuesta: entre `min` y `max`, sin repetidas ni solapadas el mismo día. */
+export const windowsSchema = (now: Date, { min, max }: { min: number; max: number }) => {
+  const countMessage = `Elige entre ${min} y ${max} franjas`;
+  return z
+    .array(timeWindowInputSchema(now), { error: 'Envía una lista de franjas' })
+    .min(min, countMessage)
+    .max(max, countMessage)
+    .superRefine((ws, ctx) => {
+      if (new Set(ws.map(windowKey)).size !== ws.length) {
+        ctx.addIssue({ code: 'custom', message: 'Hay franjas repetidas' });
+      } else if (ws.some((a, i) => ws.some((b, j) => i < j && overlaps(a, b)))) {
+        ctx.addIssue({ code: 'custom', message: 'Hay franjas que se solapan el mismo día' });
+      }
+    });
+};
+
+export const WINDOW_LIMITS = { min: 2, max: 5 };
+
+/** La votación tiene que cerrar antes de que empiece la primera franja: no se vota una opción que ya empezó. */
+export function assertDeadlineBeforeWindows(deadline: string, windows: readonly { date: string; startTime: string }[]): void {
+  const first = Math.min(...windows.map((w) => instant(w.date, w.startTime).getTime()));
+  if (new Date(deadline).getTime() >= first) {
+    throw validationError(['votingDeadline'], 'La votación debe cerrar antes de la primera franja');
+  }
+}
 
 // Fecha y hora ISO 8601 (con Z u offset) posterior a `now` (C1). Depende del reloj: se construye en cada petición.
 export const futureDeadline = (now: Date) =>
@@ -31,23 +84,30 @@ const locationSchema = z
   })
   .refine((l) => (l.latitude === null) === (l.longitude === null), { path: ['latitude'], message: 'Envía latitud y longitud juntas' });
 
-const windowKey = (w: { dayOfWeek: number; startTime: string; endTime: string }) => `${w.dayOfWeek}|${w.startTime}|${w.endTime}`;
-
+// Con `windows` (2 a 5) se usan esas; vacío u omitido, el servidor elige las mejores de `week` (por defecto, esta semana).
 export const createProposalSchema = (now: Date) =>
-  z.object({
-    title: z
-      .string({ error: 'El título no puede estar vacío.' })
-      .trim()
-      .min(1, 'El título no puede estar vacío.')
-      .max(80, 'Máximo 80 caracteres'),
-    location: locationSchema.nullish().transform((l) => l ?? null),
-    votingDeadline: futureDeadline(now),
-    windows: z
-      .array(timeWindowInputSchema, { error: 'Envía una lista de franjas' })
-      .max(10, 'Máximo 10 franjas')
-      .refine((ws) => new Set(ws.map(windowKey)).size === ws.length, 'Hay franjas repetidas')
-      .default([]),
-  });
+  z
+    .object({
+      title: z
+        .string({ error: 'El título no puede estar vacío.' })
+        .trim()
+        .min(1, 'El título no puede estar vacío.')
+        .max(80, 'Máximo 80 caracteres'),
+      location: locationSchema.nullish().transform((l) => l ?? null),
+      votingDeadline: futureDeadline(now),
+      windows: z.preprocess((v) => (Array.isArray(v) && v.length === 0 ? undefined : v), windowsSchema(now, WINDOW_LIMITS).optional()),
+      week: z.unknown().optional(),
+    })
+    // `week` solo cuenta (y solo se valida) cuando el servidor elige las franjas.
+    .transform(({ week, ...body }, ctx) => {
+      if (body.windows) return { ...body, windows: body.windows, week: null };
+      const parsed = weekSchema(now).safeParse(week);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) ctx.issues.push({ code: 'custom', input: week, path: ['week'], message: issue.message });
+        return z.NEVER;
+      }
+      return { ...body, windows: null, week: parsed.data };
+    });
 
 export const voteSchema = z.object({
   windowId: z.string({ error: 'Elige una franja' }).min(1, 'Elige una franja'),

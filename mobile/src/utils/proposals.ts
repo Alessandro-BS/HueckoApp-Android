@@ -27,10 +27,17 @@ export const CRITICALITY_BADGE: Record<Criticality, BadgeStyle> = {
   BAJA: { text: 'Baja', container: colors.surfaceContainerHigh, content: colors.onSurfaceVariant },
 };
 
-type WindowLike = Pick<TimeWindow, 'dayOfWeek' | 'startTime' | 'endTime'>;
+// TODO(franjas-con-fecha Task 7): windowLabel pasa a mostrar la fecha. Mientras tanto, una franja que solo trae `date`
+// (TimeWindowInput) toma el día de la semana de esa fecha.
+type WindowLike = Pick<TimeWindow, 'startTime' | 'endTime'> & ({ dayOfWeek: number } | { date: string });
+const dayOfWindow = (w: WindowLike) => {
+  if ('dayOfWeek' in w) return w.dayOfWeek;
+  const day = new Date(`${w.date}T00:00:00Z`).getUTCDay();
+  return day === 0 ? 7 : day;
+};
 
 /** «Mar · 16:00 - 18:00» en todas las pantallas (quirk 20: un solo formato). */
-export const windowLabel = (w: WindowLike) => `${dayShort(w.dayOfWeek)} · ${w.startTime} - ${w.endTime}`;
+export const windowLabel = (w: WindowLike) => `${dayShort(dayOfWindow(w))} · ${w.startTime} - ${w.endTime}`;
 
 export const voteCountLabel = (n: number) => (n === 1 ? '1 voto' : `${n} votos`);
 

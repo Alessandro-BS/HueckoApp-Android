@@ -8,7 +8,7 @@ import { MOCK_RESPONSES } from '../src/ai/mock-client';
 import { draftCandidates, draftWindows, narrowWindow, numberedWindows, pickWindow, todayLabel } from '../src/ai/plan-context';
 import { draftDeadline } from '../src/ai/plan-ideas';
 import {
-  bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup,
+  bearer, createProposal, DEADLINE, failingAi, fakeAi, fakeAiJson, makeTestApp, NOW, registerUser, setupSeedGroup, win,
 } from './helpers';
 import { addDays } from '../src/common/zone';
 
@@ -338,9 +338,12 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
       title: body.title,
       location: { name: body.placeName, latitude: null, longitude: null },
       votingDeadline: body.votingDeadline,
-      windows: [{ dayOfWeek: body.window.dayOfWeek, startTime: body.window.startTime, endTime: body.window.endTime }],
+      // TODO(franjas-con-fecha Task 6): el borrador aún trae una sola opción; se le suma otra para llegar al mínimo de 2.
+      windows: [{ date: body.window.date, startTime: body.window.startTime, endTime: body.window.endTime }, win(7, '10:00', '11:00')],
     });
-    expect(created.windows).toEqual([expect.objectContaining({ dayOfWeek: 2, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100 })]);
+    expect(created.windows[0]).toEqual(
+      expect.objectContaining({ date: '2026-09-29', dayOfWeek: 2, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100 }),
+    );
   });
 
   it('el borrador recortado también sirve para crear la propuesta', async () => {
@@ -350,9 +353,12 @@ describe('POST /api/groups/:id/ai/proposal-draft', () => {
       title: body.title,
       location: null,
       votingDeadline: body.votingDeadline,
-      windows: [{ dayOfWeek: body.window.dayOfWeek, startTime: body.window.startTime, endTime: body.window.endTime }],
+      // TODO(franjas-con-fecha Task 6): el borrador aún trae una sola opción; se le suma otra para llegar al mínimo de 2.
+      windows: [{ date: body.window.date, startTime: body.window.startTime, endTime: body.window.endTime }, win(7, '10:00', '11:00')],
     });
-    expect(created.windows).toEqual([expect.objectContaining({ dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 })]);
+    expect(created.windows[0]).toEqual(
+      expect.objectContaining({ date: '2026-09-29', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }),
+    );
   });
 });
 

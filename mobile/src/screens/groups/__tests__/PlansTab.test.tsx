@@ -94,7 +94,7 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
     groupId: 'g1',
     groupName: 'Proyecto Integrador',
     prefill: {
-      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
       votingDeadline: null, category: 'DEPORTE',
     },
   });

@@ -17,6 +17,7 @@ import {
   registerUser,
   setupSeedGroup,
   voteFor,
+  win,
   windowOf,
 } from './helpers';
 
@@ -42,24 +43,20 @@ const vote = (p: Proposal, dayOfWeek: number, token: string) => voteFor(app, p.i
 const makeEssential = () =>
   request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true });
 
-// Martes 16–18, jueves 10–12 y viernes 16–18, creada por yo para poder confirmarla.
+// Martes 6/10 16–18, jueves 8/10 10–12 y viernes 9/10 16–18, creada por yo para poder confirmarla.
 const threeWindows = () =>
   createProposal(app, yo.token, group.id, {
     title: 'Repaso antes de la entrega',
     votingDeadline: DEADLINE,
-    windows: [
-      { dayOfWeek: 2, startTime: '16:00', endTime: '18:00' },
-      { dayOfWeek: 4, startTime: '10:00', endTime: '12:00' },
-      { dayOfWeek: 5, startTime: '16:00', endTime: '18:00' },
-    ],
+    windows: [win(2, '16:00', '18:00'), win(4, '10:00', '12:00'), win(5, '16:00', '18:00')],
   });
 
-// Miércoles 11–13, votada por los dos y confirmada por yo.
+// Miércoles 7/10 11–13 (o sábado 10/10), votada por los dos en el miércoles y confirmada por yo.
 async function confirmedPlan(): Promise<Proposal> {
   const p = await createProposal(app, yo.token, group.id, {
     title: 'Reunión de avance del proyecto',
     votingDeadline: DEADLINE,
-    windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00' }],
+    windows: [win(3, '11:00', '13:00'), win(6, '11:00', '13:00')],
   });
   await vote(p, 3, yo.token);
   await vote(p, 3, ana.token);
@@ -86,7 +83,7 @@ async function cancelledPlan(): Promise<Proposal> {
 }
 
 describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
-  it('sin windowId gana la más votada y scheduledAt/scheduledDate son su próxima ocurrencia', async () => {
+  it('sin windowId gana la más votada; scheduledAt = instant(date, startTime) y scheduledDate = date', async () => {
     const p = await threeWindows();
     await vote(p, 4, yo.token);
     await vote(p, 4, ana.token);
@@ -95,8 +92,8 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect(res.body).toMatchObject({
       state: 'CONFIRMADO',
       chosenWindowId: windowOf(p, 4).id,
-      scheduledAt: new Date(2026, 9, 1, 10, 0).toISOString(),
-      scheduledDate: '2026-10-01',
+      scheduledAt: '2026-10-08T15:00:00.000Z', // jueves 8/10 10:00 en Lima
+      scheduledDate: '2026-10-08',
     });
   });
 
@@ -104,27 +101,53 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     const p = await createProposal(app, yo.token, group.id, {
       votingDeadline: DEADLINE,
       windows: [
-        { dayOfWeek: 1, startTime: '10:00', endTime: '12:00' }, // 50 %
-        { dayOfWeek: 5, startTime: '16:00', endTime: '18:00' }, // 100 %
+        win(1, '10:00', '12:00'), // 50 %
+        win(5, '16:00', '18:00'), // 100 %
       ],
     });
     await vote(p, 1, ana.token);
     await vote(p, 5, yo.token);
     const res = await postTo(`${p.id}/confirm`, yo.token);
     expect(res.body.chosenWindowId).toBe(windowOf(p, 5).id);
-    expect(res.body.scheduledAt).toBe(new Date(2026, 9, 2, 16, 0).toISOString());
-    expect(res.body.scheduledDate).toBe('2026-10-02');
+    expect(res.body.scheduledAt).toBe('2026-10-09T21:00:00.000Z');
+    expect(res.body.scheduledDate).toBe('2026-10-09');
   });
 
-  it('con windowId confirma esa franja aunque no tenga votos (hoy mismo si aún no llegó la hora)', async () => {
+  it('empate total: gana la de fecha más temprana, aunque su día de la semana sea mayor', async () => {
+    const p = await createProposal(app, yo.token, group.id, {
+      votingDeadline: DEADLINE,
+      windows: [{ date: '2026-10-13', startTime: '16:00', endTime: '18:00' }, win(5, '16:00', '18:00')],
+    });
+    await vote(p, 2, ana.token);
+    await vote(p, 5, yo.token);
+    const res = await postTo(`${p.id}/confirm`, yo.token);
+    expect(res.body.scheduledDate).toBe('2026-10-09');
+  });
+
+  it('con windowId confirma esa franja aunque no tenga votos', async () => {
     const p = await threeWindows();
     const res = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 2).id });
     expect(res.body).toMatchObject({
       state: 'CONFIRMADO',
       chosenWindowId: windowOf(p, 2).id,
-      scheduledAt: new Date(2026, 8, 29, 16, 0).toISOString(),
-      scheduledDate: '2026-09-29',
+      scheduledAt: '2026-10-06T21:00:00.000Z',
+      scheduledDate: '2026-10-06',
     });
+  });
+
+  it('409 WINDOW_STARTED si la franja elegida ya empezó; las que no empezaron se confirman', async () => {
+    const p = await threeWindows();
+    await vote(p, 2, ana.token);
+    clock.set(new Date('2026-10-06T21:00:00.000Z')); // martes 6/10 16:00 en Lima: justo empieza la del martes
+    const empezada = await postTo(`${p.id}/confirm`, yo.token);
+    expect([empezada.status, empezada.body.error.code, empezada.body.error.message]).toEqual([
+      409, 'WINDOW_STARTED', 'Esa franja ya empezó: replantea la propuesta.',
+    ]);
+    const conId = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 2).id });
+    expect(conId.body.error.code).toBe('WINDOW_STARTED');
+    expect((await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body.state).toBe('PROPUESTO');
+    const jueves = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 4).id });
+    expect([jueves.status, jueves.body.scheduledDate]).toEqual([200, '2026-10-08']);
   });
 
   it('409 NO_VOTES sin votos ni windowId; 404 WINDOW_NOT_FOUND con una franja ajena', async () => {
@@ -297,7 +320,7 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
     expect(res.body).toMatchObject({
       state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
     });
-    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0]);
+    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0, 0]);
     expect(res.body.incidences.every((i: { resolved: boolean }) => i.resolved)).toBe(true);
     expect((await vote(res.body, 3, ana.token)).status).toBe(200);
   });
@@ -335,7 +358,7 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
     expect(res.body).toMatchObject({
       state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
     });
-    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0]);
+    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0, 0]);
     expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
   });
 

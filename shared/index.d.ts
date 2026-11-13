@@ -98,20 +98,25 @@ export type Proposal = {
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
   canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
-  scheduledAt: string | null;      // ISO: próxima vez que ocurre la franja elegida, calculada al confirmar
-  scheduledDate: string | null;    // "YYYY-MM-DD": la misma fecha en la zona horaria del servidor (para mostrarla sin depender de la del teléfono)
+  scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
+  scheduledDate: string | null;    // "YYYY-MM-DD": la fecha de la franja elegida (para mostrarla sin depender de la zona del teléfono)
   incidences: Incidence[];
   createdAt: string;               // ISO; GET /groups/:id/proposals ordena por aquí (más recientes primero)
 };
 
 // Cuerpos de las peticiones de propuestas (docs/api.md, «Propuestas y votación»).
-export type TimeWindowInput = { dayOfWeek: number; startTime: string; endTime: string };
+export type TimeWindowInput = {
+  date: string;                    // "YYYY-MM-DD" en America/Lima, entre esta semana y las próximas 3
+  startTime: string;
+  endTime: string;
+};
 
 export type ProposalInput = {
   title: string;
   location?: Location | null;
-  votingDeadline: string;          // ISO 8601 futura
-  windows?: TimeWindowInput[];     // vacío u omitido: el servidor propone las 3 mejores franjas
+  votingDeadline: string;          // ISO 8601 futura y anterior al inicio de la primera franja
+  windows?: TimeWindowInput[];     // de 2 a 5; vacío u omitido: el servidor propone las 3 mejores franjas de `week`
+  week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); solo se usa sin `windows`; por defecto, esta semana
 };
 
 export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes?: number | null };

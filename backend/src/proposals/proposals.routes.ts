@@ -3,26 +3,27 @@ import { Router } from 'express';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
-import { groupAvailability, windowAvailability } from '../availability/group-availability';
-import { addDays, instant, isoDay, today } from '../common/zone';
+import { groupWeekWindows, windowAvailability } from '../availability/group-availability';
+import { instant } from '../common/zone';
 import { isForeignKeyViolation } from '../db/errors';
 import { groupNotFound, loadGroupForMember } from '../groups/group-access';
 import { groupsRepository } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { proposalsRepository } from './proposals.repository';
-import { confirmSchema, createProposalSchema, incidenceInputSchema, resolveIncidencesSchema, timeWindowInputSchema, voteSchema } from './proposals.schemas';
+import {
+  assertDeadlineBeforeWindows,
+  confirmSchema,
+  createProposalSchema,
+  incidenceInputSchema,
+  overlaps,
+  resolveIncidencesSchema,
+  timeWindowInputSchema,
+  validationError,
+  voteSchema,
+  WINDOW_LIMITS,
+} from './proposals.schemas';
 import { bestWindows, canCancel, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
-
-// TODO(franjas-con-fecha Task 4): las franjas aún llegan como día de la semana. Mientras tanto se guardan con la fecha
-// de la próxima vez que ocurren en Lima (hoy si la hora aún no llegó), la misma regla que usaba confirmar.
-// `dayOfWeek` (1–7) y `startTime` ya vienen validados por zod.
-function nextDateOf(dayOfWeek: number, startTime: string, now: Date): string {
-  const day = today(now);
-  const offset = (dayOfWeek - isoDay(day) + 7) % 7;
-  if (offset === 0 && instant(day, startTime).getTime() <= now.getTime()) return addDays(day, 7);
-  return addDays(day, offset);
-}
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
 function proposalsContext({ db, now }: ResolvedDeps) {
@@ -38,20 +39,25 @@ function proposalsContext({ db, now }: ResolvedDeps) {
     return { proposal, group, me };
   };
 
-  // Datos del cruce del grupo con sus horarios actuales.
-  const matcherInput = async (group: Group) => {
+  // % de cada franja con los horarios actuales del grupo: los recurrentes de su día y los puntuales de su fecha.
+  const withAvailability = async (group: Group, windows: readonly TimeWindowInput[]) => {
     const memberIds = group.members.map((m) => m.id);
-    return {
-      matcherGroup: { memberIds, availabilityThreshold: group.availabilityThreshold },
-      groupBlocks: await blocks.listRecurringByUsers(memberIds),
-    };
+    const dates = windows.map((w) => w.date).sort();
+    const groupBlocks = await blocks.listForUsersInRange(memberIds, dates[0], dates[dates.length - 1]);
+    const matcherGroup = { memberIds, availabilityThreshold: group.availabilityThreshold };
+    return windows.map((w) => ({
+      date: w.date,
+      startTime: w.startTime,
+      endTime: w.endTime,
+      availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, w),
+    }));
   };
 
   const assertVotingOpen = (proposal: Proposal) => {
     if (!isVotingOpen(proposal, now())) throw new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.');
   };
 
-  return { groups, proposals, now, loadForMember, matcherInput, assertVotingOpen };
+  return { groups, proposals, blocks, now, loadForMember, withAvailability, assertVotingOpen };
 }
 
 // Montado en /api/groups detrás de requireAuth (junto a groupsRouter).
@@ -70,24 +76,17 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
     const { group } = await loadGroupForMember(ctx.groups, req.params.id, userId);
     const now = ctx.now();
     const input = createProposalSchema(now).parse(req.body);
-    const { matcherGroup, groupBlocks } = await ctx.matcherInput(group);
-    // Con franjas: el % lo calcula el servidor (G2). Sin franjas: las 3 mejores del cruce del grupo (C5).
-    const windows =
-      input.windows.length > 0
-        ? input.windows.map((w) => ({
-            date: nextDateOf(w.dayOfWeek, w.startTime, now),
-            startTime: w.startTime,
-            endTime: w.endTime,
-            availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, { ...w, date: nextDateOf(w.dayOfWeek, w.startTime, now) }),
-          }))
-        : bestWindows(groupAvailability(matcherGroup, groupBlocks)).map(({ dayOfWeek, startTime, endTime, availabilityPercentage }) => ({
-            date: nextDateOf(dayOfWeek, startTime, now),
-            startTime, endTime, availabilityPercentage,
-          }));
-    // Sin franjas y sin ningún hueco en común no se crea un plan vacío (sin nada que votar).
-    if (windows.length === 0) {
+    // Con franjas: el % lo calcula el servidor (G2). Sin franjas: las 3 mejores de la semana `week` (C5), sin las que ya empezaron.
+    const windows = input.windows
+      ? await ctx.withAvailability(group, input.windows)
+      : bestWindows(await groupWeekWindows(group, ctx.blocks, input.week, now)).map(({ date, startTime, endTime, availabilityPercentage }) => ({
+          date, startTime, endTime, availabilityPercentage,
+        }));
+    // Sin al menos 2 huecos en común no se crea el plan: con menos no hay nada que elegir.
+    if (windows.length < WINDOW_LIMITS.min) {
       throw new ApiError(409, 'NO_COMMON_WINDOWS', 'El grupo no tiene huecos en común esta semana: elige las franjas a mano.');
     }
+    assertDeadlineBeforeWindows(input.votingDeadline, windows);
     // Si el grupo se borró justo ahora (se fue su último miembro), su clave foránea falla: 404 como si no existiera.
     const id = await ctx.proposals
       .create({
@@ -140,20 +139,18 @@ export function proposalsRouter(deps: ResolvedDeps) {
   router.post('/:id/windows', async (req, res) => {
     const userId = getUserId(res);
     const { proposal, group } = await ctx.loadForMember(req.params.id, userId);
-    const input: TimeWindowInput = timeWindowInputSchema.parse(req.body);
+    const input: TimeWindowInput = timeWindowInputSchema(ctx.now()).parse(req.body);
     ctx.assertVotingOpen(proposal);
-    const exists = proposal.windows.some(
-      (w) => w.dayOfWeek === input.dayOfWeek && w.startTime === input.startTime && w.endTime === input.endTime,
-    );
+    const exists = proposal.windows.some((w) => w.date === input.date && w.startTime === input.startTime && w.endTime === input.endTime);
     if (exists) throw new ApiError(409, 'WINDOW_EXISTS', 'Esa franja ya está propuesta.');
-    const { matcherGroup, groupBlocks } = await ctx.matcherInput(group);
-    const date = nextDateOf(input.dayOfWeek, input.startTime, ctx.now());
-    await ctx.proposals.addWindow(proposal.id, {
-      date,
-      startTime: input.startTime,
-      endTime: input.endTime,
-      availabilityPercentage: windowAvailability(matcherGroup, groupBlocks, { ...input, date }),
-    });
+    if (proposal.windows.some((w) => overlaps(w, input))) throw validationError(['startTime'], 'Hay franjas que se solapan el mismo día');
+    if (proposal.windows.length >= WINDOW_LIMITS.max) throw validationError([], `Máximo ${WINDOW_LIMITS.max} franjas`);
+    // Como al crear: no se añade una opción que empiece antes de que cierre la votación.
+    if (instant(input.date, input.startTime).getTime() <= new Date(proposal.votingDeadline).getTime()) {
+      throw validationError(['startTime'], 'La franja debe empezar después del cierre de la votación');
+    }
+    const [window] = await ctx.withAvailability(group, [input]);
+    await ctx.proposals.addWindow(proposal.id, window);
     res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
   });
 
@@ -176,7 +173,11 @@ export function proposalsRouter(deps: ResolvedDeps) {
     const chosen = windowId !== undefined ? proposal.windows.find((w) => w.id === windowId) : pickWinner(proposal.windows);
     if (!chosen && windowId !== undefined) throw new ApiError(404, 'WINDOW_NOT_FOUND', 'Esa franja no existe en esta propuesta.');
     if (!chosen) throw new ApiError(409, 'NO_VOTES', 'Nadie ha votado todavía: elige la franja para confirmar.');
-    const { scheduledAt, scheduledDate } = scheduleFor(chosen.dayOfWeek, chosen.startTime, ctx.now());
+    // Un plan no se confirma para una franja que ya empezó (o pasó): hay que replantearlo con franjas nuevas.
+    if (instant(chosen.date, chosen.startTime).getTime() <= ctx.now().getTime()) {
+      throw new ApiError(409, 'WINDOW_STARTED', 'Esa franja ya empezó: replantea la propuesta.');
+    }
+    const { scheduledAt, scheduledDate } = scheduleFor(chosen.date, chosen.startTime);
     if (!(await ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });

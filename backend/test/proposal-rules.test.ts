@@ -17,13 +17,11 @@ describe('nextOccurrence (C11)', () => {
   });
 });
 
-describe('scheduleFor (C11)', () => {
-  it('devuelve el instante ISO y la fecha local YYYY-MM-DD de la próxima ocurrencia', () => {
-    expect(scheduleFor(3, '11:00', NOW)).toEqual({
-      scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString(),
-      scheduledDate: '2026-09-30',
-    });
-    expect(scheduleFor(2, '09:00', NOW).scheduledDate).toBe('2026-10-06');
+describe('scheduleFor', () => {
+  it('el instante de la franja en Lima y su misma fecha, sin «próxima ocurrencia»', () => {
+    expect(scheduleFor('2026-09-30', '11:00')).toEqual({ scheduledAt: '2026-09-30T16:00:00.000Z', scheduledDate: '2026-09-30' });
+    // 20:00 en Lima ya es el día siguiente en UTC: la fecha guardada no se corre.
+    expect(scheduleFor('2026-10-06', '20:00')).toEqual({ scheduledAt: '2026-10-07T01:00:00.000Z', scheduledDate: '2026-10-06' });
   });
 });
 
@@ -42,13 +40,21 @@ describe('pickWinner (C2)', () => {
     ).toBe('b');
   });
 
-  it('empate total: el día y la hora más tempranos', () => {
+  it('empate total: la fecha y la hora más tempranas', () => {
     const windows = [
-      w('a', { voteCount: 1, dayOfWeek: 4 }),
-      w('b', { voteCount: 1, dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }),
-      w('c', { voteCount: 1, dayOfWeek: 2, startTime: '09:00', endTime: '11:00' }),
+      w('a', { voteCount: 1, date: '2026-10-01', dayOfWeek: 4 }),
+      w('b', { voteCount: 1, date: '2026-09-29', dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }),
+      w('c', { voteCount: 1, date: '2026-09-29', dayOfWeek: 2, startTime: '09:00', endTime: '11:00' }),
     ];
     expect(pickWinner(windows)?.id).toBe('c');
+  });
+
+  it('empate total: desempata por fecha más temprana, no por día de la semana', () => {
+    const windows = [
+      w('lunes-siguiente', { voteCount: 1, date: '2026-10-05', dayOfWeek: 1 }),
+      w('viernes', { voteCount: 1, date: '2026-10-02', dayOfWeek: 5 }),
+    ];
+    expect(pickWinner(windows)?.id).toBe('viernes');
   });
 
   it('sin votos → null', () => {
@@ -57,8 +63,9 @@ describe('pickWinner (C2)', () => {
   });
 });
 
+// Semana del lunes 16/11: la fecha sale del día de la semana.
 const mw = (dayOfWeek: number, startTime: string, endTime: string, availabilityPercentage = 100): MatchWindow => ({
-  date: '2026-11-16', dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers: 2,
+  date: `2026-11-${15 + dayOfWeek}`, dayOfWeek, startTime, endTime, availabilityPercentage, freeMembers: 2,
 });
 
 // Semana completa del ejemplo E3 (domain spec §1.2).
@@ -81,6 +88,12 @@ describe('bestWindows (C5)', () => {
     const input = [mw(1, '12:00', '20:00'), mw(5, '11:00', '20:00')];
     expect(bestWindows(input)).toEqual([mw(5, '11:00', '20:00'), mw(1, '12:00', '20:00')]);
     expect(input).toEqual([mw(1, '12:00', '20:00'), mw(5, '11:00', '20:00')]);
+  });
+
+  it('empate: la fecha más temprana, aunque su día de la semana sea mayor', () => {
+    const domingo = { ...mw(7, '10:00', '12:00'), date: '2026-11-22' };
+    const lunesSiguiente = { ...mw(1, '10:00', '12:00'), date: '2026-11-23' };
+    expect(bestWindows([lunesSiguiente, domingo], 1)).toEqual([domingo]);
   });
 });
 

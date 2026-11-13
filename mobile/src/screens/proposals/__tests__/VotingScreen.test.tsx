@@ -5,6 +5,7 @@ import * as proposalsApi from '../../../api/proposals';
 import { makeProposal, makeWindow } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { VotingScreen } from '../VotingScreen';
+import { nextDateOf } from '../WindowEditor';
 
 jest.mock('../../../api/proposals');
 jest.mock('../../../hooks/useRefreshOnFocus', () => ({ useRefreshOnFocus: jest.fn() }));
@@ -90,7 +91,8 @@ it('agregar franja: valida HH:mm y el orden (quirk 13) y la envía', async () =>
   await fireEvent(screen.getByLabelText('Hora de fin (HH:mm)'), 'submitEditing');
 
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Franja horaria agregada.'));
-  expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { dayOfWeek: 5, startTime: '18:00', endTime: '19:30' });
+  // TODO(franjas-con-fecha Task 8): el editor aún envía la próxima fecha del día elegido.
+  expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { date: nextDateOf(5, '18:00'), startTime: '18:00', endTime: '19:30' });
   expect(screen.getByText('Vie · 18:00 - 19:30')).toBeTruthy();
   expect(screen.queryByText('Selecciona el día y la franja horaria que propones.')).toBeNull();
 });

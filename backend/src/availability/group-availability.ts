@@ -56,18 +56,19 @@ export function weekAvailability(group: MatcherGroup, blocks: readonly TimeBlock
 
 const WEEK_MESSAGE = 'Elige una semana entre esta y las próximas 3';
 
-/** `?week=YYYY-MM-DD`: por defecto la semana actual; cualquier día se normaliza a su lunes; solo las 4 semanas válidas. */
-export function parseWeek(value: unknown, now: Date): string {
-  const schema = z
-    .string()
+/** `week` (`YYYY-MM-DD`): por defecto la semana actual; cualquier día se normaliza a su lunes; solo las 4 semanas válidas. */
+export const weekSchema = (now: Date) =>
+  z
+    .string({ error: WEEK_MESSAGE })
     .regex(/^\d{4}-\d{2}-\d{2}$/, WEEK_MESSAGE)
     .refine(isRealDate, WEEK_MESSAGE)
     .transform(mondayOf)
     .refine((monday) => validWeeks(now).includes(monday), WEEK_MESSAGE)
     .optional()
     .default(() => mondayOf(today(now)));
-  return schema.parse(value);
-}
+
+/** `?week=YYYY-MM-DD` de GET /groups/:id/availability (ver weekSchema). */
+export const parseWeek = (value: unknown, now: Date): string => weekSchema(now).parse(value);
 
 /** Huecos en común de un grupo en la semana `week` (lo que devuelve GET /groups/:id/availability), con los horarios de sus miembros. */
 export async function groupWeekWindows(

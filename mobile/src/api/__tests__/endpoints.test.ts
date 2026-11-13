@@ -31,7 +31,7 @@ const block: TimeBlockInput = {
 };
 
 const proposalInput = { title: 'Repaso', votingDeadline: '2026-10-03T01:00:00.000Z', windows: [] };
-const windowInput = { dayOfWeek: 5, startTime: '18:00', endTime: '19:30' };
+const windowInput = { date: '2026-10-02', startTime: '18:00', endTime: '19:30' };
 const incidenceInput = { type: 'TARDANZA' as const, reason: 'Tráfico', delayMinutes: 20 };
 
 // [método, url, llamada, cuerpo esperado]: el título de cada test se lee como "GET /groups".

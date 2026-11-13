@@ -8,6 +8,7 @@ import { makeDraft, makeProposal } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { features } from '../../../config';
 import { CreateProposalScreen } from '../CreateProposalScreen';
+import { nextDateOf } from '../WindowEditor';
 
 jest.mock('../../../api/proposals');
 jest.mock('../../../api/ai');
@@ -203,8 +204,9 @@ it('franjas elegidas a mano: valida las horas, no las repite y las envía', asyn
   await fireEvent.press(screen.getByText('Crear propuesta'));
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
   expect(mocked.createProposal.mock.calls[0][1].windows).toEqual([
-    { dayOfWeek: 1, startTime: '09:00', endTime: '11:00' },
-    { dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
+    // TODO(franjas-con-fecha Task 8): el editor aún envía la próxima fecha del día elegido.
+    { date: nextDateOf(1, '09:00'), startTime: '09:00', endTime: '11:00' },
+    { date: nextDateOf(5, '09:00'), startTime: '09:00', endTime: '11:00' },
   ]);
 });
 
@@ -222,7 +224,7 @@ const routeWith = (prefill: object) => ({ ...route, params: { ...route.params, p
 
 it('abre rellenada con una idea de la IA y la envía con su franja', async () => {
   const prefill = {
-    title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+    title: 'Partido de fulbito', placeName: 'Losa del campus', window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
     votingDeadline: null, category: 'DEPORTE',
   };
   await render(<CreateProposalScreen navigation={navigation} route={routeWith(prefill)} />);
@@ -238,7 +240,7 @@ it('abre rellenada con una idea de la IA y la envía con su franja', async () =>
     title: 'Partido de fulbito',
     location: { name: 'Losa del campus', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 9, 2, 20, 0).toISOString(),
-    windows: [{ dayOfWeek: 4, startTime: '08:00', endTime: '20:00' }],
+    windows: [{ date: '2026-11-19', startTime: '08:00', endTime: '20:00' }],
   });
 });
 
@@ -262,7 +264,7 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
     title: 'Estudiar para el parcial',
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
-    windows: [{ dayOfWeek: 2, startTime: '08:00', endTime: '20:00' }],
+    windows: [{ date: '2026-11-17', startTime: '08:00', endTime: '20:00' }],
   });
 });
 
@@ -281,9 +283,9 @@ it('un borrador con varias opciones las carga todas en «Elegir yo las franjas»
   await fireEvent.press(screen.getByText('Crear propuesta'));
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
   expect(mocked.createProposal.mock.calls[0][1].windows).toEqual([
-    { dayOfWeek: 5, startTime: '15:00', endTime: '17:00' },
-    { dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
-    { dayOfWeek: 5, startTime: '13:00', endTime: '15:00' },
+    { date: '2026-11-20', startTime: '15:00', endTime: '17:00' },
+    { date: '2026-11-20', startTime: '09:00', endTime: '11:00' },
+    { date: '2026-11-20', startTime: '13:00', endTime: '15:00' },
   ]);
 });
 
@@ -338,7 +340,7 @@ it('avisa en «Franjas» solo si la IA no encontró hueco (control positivo y ne
   expect(screen.getByText(NO_WINDOW_HINT)).toBeTruthy();
   await unmount();
 
-  const withWindow = { ...base, window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' } };
+  const withWindow = { ...base, window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' } };
   const second = await render(<CreateProposalScreen navigation={navigation} route={routeWith(withWindow)} />);
   expect(screen.queryByText(NO_WINDOW_HINT)).toBeNull();
   await second.unmount();

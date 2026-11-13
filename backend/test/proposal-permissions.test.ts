@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../src/db/db';
 import { canManageProposal, proposalManagerId } from '../src/proposals/permissions';
-import { bearer, createGroup, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, voteFor, windowOf } from './helpers';
+import { bearer, createGroup, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, voteFor, win, windowOf } from './helpers';
 
 describe('canManageProposal (D1)', () => {
   const owner = { id: 'o', role: 'OWNER' as const };
@@ -54,7 +54,7 @@ describe('canManage en la API', () => {
   const canManage = async (proposalId: string, token: string): Promise<boolean> =>
     (await request(app).get(`/api/proposals/${proposalId}`).set(bearer(token))).body.canManage;
   const planBy = (token: string) =>
-    createProposal(app, token, group.id, { votingDeadline: DEADLINE, windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }] });
+    createProposal(app, token, group.id, { votingDeadline: DEADLINE, windows: [win(2, '16:00', '18:00'), win(4, '16:00', '18:00')] });
   const post = (path: string, token: string, body: object = {}) =>
     request(app).post(`/api/proposals/${path}`).set(bearer(token)).send(body);
 
