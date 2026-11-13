@@ -18,6 +18,7 @@ import { attendanceLabel, BLOCK_BADGE, greetingLine, groupMatchLabel, groupSlotL
 import { blocksForDay, dayShort, isoDayOf } from '../../utils/days';
 import { deadlineLabel, isVotingOpen, scheduleLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
+import { closesInLabel } from '../../utils/zone';
 import { CreateGroupDialog } from '../groups/GroupDialogs';
 
 type MetricProps = { icon: IconName; value: string; label: string; caption: string; onPress: () => void };
@@ -33,24 +34,46 @@ function MetricCard({ icon, value, label, caption, onPress }: MetricProps) {
   );
 }
 
-// TODO(votacion-expres Task 8): alerta provisional. Ya no se decide desde Inicio (se retiró el «resolver»): solo
-// avisa y lleva al plan, donde el grupo vota. Task 8 la reemplaza por la alerta de los tres tipos.
-const ALERT_TITLE: Record<ExpressAlert['kind'], string> = {
-  VOTACION: 'Votación exprés',
-  RECOORDINACION: 'Plan en recoordinación',
-  AVISO: 'Aviso de imprevisto',
-};
+// Alerta de Inicio según el tipo: votación exprés abierta, plan que el grupo mandó a reagendar o aviso de imprevisto.
+// Ninguna decide nada aquí: «Votar» y «Proponer franjas» abren el plan, donde están la votación y la hoja de franjas.
+function alertTexts(alert: ExpressAlert, now: Date) {
+  switch (alert.kind) {
+    case 'VOTACION':
+      return {
+        label: `Votación exprés: ${alert.who} no puede ir`,
+        headline: `«${alert.planTitle}» · ${alert.groupName}`,
+        closes: alert.expiresAt ? closesInLabel(alert.expiresAt, now) : null,
+        action: 'Votar',
+        icon: 'how-to-vote' as IconName,
+      };
+    case 'RECOORDINACION':
+      return {
+        label: 'El grupo decidió reagendar',
+        headline: `${alert.who} no puede ir a «${alert.planTitle}»`,
+        closes: null,
+        action: alert.canResolve ? 'Proponer franjas' : null,
+        icon: 'event' as IconName,
+      };
+    default:
+      return {
+        label: 'Aviso de imprevisto',
+        headline: `${alert.who} reportó un imprevisto en «${alert.planTitle}»`,
+        closes: null,
+        action: 'Ver plan',
+        icon: 'event' as IconName,
+      };
+  }
+}
 
-function ExpressAlertCard({ alert, onOpen }: { alert: ExpressAlert; onOpen: () => void }) {
-  const headline = alert.kind === 'AVISO'
-    ? `${alert.who} reportó un imprevisto en «${alert.planTitle}»`
-    : `${alert.who} no podrá asistir a «${alert.planTitle}»`;
+function ExpressAlertCard({ alert, now, onOpen }: { alert: ExpressAlert; now: Date; onOpen: () => void }) {
+  const texts = alertTexts(alert, now);
   return (
     <View style={styles.alert}>
-      <Text style={[typography.labelMedium, styles.onWarning]}>{ALERT_TITLE[alert.kind]}</Text>
-      <Text style={[typography.titleMedium, styles.alertHeadline]}>{headline}</Text>
+      <Text style={[typography.labelMedium, styles.onWarning]}>{texts.label}</Text>
+      <Text style={[typography.titleMedium, styles.alertHeadline]}>{texts.headline}</Text>
+      {texts.closes ? <Text style={[typography.labelMedium, styles.onWarning, styles.alertReason]}>{texts.closes}</Text> : null}
       <Text style={[typography.bodySmall, styles.onWarning, styles.alertReason]}>{alert.reason}</Text>
-      <PrimaryButton title="Ver plan" icon="event" style={styles.alertButton} onPress={onOpen} />
+      {texts.action ? <PrimaryButton title={texts.action} icon={texts.icon} style={styles.alertButton} onPress={onOpen} /> : null}
     </View>
   );
 }
@@ -161,6 +184,7 @@ export function DashboardScreen({ navigation }: TabScreen<'Dashboard'>) {
               {dashboard.expressAlert ? (
                 <ExpressAlertCard
                   alert={dashboard.expressAlert}
+                  now={now}
                   onOpen={() => navigation.navigate('PlanDetail', { proposalId: dashboard.expressAlert!.proposalId })}
                 />
               ) : null}

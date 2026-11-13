@@ -54,7 +54,7 @@ it('pinta los valores de la semilla (domain spec §2.2, UI spec §2.3)', async (
   expect(await screen.findByText('Buenos días, Usuario')).toBeTruthy();
   expect(screen.getByText('Martes, 29 de septiembre')).toBeTruthy();
   expect(screen.getByText('Esto es lo que pasa hoy en tus grupos y horarios.')).toBeTruthy();
-  // Alerta (G5, aviso): lleva al plan. TODO(votacion-expres Task 8): la alerta nueva distingue los tres tipos.
+  // Alerta (G5, aviso): lleva al plan.
   expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
   expect(screen.getByText('Ana reportó un imprevisto en «Reunión de avance del proyecto»')).toBeTruthy();
   expect(screen.getByText('Ver plan')).toBeTruthy();
@@ -181,11 +181,43 @@ it('las tarjetas y accesos navegan a Grupos, Horario, el plan y el grupo', async
   expect(navigation.navigate).toHaveBeenLastCalledWith('GroupDetail', { groupId: 'g1', name: 'Proyecto Integrador' });
 });
 
-// TODO(votacion-expres Task 8): la alerta nueva distingue VOTACION / RECOORDINACION / AVISO.
-it('«Ver plan» en la alerta abre el plan', async () => {
+it('alerta AVISO: «Ver plan» abre el plan', async () => {
   await renderScreen();
   await fireEvent.press(await screen.findByText('Ver plan'));
   expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta VOTACION: quién no puede ir, cuánto falta y «Votar» abre el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
+  expect(screen.getByText('Cierra en 42 min')).toBeTruthy();
+  expect(screen.getByText('Cruce con un examen de laboratorio a última hora.')).toBeTruthy();
+  expect(screen.queryByText('Ver plan')).toBeNull();
+  await fireEvent.press(screen.getByText('Votar'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta RECOORDINACION: «Proponer franjas» solo si puede gestionar el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(makeDashboard({ expressAlert: { ...base, kind: 'RECOORDINACION', canResolve: true } }));
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió reagendar')).toBeTruthy();
+  expect(screen.getByText('Ana no puede ir a «Reunión de avance del proyecto»')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Proponer franjas'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta RECOORDINACION sin permiso de gestión: solo informa, sin botón', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(makeDashboard({ expressAlert: { ...base, kind: 'RECOORDINACION', canResolve: false } }));
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió reagendar')).toBeTruthy();
+  expect(screen.queryByText('Proponer franjas')).toBeNull();
+  expect(screen.queryByText('Votar')).toBeNull();
 });
 
 it('si la primera carga falla muestra el error con «Reintentar»', async () => {
