@@ -235,6 +235,7 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
         delayMinutes: null,
         criticality: 'MEDIA',
         resolved: false,
+        criticalReason: null,
         createdAt: NOW.toISOString(),
       },
     ]);

@@ -19,7 +19,7 @@ const win = (id: string, dayOfWeek: number, startTime: string, endTime: string, 
 });
 const incidence = (over: Partial<Incidence> = {}): Incidence => ({
   id: 'inc_1', user: ana, type: 'IMPREVISTO', reason: 'Cruce con un examen de laboratorio a última hora.',
-  delayMinutes: null, criticality: 'MEDIA', resolved: false, createdAt: NOW.toISOString(), ...over,
+  delayMinutes: null, criticality: 'MEDIA', resolved: false, criticalReason: null, createdAt: NOW.toISOString(), ...over,
 });
 
 // prop_1 y prop_2 con los porcentajes fijos de la semilla Kotlin (w_23 = 50 %, B15).
@@ -28,7 +28,7 @@ const prop1 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   location: { name: 'Biblioteca central', latitude: null, longitude: null }, createdBy: test,
   votingDeadline: new Date(2026, 8, 28, 10, 0).toISOString(), state: 'CONFIRMADO',
   windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], myVoteWindowId: 'w_1', canManage: true, chosenWindowId: 'w_1',
-  scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString(), scheduledDate: '2026-09-30', incidences: [incidence()],
+  scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString(), scheduledDate: '2026-09-30', incidences: [incidence()], expressVote: null,
   createdAt: new Date(2026, 8, 27, 10, 0).toISOString(), ...over,
 });
 const prop2 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
@@ -36,7 +36,7 @@ const prop2 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   location: { name: 'Google Meet', latitude: null, longitude: null }, createdBy: ana,
   votingDeadline: new Date(2026, 8, 29, 20, 0).toISOString(), state: 'PROPUESTO',
   windows: [win('w_21', 2, '16:00', '18:00', 100, 1), win('w_22', 4, '10:00', '12:00', 100, 0), win('w_23', 5, '16:00', '18:00', 50, 0)],
-  myVoteWindowId: null, canManage: false, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [],
+  myVoteWindowId: null, canManage: false, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [], expressVote: null,
   createdAt: new Date(2026, 8, 29, 9, 0).toISOString(), ...over,
 });
 

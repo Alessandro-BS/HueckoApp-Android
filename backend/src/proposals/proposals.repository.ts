@@ -117,6 +117,7 @@ const toIncidence = (r: IncidenceRow): Incidence => ({
   delayMinutes: r.delay_minutes,
   criticality: r.criticality,
   resolved: r.resolved,
+  criticalReason: null, // TODO(votacion-expres Task 2): hidratar desde la base
   createdAt: r.created_at,
 });
 
@@ -190,6 +191,7 @@ export function proposalsRepository(db: Db) {
       scheduledAt: row.scheduled_at,
       scheduledDate: row.scheduled_date,
       incidences: incidences.get(row.id) ?? [],
+      expressVote: null, // TODO(votacion-expres Task 2): hidratar
       createdAt: row.created_at,
     }));
   };

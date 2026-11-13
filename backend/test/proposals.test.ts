@@ -78,6 +78,7 @@ describe('POST /api/groups/:id/proposals', () => {
       scheduledAt: null,
       scheduledDate: null,
       incidences: [],
+      expressVote: null,
       createdAt: NOW.toISOString(),
     });
   });

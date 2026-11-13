@@ -83,7 +83,30 @@ export type Incidence = {
   delayMinutes: number | null;
   criticality: Criticality;
   resolved: boolean;
+  criticalReason: string | null;   // por qué la incidencia es crítica (abre votación exprés); null si no lo es
   createdAt: string;
+};
+
+export type ExpressOption = 'CANCELAR' | 'REAGENDAR' | 'MANTENER';
+
+// Votación exprés grupal: una falta crítica en un plan confirmado abre una votación corta.
+export type ExpressVote = {
+  id: string;
+  status: 'ABIERTA' | 'CERRADA';
+  reportedBy: User;
+  reason: string;
+  criticalReason: string;
+  openedAt: string;
+  expiresAt: string;
+  closedAt: string | null;
+  counts: Record<ExpressOption, number>;
+  myVote: ExpressOption | null;
+  canVote: boolean;
+  eligibleVoters: number;
+  quorum: number;
+  result: ExpressOption | null;
+  resultByDefault: boolean | null;
+  recommendation: { option: ExpressOption; reason: string } | null;
 };
 
 export type Proposal = {
@@ -101,6 +124,7 @@ export type Proposal = {
   scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
   scheduledDate: string | null;    // "YYYY-MM-DD": la fecha de la franja elegida (para mostrarla sin depender de la zona del teléfono)
   incidences: Incidence[];
+  expressVote: ExpressVote | null; // la votación exprés más reciente del plan (abierta o cerrada), si hay
   createdAt: string;               // ISO; GET /groups/:id/proposals ordena por aquí (más recientes primero)
 };
 

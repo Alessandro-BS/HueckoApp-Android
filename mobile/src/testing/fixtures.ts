@@ -32,7 +32,7 @@ export const makeProposal = (over: Partial<Proposal> = {}): Proposal => ({
   chosenWindowId: null,
   scheduledAt: null,
   scheduledDate: null,
-  incidences: [],
+  incidences: [], expressVote: null,
   createdAt: new Date(2026, 8, 29, 9, 0).toISOString(),
   ...over,
 });
@@ -54,7 +54,7 @@ export const makeConfirmed = (over: Partial<Proposal> = {}): Proposal =>
     incidences: [
       {
         id: 'inc_1', user: ANA, type: 'IMPREVISTO', reason: 'Cruce con un examen de laboratorio a última hora.',
-        delayMinutes: null, criticality: 'MEDIA', resolved: false, createdAt: new Date(2026, 8, 29, 9, 0).toISOString(),
+        delayMinutes: null, criticality: 'MEDIA', resolved: false, criticalReason: null, createdAt: new Date(2026, 8, 29, 9, 0).toISOString(),
       },
     ],
     createdAt: new Date(2026, 8, 27, 10, 0).toISOString(),
