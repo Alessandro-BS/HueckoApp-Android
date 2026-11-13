@@ -238,4 +238,10 @@ export const migrations: string[] = [
   `ALTER TABLE ai_calls DROP CONSTRAINT ai_calls_task_check;
    ALTER TABLE ai_calls ADD CONSTRAINT ai_calls_task_check
      CHECK (task IN ('schedule-ocr', 'proposal-draft', 'plan-suggestions', 'voting-summary', 'express-recommendation'));`,
+
+  // 10 — Varios organizadores por grupo: el rol OWNER pasa a llamarse ORGANIZER. El CHECK de `role` (inline en la
+  // migración 2, así que Postgres lo llamó group_members_role_check) se rehace con el valor nuevo.
+  `ALTER TABLE group_members DROP CONSTRAINT group_members_role_check;
+   UPDATE group_members SET role = 'ORGANIZER' WHERE role = 'OWNER';
+   ALTER TABLE group_members ADD CONSTRAINT group_members_role_check CHECK (role IN ('ORGANIZER', 'MEMBER'));`,
 ];

@@ -25,7 +25,7 @@ beforeEach(() => {
 it('muestra el grupo, sus miembros y sus propuestas', async () => {
   await renderScreen();
   expect(await screen.findByText('Código PROY2026 · 2 miembros · umbral 80 %')).toBeTruthy();
-  expect(screen.getByText('Administra: Usuario de Prueba')).toBeTruthy();
+  expect(screen.getByText('Organiza: Usuario de Prueba')).toBeTruthy();
   expect(screen.getByText('Imprescindible')).toBeTruthy();
   expect(screen.getByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.getByText('En votación')).toBeTruthy();

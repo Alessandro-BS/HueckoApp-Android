@@ -15,7 +15,7 @@ type Props = {
 };
 
 export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }: Props) {
-  const isOwner = group.members.some((m) => m.id === currentUserId && m.role === 'OWNER');
+  const isOrganizer = group.members.some((m) => m.id === currentUserId && m.role === 'ORGANIZER');
   const [leaving, setLeaving] = useState(false);
 
   const toggle = async (member: GroupMember, value: boolean) => {
@@ -46,7 +46,7 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }:
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      {isOwner ? (
+      {isOrganizer ? (
         <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
           Marca como imprescindibles a quienes deben estar sí o sí: si uno falta a un plan, el plan se vuelve a coordinar.
         </Text>
@@ -59,10 +59,10 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }:
               {member.id === currentUserId ? `${member.name} (tú)` : member.name}
             </Text>
             <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>{member.email}</Text>
-            {member.role === 'OWNER' || member.isEssential ? (
+            {member.role === 'ORGANIZER' || member.isEssential ? (
               <View style={styles.badges}>
-                {member.role === 'OWNER' ? (
-                  <Badge text="Administrador" containerColor={colors.primaryContainer} contentColor={colors.onPrimaryContainer} />
+                {member.role === 'ORGANIZER' ? (
+                  <Badge text="Organizador" containerColor={colors.primaryContainer} contentColor={colors.onPrimaryContainer} />
                 ) : null}
                 {member.isEssential ? (
                   <Badge text="Imprescindible" containerColor={colors.tertiaryContainer} contentColor={colors.onTertiaryContainer} />
@@ -70,7 +70,7 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }:
               </View>
             ) : null}
           </View>
-          {isOwner ? (
+          {isOrganizer ? (
             <Switch
               accessibilityLabel={`Imprescindible: ${member.name}`}
               value={member.isEssential}

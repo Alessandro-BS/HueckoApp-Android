@@ -30,7 +30,7 @@ export type TimeBlock = {
 // Cuerpo de POST /me/time-blocks (y de cada elemento de /bulk): el servidor pone id y userId.
 export type TimeBlockInput = Omit<TimeBlock, 'id' | 'userId'>;
 
-export type GroupMember = User & { role: 'OWNER' | 'MEMBER'; isEssential: boolean };
+export type GroupMember = User & { role: 'ORGANIZER' | 'MEMBER'; isEssential: boolean };
 
 export type GroupSummary = {
   id: string;
@@ -290,7 +290,7 @@ export type AdminGroupSummary = {
   description: string;
   memberCount: number;
   proposalCount: number;
-  owner: User | null;              // OWNER actual; null si el grupo no tiene miembros
+  owner: User | null;              // organizador actual; null si el grupo no tiene miembros
   createdAt: string;
 };
 

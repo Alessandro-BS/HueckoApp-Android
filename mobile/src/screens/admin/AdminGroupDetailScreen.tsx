@@ -75,7 +75,7 @@ export function AdminGroupDetailScreen({ navigation, route }: AppStackScreen<'Ad
             {`Código ${group.inviteCode} · ${memberCountLabel(group.memberCount)} · umbral ${group.availabilityThreshold} %`}
           </Text>
           <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
-            {group.owner ? `Administra: ${group.owner.name}` : 'Sin administrador'}
+            {group.owner ? `Organiza: ${group.owner.name}` : 'Sin organizador'}
           </Text>
         </View>
 
@@ -88,7 +88,7 @@ export function AdminGroupDetailScreen({ navigation, route }: AppStackScreen<'Ad
               <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>{m.email}</Text>
             </View>
             <Text style={[typography.labelSmall, { color: colors.onSurfaceVariant }]}>
-              {m.role === 'OWNER' ? 'Administra' : m.isEssential ? 'Imprescindible' : 'Miembro'}
+              {m.role === 'ORGANIZER' ? 'Organiza' : m.isEssential ? 'Imprescindible' : 'Miembro'}
             </Text>
           </View>
         ))}

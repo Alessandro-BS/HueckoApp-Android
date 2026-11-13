@@ -214,7 +214,7 @@ describe('esquema: grupos', () => {
     const insertGroup = (id: string) => db.query("INSERT INTO groups (id, name, invite_code) VALUES ($1, 'Grupo', 'PROY2026')", [id]);
     await insertGroup('g1');
     await expect(insertGroup('g2')).rejects.toMatchObject({ code: '23505', constraint: 'groups_invite_code_key' });
-    await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ('g1', 'u1', 'OWNER')");
+    await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ('g1', 'u1', 'ORGANIZER')");
     await failsWith(db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ('g1', 'u1', 'MEMBER')"), '23505');
     expect(await db.one("SELECT is_essential FROM group_members WHERE group_id = 'g1'")).toEqual({ is_essential: false });
     await db.query("DELETE FROM groups WHERE id = 'g1'");
@@ -412,5 +412,27 @@ describe('migración 9: ai_calls admite la recomendación exprés', () => {
     await insertCall(db, 'express-recommendation');
     await failsWith(insertCall(db, 'otra-tarea'), '23514');
     expect(await count(db, 'ai_calls')).toBe(2);
+  });
+});
+
+describe('migración 10: el rol OWNER pasa a llamarse ORGANIZER', () => {
+  const insertMember = (db: Db, userId: string, role: string) =>
+    db.query('INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)', ['g1', userId, role]);
+
+  it('convierte los OWNER existentes, conserva a los MEMBER y el CHECK solo admite el nombre nuevo', async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 9));
+    await db.exec(`
+      INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x'), ('u2', 'Beto', 'beto@correo.com', 'x'), ('u3', 'Cami', 'cami@correo.com', 'x');
+      INSERT INTO groups (id, name, invite_code) VALUES ('g1', 'Grupo', 'ABCDEFGH');
+    `);
+    await insertMember(db, 'u1', 'OWNER');
+    await insertMember(db, 'u2', 'MEMBER');
+    await migrate(db);
+    const rows = await db.query<{ user_id: string; role: string }>('SELECT user_id, role FROM group_members ORDER BY user_id');
+    expect(rows.rows.map((r) => [r.user_id, r.role])).toEqual([['u1', 'ORGANIZER'], ['u2', 'MEMBER']]);
+    await failsWith(insertMember(db, 'u3', 'OWNER'), '23514');
+    await insertMember(db, 'u3', 'ORGANIZER');
+    expect(await count(db, 'group_members')).toBe(3);
   });
 });

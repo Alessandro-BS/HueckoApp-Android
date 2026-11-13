@@ -93,7 +93,7 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
         for (let attempt = 1; !(await insertIfCodeFree(id, generateCode(), input)); attempt++) {
           if (attempt >= MAX_CODE_ATTEMPTS) throw new Error('No se pudo generar un código de invitación único');
         }
-        await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'OWNER')", [id, ownerId]);
+        await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'ORGANIZER')", [id, ownerId]);
       });
       return (await findById(id))!;
     },
@@ -122,7 +122,7 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
       await db.query('UPDATE group_members SET is_essential = $1 WHERE group_id = $2 AND user_id = $3', [isEssential, groupId, userId]);
     },
 
-    // Salir del grupo. Si no queda nadie, el grupo se borra; si se fue el último OWNER,
+    // Salir del grupo. Si no queda nadie, el grupo se borra; si se fue el último organizador,
     // pasa a serlo quien lleva más tiempo (domain spec C6).
     leave(groupId: string, userId: string): Promise<void> {
       return db.transaction(async () => {
@@ -130,16 +130,16 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
         // (si no, las dos podrían verse «acompañadas» y dejar un grupo sin nadie).
         await db.query('SELECT id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
         await db.query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
-        const { remaining, owners } = (await db.one<{ remaining: number; owners: number }>(
-          `SELECT COUNT(*) AS remaining, COUNT(*) FILTER (WHERE role = 'OWNER') AS owners
+        const { remaining, organizers } = (await db.one<{ remaining: number; organizers: number }>(
+          `SELECT COUNT(*) AS remaining, COUNT(*) FILTER (WHERE role = 'ORGANIZER') AS organizers
            FROM group_members WHERE group_id = $1`,
           [groupId],
         ))!;
         if (remaining === 0) {
           await db.query('DELETE FROM groups WHERE id = $1', [groupId]);
-        } else if (owners === 0) {
+        } else if (organizers === 0) {
           await db.query(
-            `UPDATE group_members SET role = 'OWNER'
+            `UPDATE group_members SET role = 'ORGANIZER'
              WHERE group_id = $1 AND user_id = (
                SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY joined_at, seq LIMIT 1
              )`,

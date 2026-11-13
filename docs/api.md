@@ -32,7 +32,7 @@ Todos los errores tienen la misma forma:
 | 400 | Subida del OCR: `IMAGE_REQUIRED` (falta la imagen), `INVALID_IMAGE` (no es JPG/PNG/WEBP), `INVALID_UPLOAD` (campos de más o multipart roto) |
 | 400 | `INVALID_JSON`: el cuerpo de la petición no es JSON válido |
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
-| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo; `NOT_A_VOTER`: no está entre quienes votan la votación exprés de un plan de su grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
+| 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo; `NOT_ORGANIZER`: la acción es solo de organizadores del grupo; `NOT_A_VOTER`: no está entre quienes votan la votación exprés de un plan de su grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
@@ -62,7 +62,7 @@ Resumen de las entidades:
 | `CurrentUser` | Quien inició sesión: `User` + `role` (`USER`/`ADMIN`). Solo lo devuelven `/auth/register`, `/auth/login` y `/auth/me` |
 | `TimeBlock` | Bloque de horario: recurrente (`dayOfWeek`) o puntual (`date`) |
 | `GroupSummary` / `Group` | Grupo; el detalle incluye `inviteCode` y `members` |
-| `GroupMember` | Usuario + `role` (`OWNER`/`MEMBER`) + `isEssential` |
+| `GroupMember` | Usuario + `role` (`ORGANIZER`/`MEMBER`) + `isEssential` |
 | `MatchWindow` | Franja libre en común con su % de coincidencia |
 | `Proposal` | Propuesta de plan con ventanas, votos, ubicación e incidencias |
 | `TimeWindow` | Ventana horaria votable dentro de una propuesta: fecha concreta (`date` `YYYY-MM-DD` en `America/Lima`) y su `dayOfWeek` |
@@ -171,7 +171,7 @@ El «horario de hoy» no viene aquí: depende de la zona horaria del teléfono, 
 { "name": "Proyecto Integrador", "description": "", "availabilityThreshold": 80 }
 ```
 `name` obligatorio (1–60 tras `trim`); `description` opcional (≤ 200, por defecto `""`); `availabilityThreshold` entero 0–100 (por defecto 80).
-El servidor genera el `inviteCode`: **8 caracteres** de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin `0/O/1/I`), único. Los códigos de la semilla (`PROY2026`, `HUECKO123`) no siguen ese formato y siguen siendo válidos. El creador queda como `OWNER`. `201 Group`
+El servidor genera el `inviteCode`: **8 caracteres** de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin `0/O/1/I`), único. Los códigos de la semilla (`PROY2026`, `HUECKO123`) no siguen ese formato y siguen siendo válidos. El creador queda como `ORGANIZER`. `201 Group`
 
 ### `POST /groups/join`
 `{ "inviteCode": "PROY2026" }` → `200 Group`. El código se normaliza con `trim` y mayúsculas (`" proy2026 "` sirve).
@@ -182,13 +182,13 @@ El servidor genera el `inviteCode`: **8 caracteres** de `ABCDEFGHJKLMNPQRSTUVWXY
 `404 GROUP_NOT_FOUND` si no existe · `403 NOT_A_MEMBER` si existe pero no soy miembro. (Igual en todas las rutas `/groups/:id/...`.)
 
 ### `PATCH /groups/:id`
-Solo el `OWNER` (`403 NOT_OWNER`). Campos opcionales con las mismas reglas que al crear: `name`, `description`, `availabilityThreshold`; hay que enviar al menos uno. `200 Group`
+Solo un `ORGANIZER` (`403 NOT_ORGANIZER` «Solo un organizador del grupo puede hacer esto.»). Campos opcionales con las mismas reglas que al crear: `name`, `description`, `availabilityThreshold`; hay que enviar al menos uno. `200 Group`
 
 ### `PATCH /groups/:id/members/:userId`
-Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. El `OWNER` puede marcarse a sí mismo.
+Solo un `ORGANIZER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_NOT_FOUND` si esa persona no está en el grupo. Un `ORGANIZER` puede marcarse a sí mismo.
 
 ### `DELETE /groups/:id/members/me`
-Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y pasa a gestionarlas el `OWNER` (ver «Quién gestiona un plan»).
+Salir del grupo. `204`. Si sale el último `ORGANIZER` y quedan miembros, pasa a `ORGANIZER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y pasa a gestionarlas el `ORGANIZER` (ver «Quién gestiona un plan»).
 
 ### `GET /groups/:id/availability`
 Cruce de horarios de todos los miembros **en una semana concreta**, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`, aplicado día a día).
@@ -245,8 +245,8 @@ Cuerpo = `ProposalInput` de `shared`. Reglas:
 ### Quién gestiona un plan
 Confirmar, cancelar y replantear lo decide **una sola persona** (qué hacer ante una ausencia crítica lo vota el grupo: ver «Votación exprés»), y ningún plan se queda sin ella:
 1. quien creó la propuesta, mientras siga en el grupo (si sale y vuelve, la recupera);
-2. si se fue, el `OWNER` del grupo (quien lo creó; si también se fue, el rol ya pasó a quien lleva más tiempo, ver `DELETE /groups/:id/members/me`);
-3. si no hubiera `OWNER`, quien lleva más tiempo en el grupo (fecha de entrada más antigua; quien sale y vuelve cuenta desde su nueva entrada).
+2. si se fue, el `ORGANIZER` del grupo (quien lo creó; si también se fue, el rol ya pasó a quien lleva más tiempo, ver `DELETE /groups/:id/members/me`);
+3. si no hubiera `ORGANIZER`, quien lleva más tiempo en el grupo (fecha de entrada más antigua; quien sale y vuelve cuenta desde su nueva entrada).
 
 Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra los botones con él (no comparando ids). Si lo intenta alguien que no gestiona el plan: `403 NOT_MANAGER` «Solo quien organiza el plan puede hacer esto.»
 
@@ -285,7 +285,7 @@ Reportar un imprevisto sobre un plan `CONFIRMADO` cuya franja confirmada todaví
 Cuerpo = `IncidenceInput`. Reglas:
 - `type` ∈ `FALTA | TARDANZA | IMPREVISTO`; `reason` obligatorio, 1–200 caracteres tras `trim`.
 - `delayMinutes`: entero 1–600, **obligatorio** si `TARDANZA`; `null` u omitido en los demás.
-- **Ausencia crítica:** una `FALTA` o un `IMPREVISTO` es crítico si se cumple una de estas reglas, en este orden (la primera da `criticalReason`): quien reporta **propuso el plan** («propuso este plan»), es **imprescindible** (`isEssential`, «el grupo lo marcó como imprescindible») o es **organizador del grupo** (`OWNER`, «es organizador del grupo»). Una `TARDANZA` nunca lo es.
+- **Ausencia crítica:** una `FALTA` o un `IMPREVISTO` es crítico si se cumple una de estas reglas, en este orden (la primera da `criticalReason`): quien reporta **propuso el plan** («propuso este plan»), es **imprescindible** (`isEssential`, «el grupo lo marcó como imprescindible») o es **organizador del grupo** (`ORGANIZER`, «es organizador del grupo»). Una `TARDANZA` nunca lo es.
 - `criticality` la pone el servidor: ausencia crítica → `ALTA`; cualquier otra `FALTA` o un `IMPREVISTO` → `MEDIA`; `TARDANZA` → `BAJA`, o `MEDIA` si `delayMinutes ≥ 30`. `criticalReason` es `null` si no es crítica.
 - Una ausencia crítica **abre la votación exprés** del grupo (ver «Votación exprés») y el plan **sigue `CONFIRMADO`** mientras se vota. No se abre si el plan ya tiene una abierta (la incidencia se guarda igual e informa) ni si quien avisa está solo en el grupo (nadie puede votar).
 
@@ -484,7 +484,7 @@ Todas las cifras del periodo en una sola respuesta, `200 AdminReport`: la pantal
 `{ "role": "ADMIN" }` o `{ "role": "USER" }` (`UserRoleInput`) → `200 AdminUserDetail`. Mismas reglas que el estado (`CANNOT_CHANGE_SELF`, `LAST_ADMIN`, sin cambios si ya lo tenía). Cuenta desde la siguiente petición de esa persona; la app muestra u oculta «Administración» al volver a primer plano, al reabrirse o al iniciar sesión (y, si pierde el rol mientras está en esas pantallas, en cuanto una petición responde `403 NOT_ADMIN`).
 
 ### `GET /admin/groups?search=&page=`
-`200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, owner, createdAt }`, los más nuevos primero. `owner` es el `OWNER` actual (`User`) o `null` si no quedan miembros. `search` busca en el nombre y el código de invitación.
+`200 Page<AdminGroupSummary>`: `{ id, name, description, memberCount, proposalCount, owner, createdAt }`, los más nuevos primero. `owner` es el `ORGANIZER` actual (`User`) o `null` si no quedan miembros. `search` busca en el nombre y el código de invitación.
 
 ### `GET /admin/groups/:id`
 `200 AdminGroupDetail` = `AdminGroupSummary` + `inviteCode`, `availabilityThreshold`, `members` (`GroupMember[]`, en orden de llegada) y `proposals` (`AdminProposalSummary[]`, las más recientes primero: `{ id, title, state, createdBy, createdAt, votingDeadline, scheduledAt, scheduledDate, voteCount, incidenceCount }`; `voteCount` solo cuenta a quienes siguen en el grupo). La administración lo ve **sin ser miembro**. `404 GROUP_NOT_FOUND`.

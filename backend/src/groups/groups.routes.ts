@@ -20,10 +20,10 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
   // 404 si el grupo no existe; 403 si existe pero no soy miembro.
   const loadForMember = (groupId: string, userId: string) => loadGroupForMember(groups, groupId, userId);
 
-  const loadForOwner = async (groupId: string, userId: string) => {
+  const loadForOrganizer = async (groupId: string, userId: string) => {
     const loaded = await loadForMember(groupId, userId);
-    if (loaded.me.role !== 'OWNER') {
-      throw new ApiError(403, 'NOT_OWNER', 'Solo el administrador del grupo puede hacer esto.');
+    if (loaded.me.role !== 'ORGANIZER') {
+      throw new ApiError(403, 'NOT_ORGANIZER', 'Solo un organizador del grupo puede hacer esto.');
     }
     return loaded;
   };
@@ -56,15 +56,15 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
     res.json((await loadForMember(req.params.id, getUserId(res))).group);
   });
 
-  // Permisos antes que validación: a quien no es OWNER no le importa por qué el cuerpo es inválido.
+  // Permisos antes que validación: a quien no es organizador no le importa por qué el cuerpo es inválido.
   router.patch('/:id', async (req, res) => {
-    const { group } = await loadForOwner(req.params.id, getUserId(res));
+    const { group } = await loadForOrganizer(req.params.id, getUserId(res));
     await groups.update(group.id, updateGroupSchema.parse(req.body));
     res.json(await groups.findById(group.id));
   });
 
   router.patch('/:id/members/:userId', async (req, res) => {
-    const { group } = await loadForOwner(req.params.id, getUserId(res));
+    const { group } = await loadForOrganizer(req.params.id, getUserId(res));
     const { isEssential } = updateMemberSchema.parse(req.body);
     const { userId } = req.params;
     if (!group.members.some((m) => m.id === userId)) {

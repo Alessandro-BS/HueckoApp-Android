@@ -15,7 +15,7 @@ beforeEach(async () => {
 const get = (path: string, token: string) => request(app).get(`/api${path}`).set(bearer(token));
 
 describe('POST /api/groups', () => {
-  it('crea el grupo con código generado y el creador como OWNER', async () => {
+  it('crea el grupo con código generado y el creador como ORGANIZER', async () => {
     const { token, user } = await registerUser(app);
     const res = await request(app).post('/api/groups').set(bearer(token)).send({ name: '  Proyecto Integrador ' });
     expect(res.status).toBe(201);
@@ -26,7 +26,7 @@ describe('POST /api/groups', () => {
       availabilityThreshold: 80,
       memberCount: 1,
       inviteCode: expect.stringMatching(/^[A-HJ-NP-Z2-9]{8}$/),
-      members: [{ ...user, role: 'OWNER', isEssential: false }],
+      members: [{ ...user, role: 'ORGANIZER', isEssential: false }],
     });
   });
 
@@ -144,7 +144,7 @@ describe('GET /api/groups/:id', () => {
 });
 
 describe('PATCH /api/groups/:id', () => {
-  it('el OWNER cambia nombre, descripción y umbral', async () => {
+  it('el ORGANIZER cambia nombre, descripción y umbral', async () => {
     const yo = await registerUser(app);
     const group = await createGroup(app, yo.token);
     const res = await request(app)
@@ -155,14 +155,14 @@ describe('PATCH /api/groups/:id', () => {
     expect(res.body).toMatchObject({ name: 'Nuevo', description: 'Grupo del curso', availabilityThreshold: 60 });
   });
 
-  it('un MEMBER → 403 NOT_OWNER', async () => {
+  it('un MEMBER → 403 NOT_ORGANIZER', async () => {
     const yo = await registerUser(app);
     const ana = await registerUser(app);
     const group = await createGroup(app, yo.token);
     await joinGroup(app, ana.token, group.inviteCode);
     const res = await request(app).patch(`/api/groups/${group.id}`).set(bearer(ana.token)).send({ name: 'X' });
     expect(res.status).toBe(403);
-    expect(res.body.error).toMatchObject({ code: 'NOT_OWNER', message: 'Solo el administrador del grupo puede hacer esto.' });
+    expect(res.body.error).toMatchObject({ code: 'NOT_ORGANIZER', message: 'Solo un organizador del grupo puede hacer esto.' });
   });
 
   it.each([
@@ -179,7 +179,7 @@ describe('PATCH /api/groups/:id', () => {
 });
 
 describe('PATCH /api/groups/:id/members/:userId', () => {
-  it('el OWNER marca a alguien como imprescindible', async () => {
+  it('el ORGANIZER marca a alguien como imprescindible', async () => {
     const yo = await registerUser(app);
     const ana = await registerUser(app);
     const group = await createGroup(app, yo.token);
@@ -214,7 +214,7 @@ describe('PATCH /api/groups/:id/members/:userId', () => {
 });
 
 describe('DELETE /api/groups/:id/members/me', () => {
-  it('un MEMBER sale y el grupo sigue con el OWNER', async () => {
+  it('un MEMBER sale y el grupo sigue con el ORGANIZER', async () => {
     const yo = await registerUser(app);
     const ana = await registerUser(app);
     const group = await createGroup(app, yo.token);
@@ -225,7 +225,7 @@ describe('DELETE /api/groups/:id/members/me', () => {
     expect((await get(`/groups/${group.id}`, yo.token)).body.memberCount).toBe(1);
   });
 
-  it('si sale el último OWNER, pasa a OWNER quien lleva más tiempo en el grupo', async () => {
+  it('si sale el último ORGANIZER, pasa a ORGANIZER quien lleva más tiempo en el grupo', async () => {
     const yo = await registerUser(app);
     const b = await registerUser(app);
     const c = await registerUser(app);
@@ -239,7 +239,7 @@ describe('DELETE /api/groups/:id/members/me', () => {
 
     const after: Group = (await get(`/groups/${group.id}`, b.token)).body;
     expect(after.members).toEqual([
-      expect.objectContaining({ id: c.user.id, role: 'OWNER' }),
+      expect.objectContaining({ id: c.user.id, role: 'ORGANIZER' }),
       expect.objectContaining({ id: b.user.id, role: 'MEMBER' }),
     ]);
   });

@@ -10,7 +10,7 @@ import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp,
 async function setupGroups() {
   const { app, db } = await makeTestApp({ now: () => NOW });
   const admin = await registerAdmin(app, db, { email: 'admin@correo.com' });
-  const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es OWNER, Ana MEMBER
+  const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es ORGANIZER, Ana MEMBER
   return { app, db, admin, yo, ana, group };
 }
 
@@ -32,7 +32,7 @@ async function confirmedPlan(app: Express, yo: Session, ana: Session, groupId: s
 }
 
 describe('GET /api/admin/groups', () => {
-  it('cada grupo con miembros, propuestas y OWNER; busca por nombre o por código', async () => {
+  it('cada grupo con miembros, propuestas y ORGANIZER; busca por nombre o por código', async () => {
     const { app, db, admin, yo, group } = await setupGroups();
     await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
     const other = await insertGroup(db, { name: 'Amigos de la Uni', inviteCode: 'HUECKO123' });
@@ -85,7 +85,7 @@ describe('GET /api/admin/groups/:id', () => {
       id: group.id, name: 'Proyecto Integrador', inviteCode: group.inviteCode, availabilityThreshold: 80, memberCount: 2, proposalCount: 1, owner: yo.user,
     });
     expect(res.body.members.map((m: { name: string; role: string }) => [m.name, m.role])).toEqual([
-      ['Usuario de Prueba', 'OWNER'],
+      ['Usuario de Prueba', 'ORGANIZER'],
       ['Ana', 'MEMBER'],
     ]);
     expect(res.body.proposals).toEqual([
@@ -131,7 +131,7 @@ describe('DELETE /api/admin/groups/:id', () => {
     });
   });
 
-  it('solo ADMIN: el OWNER del grupo recibe 403 NOT_ADMIN y el grupo sigue', async () => {
+  it('solo ADMIN: el ORGANIZER del grupo recibe 403 NOT_ADMIN y el grupo sigue', async () => {
     const { app, admin, yo, group } = await setupGroups();
     const denied = await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(yo.token));
     expect(denied.status).toBe(403);

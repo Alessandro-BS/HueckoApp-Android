@@ -120,7 +120,7 @@ describe('semilla de datos de ejemplo (D8)', () => {
     expect((await proposalsRepository(db).findById(mine, anaId))?.title).toBe('Plan propio');
     expect(await count(db, 'proposals')).toBe(3);
     expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
-      ['Usuario de Prueba', 'OWNER'],
+      ['Usuario de Prueba', 'ORGANIZER'],
       ['Ana', 'MEMBER'],
     ]);
   });

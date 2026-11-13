@@ -37,7 +37,7 @@ type ProposalRow = {
   incidence_count: number;
 };
 
-// El OWNER actual (si por datos rotos hubiera dos, el que llegó antes).
+// El organizador actual (si por datos rotos hubiera dos, el que llegó antes).
 const GROUP_SELECT = `
   SELECT g.id, g.name, g.description, g.created_at,
          (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id) AS member_count,
@@ -45,7 +45,7 @@ const GROUP_SELECT = `
          o.id AS owner_id, o.name AS owner_name, o.email AS owner_email
   FROM groups g
   LEFT JOIN users o ON o.id = (
-    SELECT m.user_id FROM group_members m WHERE m.group_id = g.id AND m.role = 'OWNER' ${MEMBER_ORDER} LIMIT 1
+    SELECT m.user_id FROM group_members m WHERE m.group_id = g.id AND m.role = 'ORGANIZER' ${MEMBER_ORDER} LIMIT 1
   )`;
 
 // voteCount solo cuenta a quienes siguen en el grupo, igual que GET /proposals/:id.

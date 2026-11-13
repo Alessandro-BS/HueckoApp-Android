@@ -17,8 +17,8 @@ it('cada grupo con miembros, propuestas y quién lo administra; busca y abre el 
   await render(<GroupsTab onOpen={onOpen} />);
   expect(await screen.findByText('Proyecto Integrador')).toBeTruthy();
   expect(screen.getByText('2 miembros · 1 propuesta')).toBeTruthy();
-  expect(screen.getByText('Administra: Usuario de Prueba')).toBeTruthy();
-  expect(screen.getByText('Sin administrador')).toBeTruthy();
+  expect(screen.getByText('Organiza: Usuario de Prueba')).toBeTruthy();
+  expect(screen.getByText('Sin organizador')).toBeTruthy();
   await fireEvent.changeText(screen.getByLabelText('Buscar grupos'), 'proy');
   await fireEvent.press(screen.getByText('Buscar'));
   await waitFor(() => expect(mocked.listAdminGroups).toHaveBeenLastCalledWith('proy', 1));

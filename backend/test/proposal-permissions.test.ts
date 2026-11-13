@@ -8,7 +8,7 @@ import { canManageProposal, proposalManagerId } from '../src/proposals/permissio
 import { bearer, createGroup, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, voteFor, win, windowOf } from './helpers';
 
 describe('canManageProposal (D1)', () => {
-  const owner = { id: 'o', role: 'OWNER' as const };
+  const owner = { id: 'o', role: 'ORGANIZER' as const };
   const ana = { id: 'a', role: 'MEMBER' as const };
   const carlos = { id: 'c', role: 'MEMBER' as const };
 
@@ -18,11 +18,11 @@ describe('canManageProposal (D1)', () => {
     expect(canManageProposal({ viewerId: 'o', creatorId: 'a', members: [owner, ana, carlos] })).toBe(false);
   });
 
-  it('si quien la creó se fue, el OWNER (aunque no sea el primero de la lista)', () => {
+  it('si quien la creó se fue, el ORGANIZER (aunque no sea el primero de la lista)', () => {
     expect(proposalManagerId('x', [ana, owner, carlos])).toBe('o');
   });
 
-  it('sin OWNER (dato roto), quien lleva más tiempo: el primero en orden de llegada', () => {
+  it('sin ORGANIZER (dato roto), quien lleva más tiempo: el primero en orden de llegada', () => {
     expect(proposalManagerId('x', [carlos, ana])).toBe('c');
   });
 
@@ -45,7 +45,7 @@ describe('canManage en la API', () => {
     yo = await registerUser(app, { name: 'Usuario de Prueba' });
     ana = await registerUser(app, { name: 'Ana' });
     carlos = await registerUser(app, { name: 'Carlos' });
-    group = await createGroup(app, yo.token); // yo = OWNER
+    group = await createGroup(app, yo.token); // yo = ORGANIZER
     await joinGroup(app, ana.token, group.inviteCode);
     await joinGroup(app, carlos.token, group.inviteCode);
   });
@@ -58,7 +58,7 @@ describe('canManage en la API', () => {
   const post = (path: string, token: string, body: object = {}) =>
     request(app).post(`/api/proposals/${path}`).set(bearer(token)).send(body);
 
-  it('quien la creó la gestiona; el OWNER y los demás no (403 NOT_MANAGER)', async () => {
+  it('quien la creó la gestiona; el ORGANIZER y los demás no (403 NOT_MANAGER)', async () => {
     const p = await planBy(ana.token);
     expect(p.canManage).toBe(true);
     expect([await canManage(p.id, yo.token), await canManage(p.id, carlos.token)]).toEqual([false, false]);
@@ -73,7 +73,7 @@ describe('canManage en la API', () => {
     expect(list.map((p) => [p.id, p.canManage])).toEqual([[deYo.id, false], [deAna.id, true]]);
   });
 
-  it('si quien la creó se va, la gestiona el OWNER: confirma y cancela', async () => {
+  it('si quien la creó se va, la gestiona el ORGANIZER: confirma y cancela', async () => {
     const p = await planBy(ana.token);
     await voteFor(app, p.id, windowOf(p, 2).id, carlos.token);
     expect((await leave(ana.token)).status).toBe(204);
@@ -83,19 +83,19 @@ describe('canManage en la API', () => {
     expect((await post(`${p.id}/cancel`, yo.token)).body.state).toBe('CANCELADO');
   });
 
-  it('si se van quien la creó y el OWNER, la gestiona quien lleva más tiempo (nunca queda huérfana)', async () => {
+  it('si se van quien la creó y el ORGANIZER, la gestiona quien lleva más tiempo (nunca queda huérfana)', async () => {
     const dani = await registerUser(app, { name: 'Dani' });
     await joinGroup(app, dani.token, group.inviteCode);
     const p = await planBy(ana.token);
     // Dani figura como más antiguo que Carlos aunque se unió después: manda joined_at (D3).
     await db.query('UPDATE group_members SET joined_at = $1 WHERE user_id = $2', ['2000-01-01T00:00:00.000Z', dani.user.id]);
     await leave(ana.token);
-    await leave(yo.token); // C6: el rol OWNER pasa a Dani
+    await leave(yo.token); // C6: el rol ORGANIZER pasa a Dani
     expect([await canManage(p.id, dani.token), await canManage(p.id, carlos.token)]).toEqual([true, false]);
     expect((await post(`${p.id}/cancel`, dani.token)).status).toBe(200);
   });
 
-  it('sin OWNER en la base (dato roto), gestiona el miembro más antiguo', async () => {
+  it('sin ORGANIZER en la base (dato roto), gestiona el miembro más antiguo', async () => {
     const p = await planBy(ana.token);
     await leave(ana.token);
     await db.query("UPDATE group_members SET role = 'MEMBER' WHERE group_id = $1", [group.id]);

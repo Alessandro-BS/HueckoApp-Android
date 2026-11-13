@@ -101,7 +101,7 @@ describe('GET /api/admin/users/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       id: ana.user.id, name: 'Ana', email: 'ana@correo.com', role: 'USER', status: 'ACTIVE', createdAt: NOW.toISOString(), groupCount: 1,
-      groups: [{ id: group.id, name: 'Estudio', role: 'OWNER' }],
+      groups: [{ id: group.id, name: 'Estudio', role: 'ORGANIZER' }],
       activity: { proposalsCreated: 0, votes: 0, incidences: 0, timeBlocks: 1, aiCalls: 0 },
     });
   });

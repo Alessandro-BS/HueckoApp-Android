@@ -35,7 +35,7 @@ export const makeGroupDetail = (over: Partial<AdminGroupDetail> = {}): AdminGrou
   ...makeGroupSummary(),
   inviteCode: 'PROY2026',
   availabilityThreshold: 80,
-  members: [{ ...TEST_USER, role: 'OWNER', isEssential: false }, { ...ANA, role: 'MEMBER', isEssential: true }],
+  members: [{ ...TEST_USER, role: 'ORGANIZER', isEssential: false }, { ...ANA, role: 'MEMBER', isEssential: true }],
   proposals: [makeAdminProposal()],
   ...over,
 });

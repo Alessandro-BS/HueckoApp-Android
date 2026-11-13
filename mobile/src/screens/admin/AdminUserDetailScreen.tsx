@@ -94,7 +94,7 @@ export function AdminUserDetailScreen({ navigation, route }: AppStackScreen<'Adm
       ) : (
         user.groups.map((g) => (
           <Text key={g.id} style={[typography.bodyMedium, { color: colors.onSurface }]}>
-            {`${g.name} · ${g.role === 'OWNER' ? 'Administra el grupo' : 'Miembro'}`}
+            {`${g.name} · ${g.role === 'ORGANIZER' ? 'Organiza el grupo' : 'Miembro'}`}
           </Text>
         ))
       )}

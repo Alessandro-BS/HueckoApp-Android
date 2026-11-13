@@ -9,13 +9,13 @@ export type ManageCheck = { viewerId: string; creatorId: string; members: readon
 /**
  * Quién gestiona (confirma, cancela, reprograma, resuelve) una propuesta, para que ninguna quede huérfana (D1–D3):
  * 1. quien la creó, mientras siga en el grupo;
- * 2. si no, el OWNER: es quien creó el grupo y, si también se fue, C6 ya le pasó el rol a quien lleva más tiempo;
- * 3. si no hubiera OWNER (no debería pasar), quien lleva más tiempo en el grupo.
+ * 2. si no, el organizador: es quien creó el grupo y, si también se fue, C6 ya le pasó el rol a quien lleva más tiempo;
+ * 3. si no hubiera organizador (no debería pasar), quien lleva más tiempo en el grupo.
  * null solo si el grupo no tiene miembros (entonces ya se borró).
  */
 export function proposalManagerId(creatorId: string, members: readonly ManagerCandidate[]): string | null {
   if (members.some((m) => m.id === creatorId)) return creatorId;
-  return (members.find((m) => m.role === 'OWNER') ?? members[0])?.id ?? null;
+  return (members.find((m) => m.role === 'ORGANIZER') ?? members[0])?.id ?? null;
 }
 
 /**

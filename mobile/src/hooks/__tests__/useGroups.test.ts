@@ -11,7 +11,7 @@ import { withQueryClient } from '../../testing/queryClient';
 jest.mock('../../api/groups');
 const mocked = groupsApi as jest.Mocked<typeof groupsApi>;
 
-const owner: GroupMember = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'OWNER', isEssential: false };
+const owner: GroupMember = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'ORGANIZER', isEssential: false };
 const ana: GroupMember = { id: 'u2', name: 'Ana', email: 'ana@test.com', role: 'MEMBER', isEssential: false };
 const summary: GroupSummary = { id: 'g1', name: 'Proyecto Integrador', description: '', memberCount: 2, availabilityThreshold: 80 };
 const group = (over: Partial<Group> = {}): Group => ({ ...summary, inviteCode: 'PROY2026', members: [owner, ana], ...over });

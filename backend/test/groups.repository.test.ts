@@ -56,6 +56,6 @@ describe('groupsRepository.leave', () => {
     const calls = recordQueries(db);
     await repo.leave(group.id, ana.id);
     expect(calls[0]).toEqual({ sql: 'SELECT id FROM groups WHERE id = $1 FOR UPDATE', params: [group.id], inTransaction: true });
-    expect((await repo.findById(group.id))!.members.map((m) => [m.name, m.role])).toEqual([['Luis', 'OWNER']]); // control
+    expect((await repo.findById(group.id))!.members.map((m) => [m.name, m.role])).toEqual([['Luis', 'ORGANIZER']]); // control
   });
 });

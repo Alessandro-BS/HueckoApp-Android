@@ -21,7 +21,7 @@ function GroupRow({ group, onPress }: { group: AdminGroupSummary; onPress: () =>
           {`${memberCountLabel(group.memberCount)} · ${countLabel(group.proposalCount, 'propuesta', 'propuestas')}`}
         </Text>
         <Text style={[typography.labelSmall, { color: colors.onSurfaceVariant }]}>
-          {group.owner ? `Administra: ${group.owner.name}` : 'Sin administrador'}
+          {group.owner ? `Organiza: ${group.owner.name}` : 'Sin organizador'}
         </Text>
       </View>
     </HueckoCard>
