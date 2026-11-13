@@ -86,18 +86,27 @@ describe('flushNotifications', () => {
     expect(push.calls).toEqual([]);
   });
 
-  it('PushTransportError: attempts 1, claimed_at NULL y sigue pendiente; el siguiente envío lo manda', async () => {
+  it('PushTransportError: attempts 1, sigue pendiente y reclamado; se reintenta solo cuando vence el reclamo (5 min)', async () => {
     await addDevice(ana, TOKEN_A1);
     await enqueue(db, [item(ana)], NOW);
     const push = fakePush('transport');
 
     expect(await flushNotifications(db, push, later(1))).toEqual({ sent: 0, failed: 1 });
-    expect((await rows())[0]).toMatchObject({ sent_at: null, claimed_at: null, attempts: 1, last_error: expect.stringContaining('503') });
+    expect((await rows())[0]).toMatchObject({
+      sent_at: null,
+      claimed_at: later(1).toISOString(),
+      attempts: 1,
+      last_error: expect.stringContaining('503'),
+    });
 
+    // El reclamo hace de espera: antes de 5 min no se reintenta (aunque Expo ya responda).
     push.reply('ok');
-    expect(await flushNotifications(db, push, later(2))).toEqual({ sent: 1, failed: 0 });
+    expect(await flushNotifications(db, push, later(5))).toEqual({ sent: 0, failed: 0 });
+    expect(push.calls).toHaveLength(1);
+
+    expect(await flushNotifications(db, push, later(7))).toEqual({ sent: 1, failed: 0 });
     expect(push.calls).toHaveLength(2);
-    expect((await rows())[0]).toMatchObject({ sent_at: later(2).toISOString(), attempts: 1 });
+    expect((await rows())[0]).toMatchObject({ sent_at: later(7).toISOString(), attempts: 1 });
   });
 
   it('al quinto fallo se abandona: sent_at y last_error, y ya no se reintenta', async () => {
@@ -105,16 +114,52 @@ describe('flushNotifications', () => {
     await enqueue(db, [item(ana)], NOW);
     const push = fakePush('transport');
 
+    // Cada reintento, pasado el reclamo anterior (6 min después).
     for (let i = 1; i <= 4; i++) {
-      await flushNotifications(db, push, later(i));
+      await flushNotifications(db, push, later(i * 6));
       expect((await rows())[0]).toMatchObject({ sent_at: null, attempts: i });
     }
-    expect(await flushNotifications(db, push, later(5))).toEqual({ sent: 0, failed: 1 });
-    expect((await rows())[0]).toMatchObject({ sent_at: later(5).toISOString(), attempts: 5, last_error: expect.stringContaining('503') });
+    expect(await flushNotifications(db, push, later(30))).toEqual({ sent: 0, failed: 1 });
+    expect((await rows())[0]).toMatchObject({ sent_at: later(30).toISOString(), attempts: 5, last_error: expect.stringContaining('503') });
 
     push.reply('ok');
-    expect(await flushNotifications(db, push, later(30))).toEqual({ sent: 0, failed: 0 });
+    expect(await flushNotifications(db, push, later(60))).toEqual({ sent: 0, failed: 0 });
     expect(push.calls).toHaveLength(5);
+  });
+
+  it('MessageRateExceeded sin ningún ok se reintenta como un error de transporte; con otro token ok queda enviado', async () => {
+    await addDevice(ana, TOKEN_A1);
+    await addDevice(carlos, TOKEN_C);
+    await addDevice(carlos, TOKEN_A2, later(1)); // segundo celular de Carlos
+    await enqueue(db, [item(ana), item(carlos)], NOW);
+    // Ana: su único token, MessageRateExceeded. Carlos: uno MessageRateExceeded y el otro ok.
+    const push = fakePush((m) => (m.to === TOKEN_A2 ? 'ok' : 'MessageRateExceeded'));
+
+    expect(await flushNotifications(db, push, later(2))).toEqual({ sent: 1, failed: 1 });
+    const [anaRow, carlosRow] = await rows();
+    expect(anaRow).toMatchObject({
+      sent_at: null,
+      claimed_at: later(2).toISOString(),
+      attempts: 1,
+      last_error: expect.stringContaining('MessageRateExceeded'),
+    });
+    expect(carlosRow).toMatchObject({ sent_at: later(2).toISOString(), attempts: 0 });
+    expect(await tokensOf(ana)).toEqual([TOKEN_A1]); // no es un token muerto
+
+    push.reply('ok');
+    expect(await flushNotifications(db, push, later(8))).toEqual({ sent: 1, failed: 0 });
+    expect(await pending()).toEqual([]);
+  });
+
+  it('MessageRateExceeded en un token y DeviceNotRegistered en otro: se borra el muerto y se reintenta', async () => {
+    await addDevice(ana, TOKEN_A1);
+    await addDevice(ana, TOKEN_A2, later(1));
+    await enqueue(db, [item(ana)], NOW);
+    const push = fakePush((m) => (m.to === TOKEN_A1 ? 'DeviceNotRegistered' : 'MessageRateExceeded'));
+
+    expect(await flushNotifications(db, push, later(2))).toEqual({ sent: 0, failed: 1 });
+    expect(await tokensOf(ana)).toEqual([TOKEN_A2]);
+    expect((await rows())[0]).toMatchObject({ sent_at: null, attempts: 1 });
   });
 
   it('DeviceNotRegistered borra ese token; con otro token ok el aviso queda enviado', async () => {
@@ -220,7 +265,7 @@ describe('flushNotifications', () => {
       throw new Error('algo raro');
     };
     expect(await flushNotifications(db, push, later(1))).toEqual({ sent: 0, failed: 1 });
-    expect((await rows())[0]).toMatchObject({ sent_at: null, claimed_at: null, attempts: 1, last_error: 'algo raro' });
+    expect((await rows())[0]).toMatchObject({ sent_at: null, claimed_at: later(1).toISOString(), attempts: 1, last_error: 'algo raro' });
 
     vi.spyOn(db, 'transaction').mockRejectedValueOnce(new Error('base caída'));
     await expect(flushNotifications(db, push, later(2))).resolves.toEqual({ sent: 0, failed: 0 });

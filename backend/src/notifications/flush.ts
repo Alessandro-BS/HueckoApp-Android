@@ -10,18 +10,25 @@ import { PUSH_BATCH_SIZE, type PushClient, type PushMessage, type PushTicket } f
 
 /** Avisos que reclama cada pasada. */
 export const FLUSH_BATCH_SIZE = 100;
-/** Un reclamo sin resolver más viejo que esto (el proceso murió a mitad) vuelve a estar pendiente. */
+/**
+ * Un reclamo más viejo que esto vuelve a estar pendiente: el proceso murió a mitad, o el intento falló con un error
+ * reintentable (el reclamo se deja puesto y hace de espera antes del siguiente intento).
+ */
 export const CLAIM_EXPIRES_MS = 5 * 60_000;
-/** Con tantos fallos de transporte el aviso se abandona: queda con sent_at y su last_error. */
+/** Con tantos intentos fallidos el aviso se abandona: queda con sent_at y su last_error. */
 export const MAX_ATTEMPTS = 5;
+/** Tickets de error que se reintentan como un error de transporte: Expo pide esperar y volver a intentar. */
+const RETRYABLE_TICKET_ERRORS: ReadonlySet<string> = new Set(['MessageRateExceeded']);
 
 type Claimed = { id: string; user_id: string; title: string; body: string; data: string; attempts: number };
-type Outcome = { ok: boolean; transportError: string | null; ticketError: string | null };
+/** `retryError`: error de transporte del lote o ticket reintentable; `ticketError`: el primer ticket de error. */
+type Outcome = { ok: boolean; retryError: string | null; ticketError: string | null };
 type Result = 'sent' | 'retry' | 'abandoned';
 
 /**
  * Una pasada. `sent`: avisos que quedan resueltos (algún celular lo recibió, la persona no tiene celulares o todos sus
- * tokens están muertos); `failed`: avisos con error de transporte (se reintentan, o se abandonan al quinto). Nunca lanza.
+ * tickets son errores definitivos, como tokens muertos); `failed`: avisos con un error reintentable (transporte o
+ * MessageRateExceeded), que se reintentan pasado el reclamo o se abandonan al quinto intento. Nunca lanza.
  */
 export async function flushNotifications(db: Db, push: PushClient, now: Date): Promise<{ sent: number; failed: number }> {
   try {
@@ -48,7 +55,7 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
     }
   });
 
-  const outcomes: Outcome[] = claimed.map(() => ({ ok: false, transportError: null, ticketError: null }));
+  const outcomes: Outcome[] = claimed.map(() => ({ ok: false, retryError: null, ticketError: null }));
   const deadTokens = new Set<string>();
   for (let i = 0; i < outgoing.length; i += PUSH_BATCH_SIZE) {
     const batch = outgoing.slice(i, i + PUSH_BATCH_SIZE);
@@ -59,7 +66,7 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
     } catch (error) {
       // No se sabe qué llegó: todo el lote se reintenta (salvo los avisos que otro lote ya entregó).
       const message = error instanceof Error ? error.message : String(error);
-      for (const { notification } of batch) outcomes[notification]!.transportError ??= message;
+      for (const { notification } of batch) outcomes[notification]!.retryError ??= message;
       continue;
     }
     tickets.forEach((ticket, k) => {
@@ -69,14 +76,18 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
         outcome.ok = true;
         return;
       }
-      outcome.ticketError ??= ticket.details?.error ? `${ticket.details.error}: ${ticket.message}` : ticket.message;
-      if (ticket.details?.error === 'DeviceNotRegistered') deadTokens.add(message.to);
+      const code = ticket.details?.error;
+      const error = code ? `${code}: ${ticket.message}` : ticket.message;
+      outcome.ticketError ??= error;
+      if (code !== undefined && RETRYABLE_TICKET_ERRORS.has(code)) outcome.retryError ??= error;
+      if (code === 'DeviceNotRegistered') deadTokens.add(message.to);
     });
   }
   for (const token of deadTokens) await devices.removeToken(token);
 
-  // Por aviso: algún ok → enviado; error de transporte → se reintenta (o se abandona); si no (sin celulares, o solo
-  // tickets de error como DeviceNotRegistered) no hay nada que reintentar: queda enviado con el error, si lo hubo.
+  // Por aviso: algún ok → enviado; error reintentable (transporte o MessageRateExceeded) → un intento más, con el
+  // reclamo puesto como espera (o se abandona al quinto); si no (sin celulares, o solo tickets de error definitivos
+  // como DeviceNotRegistered) no hay nada que reintentar: queda enviado con el error, si lo hubo.
   // Una UPDATE por resultado y error (casi siempre una o dos), no una por aviso.
   const updates = new Map<string, { result: Result; error: string | null; ids: string[] }>();
   const add = (result: Result, error: string | null, id: string) => {
@@ -88,13 +99,13 @@ async function flush(db: Db, push: PushClient, now: Date): Promise<{ sent: numbe
   let sent = 0;
   let failed = 0;
   claimed.forEach((n, i) => {
-    const { ok, transportError, ticketError } = outcomes[i]!;
-    if (ok || transportError === null) {
+    const { ok, retryError, ticketError } = outcomes[i]!;
+    if (ok || retryError === null) {
       sent++;
       add('sent', ok ? null : ticketError, n.id);
     } else {
       failed++;
-      add(n.attempts + 1 >= MAX_ATTEMPTS ? 'abandoned' : 'retry', transportError, n.id);
+      add(n.attempts + 1 >= MAX_ATTEMPTS ? 'abandoned' : 'retry', retryError, n.id);
     }
   });
   for (const { result, error, ids } of updates.values()) await record(db, result, error, ids, at);
@@ -119,8 +130,8 @@ function claim(db: Db, now: Date): Promise<Claimed[]> {
 
 /**
  * Anota el resultado. `sent`: resuelto (con el error del ticket si no llegó a ningún celular); `retry`: un intento más
- * y otra vez pendiente; `abandoned`: un intento más y resuelto con su error. `sent_at IS NULL`: nunca se reescribe un
- * aviso ya resuelto.
+ * y sigue pendiente, reclamado ahora (no se reintenta hasta que el reclamo venza: CLAIM_EXPIRES_MS); `abandoned`: un
+ * intento más y resuelto con su error. `sent_at IS NULL`: nunca se reescribe un aviso ya resuelto.
  */
 function record(db: Db, result: Result, error: string | null, ids: string[], at: string): Promise<unknown> {
   switch (result) {
@@ -131,8 +142,8 @@ function record(db: Db, result: Result, error: string | null, ids: string[], at:
       );
     case 'retry':
       return db.query(
-        'UPDATE notifications SET attempts = attempts + 1, last_error = $1, claimed_at = NULL WHERE id = ANY($2::text[]) AND sent_at IS NULL',
-        [error, ids],
+        'UPDATE notifications SET attempts = attempts + 1, last_error = $1, claimed_at = $2 WHERE id = ANY($3::text[]) AND sent_at IS NULL',
+        [error, at, ids],
       );
     case 'abandoned':
       return db.query(

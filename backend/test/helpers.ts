@@ -126,8 +126,11 @@ export const failingAi = (): AiClient => ({
   },
 });
 
-/** Qué responde el Expo falso a cada mensaje: ticket ok, ticket DeviceNotRegistered, o el lote falla (red/429/5xx). */
-export type FakePushReply = 'ok' | 'DeviceNotRegistered' | 'transport';
+/**
+ * Qué responde el Expo falso a cada mensaje: ticket ok, ticket de error DeviceNotRegistered o MessageRateExceeded, o
+ * el lote entero falla (red/429/5xx).
+ */
+export type FakePushReply = 'ok' | 'DeviceNotRegistered' | 'MessageRateExceeded' | 'transport';
 export type FakePushBehaviour = FakePushReply | ((message: PushMessage) => FakePushReply);
 export type FakePush = PushClient & { calls: PushMessage[][]; reply(next: FakePushBehaviour): void };
 
@@ -149,11 +152,13 @@ export function fakePush(behaviour: FakePushBehaviour = 'ok'): FakePush {
       calls.push([...messages]);
       const replies = messages.map((m) => reply(m));
       if (replies.includes('transport')) throw new PushTransportError('Expo respondió 503');
-      return messages.map((m, i): PushTicket =>
-        replies[i] === 'ok'
-          ? { status: 'ok', id: `ticket-${++ticketCount}` }
-          : { status: 'error', message: `"${m.to}" is not a registered push notification recipient`, details: { error: 'DeviceNotRegistered' } },
-      );
+      return messages.map((m, i): PushTicket => {
+        if (replies[i] === 'ok') return { status: 'ok', id: `ticket-${++ticketCount}` };
+        if (replies[i] === 'MessageRateExceeded') {
+          return { status: 'error', message: `"${m.to}" is receiving too many messages`, details: { error: 'MessageRateExceeded' } };
+        }
+        return { status: 'error', message: `"${m.to}" is not a registered push notification recipient`, details: { error: 'DeviceNotRegistered' } };
+      });
     },
   };
 }
