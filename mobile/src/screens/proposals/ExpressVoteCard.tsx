@@ -127,7 +127,8 @@ export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onRe
         <ReprogramDialog
           loading={action.loading}
           error={action.error}
-          onConfirm={(deadline) => void run(REPROGRAM, { newState: 'PROPUESTO', votingDeadline: deadline.toISOString() })}
+          // TODO(franjas-con-fecha Task 9): enviar también `windows` (2 a 5) del editor de franjas; sin ellas el servidor responde 400.
+          onConfirm={(deadline) => void run(REPROGRAM, { newState: 'PROPUESTO', votingDeadline: deadline.toISOString() } as ResolveIncidencesInput)}
           onDismiss={() => setReprogramming(false)}
         />
       ) : null}

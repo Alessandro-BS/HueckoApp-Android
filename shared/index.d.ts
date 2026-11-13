@@ -123,7 +123,10 @@ export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes
 
 export type ResolveIncidencesInput =
   | { newState: 'CONFIRMADO' | 'CANCELADO' }
-  | { newState: 'PROPUESTO'; votingDeadline: string };
+  | { newState: 'PROPUESTO'; votingDeadline: string; windows: TimeWindowInput[] };
+
+// Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; se borran los votos.
+export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };
 
 // Propuesta con el nombre de su grupo (Inicio y /me/upcoming-plans).
 export type ProposalWithGroup = Proposal & { groupName: string };

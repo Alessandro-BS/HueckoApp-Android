@@ -17,6 +17,7 @@ import {
   createProposalSchema,
   incidenceInputSchema,
   overlaps,
+  replanSchema,
   resolveIncidencesSchema,
   timeWindowInputSchema,
   validationError,
@@ -211,10 +212,27 @@ export function proposalsRouter(deps: ResolvedDeps) {
 
   router.post('/:id/incidences/resolve', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal } = await loadForManager(req.params.id, userId);
+    const { proposal, group } = await loadForManager(req.params.id, userId);
     const input = resolveIncidencesSchema(ctx.now()).parse(req.body);
     if (!isActivePlan(proposal)) throw invalidState();
-    if (!(await ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline))) throw invalidState();
+    let windows = null;
+    if (input.newState === 'PROPUESTO') {
+      assertDeadlineBeforeWindows(input.votingDeadline!, input.windows!);
+      windows = await ctx.withAvailability(group, input.windows!);
+    }
+    if (!(await ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline, windows))) throw invalidState();
+    res.json(await ctx.proposals.findById(proposal.id, userId));
+  });
+
+  // Replantear: con la propuesta en votación, quien la gestiona la reemplaza por franjas y plazo nuevos (se borran los votos).
+  router.post('/:id/replan', async (req, res) => {
+    const userId = getUserId(res);
+    const { proposal, group } = await loadForManager(req.params.id, userId);
+    const input = replanSchema(ctx.now()).parse(req.body);
+    if (proposal.state !== 'PROPUESTO') throw invalidState();
+    assertDeadlineBeforeWindows(input.votingDeadline, input.windows);
+    const windows = await ctx.withAvailability(group, input.windows);
+    await ctx.proposals.replaceWindows(proposal.id, windows, new Date(input.votingDeadline).toISOString());
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 

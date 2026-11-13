@@ -8,6 +8,7 @@ import {
   AFTER_DEADLINE,
   bearer,
   createProposal,
+  dateOf,
   DEADLINE,
   interleave,
   makeClock,
@@ -21,7 +22,9 @@ import {
   windowOf,
 } from './helpers';
 
-const NEW_DEADLINE = new Date(2026, 9, 10, 20, 0).toISOString();
+const NEW_DEADLINE = new Date(2026, 9, 4, 20, 0).toISOString();
+// Franjas nuevas para reprogramar: miércoles 7/10 y jueves 8/10 (después de NEW_DEADLINE).
+const NEW_WINDOWS = [win(3, '11:00', '13:00'), win(4, '16:00', '18:00')];
 
 let app: Express;
 let db: Db;
@@ -315,7 +318,7 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
 
   it('Reprogramar: PROPUESTO sin votos ni franja elegida, con plazo nuevo, y se vuelve a votar', async () => {
     const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
@@ -327,14 +330,36 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
 
   it('Reprogramar exige un plazo nuevo y futuro', async () => {
     const p = await withIncidence();
-    const sinPlazo = await resolve(p, yo.token, { newState: 'PROPUESTO' });
+    const sinPlazo = await resolve(p, yo.token, { newState: 'PROPUESTO', windows: NEW_WINDOWS });
     expect(sinPlazo.body.error.details).toContainEqual(
       expect.objectContaining({ path: ['votingDeadline'], message: 'Para reprogramar indica una nueva fecha límite' }),
     );
-    const pasado = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: new Date(2026, 8, 28).toISOString() });
+    const pasado = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: new Date(2026, 8, 28).toISOString(), windows: NEW_WINDOWS });
     expect(pasado.body.error.details).toContainEqual(
       expect.objectContaining({ path: ['votingDeadline'], message: 'La fecha límite debe ser futura' }),
     );
+  });
+
+  it('Reprogramar sin windows: 400; con windows válidas reemplaza las franjas, borra los votos y vuelve a PROPUESTO', async () => {
+    const p = await withIncidence();
+    const sin = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    expect([sin.status, sin.body.error.code]).toEqual([400, 'VALIDATION_ERROR']);
+    expect(sin.body.error.details).toContainEqual(expect.objectContaining({ path: ['windows'] }));
+    const una = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: [win(3, '11:00', '13:00')] });
+    expect(una.status).toBe(400);
+    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('PROPUESTO');
+    expect(res.body.windows.map((w: { date: string }) => w.date)).toEqual([dateOf(3), dateOf(4)]);
+    expect(res.body.windows.map((w: { id: string }) => w.id)).not.toContain(p.windows[0].id);
+    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
+  });
+
+  it('Reprogramar con el plazo después de la primera franja: 400', async () => {
+    const p = await withIncidence();
+    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: new Date(2026, 9, 9).toISOString(), windows: NEW_WINDOWS });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toContainEqual(expect.objectContaining({ path: ['votingDeadline'] }));
   });
 
   it('el plazo solo se valida al reprogramar: con CONFIRMADO o CANCELADO se ignora', async () => {
@@ -353,7 +378,7 @@ describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
 
   it('de EN_RECOORDINACION a PROPUESTO: sin votos ni franja elegida, con el plazo nuevo e incidencias resueltas', async () => {
     const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
@@ -413,7 +438,7 @@ describe('cambios de estado a la vez (M4)', () => {
     const p = await confirmedPlan();
     await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
     cancelledMeanwhile(p);
-    const res = await postTo(`${p.id}/incidences/resolve`, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    const res = await postTo(`${p.id}/incidences/resolve`, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE, windows: NEW_WINDOWS });
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await stateOf(p)).toBe('CANCELADO');
     expect(await db.many('SELECT resolved FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([{ resolved: false }]);

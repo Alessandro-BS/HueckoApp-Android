@@ -292,11 +292,20 @@ Cuerpo = `IncidenceInput`. Reglas:
 La «votación exprés». Solo quien gestiona el plan (`403 NOT_MANAGER`), y solo con el plan `CONFIRMADO` o `EN_RECOORDINACION` (`409 INVALID_STATE`). Cuerpo = `ResolveIncidencesInput`:
 - `{ "newState": "CONFIRMADO" }` — mantener el plan;
 - `{ "newState": "CANCELADO" }` — cancelarlo;
-- `{ "newState": "PROPUESTO", "votingDeadline": "2026-10-10T20:00:00.000Z" }` — reprogramar: `votingDeadline` obligatorio y futuro.
+- `{ "newState": "PROPUESTO", "votingDeadline": "2026-10-04T20:00:00.000Z", "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" }, ... ] }` — reprogramar: `votingDeadline` obligatorio, futuro y **anterior al inicio de la primera franja**; `windows` obligatorio (2 a 5, mismas reglas que al crear la propuesta).
 
-`votingDeadline` **solo se valida cuando `newState` es `PROPUESTO`**; con `CONFIRMADO` o `CANCELADO` se ignora. Siempre: **todas** las incidencias quedan `resolved: true`. Con `PROPUESTO` además se borran todos los votos, `chosenWindowId`, `scheduledAt` y `scheduledDate` vuelven a `null` y empieza una votación nueva hasta el plazo enviado; las franjas se conservan. `200 Proposal`
+`votingDeadline` y `windows` **solo se validan cuando `newState` es `PROPUESTO`**; con `CONFIRMADO` o `CANCELADO` se ignoran. Siempre: **todas** las incidencias quedan `resolved: true`. Con `PROPUESTO` además las franjas anteriores se **reemplazan** por las nuevas (el servidor calcula su `availabilityPercentage`) y se borran todos los votos, `chosenWindowId`, `scheduledAt` y `scheduledDate` vuelven a `null` y empieza una votación nueva hasta el plazo enviado. `200 Proposal` · `400 VALIDATION_ERROR`
 
 **Cuándo muestra la app la alerta exprés:** con el plan `EN_RECOORDINACION` («Votación exprés»: falta un imprescindible) o `CONFIRMADO` con incidencias sin resolver («Aviso de imprevisto»). En los dos casos solo quien gestiona el plan (`canManage`) ve Reprogramar / Cancelar / Mantener.
+
+### `POST /proposals/:id/replan`
+Replantea una propuesta **en votación**: reemplaza sus franjas y su plazo por otros nuevos. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo con la propuesta `PROPUESTO` (`409 INVALID_STATE`). Sirve sobre todo cuando todas las franjas ya pasaron (p. ej. propuestas anteriores a las fechas). Cuerpo = `ReplanInput`:
+```json
+{ "votingDeadline": "2026-10-04T20:00:00.000Z",
+  "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" },
+               { "date": "2026-10-08", "startTime": "16:00", "endTime": "18:00" } ] }
+```
+`votingDeadline` futuro y anterior al inicio de la primera franja; `windows` de 2 a 5 con las mismas reglas que al crear (fechas de las 4 semanas válidas, inicio futuro, sin repetidas ni solapadas). Se borran las franjas anteriores con sus votos y se calcula el % de las nuevas. `200 Proposal` · `400 VALIDATION_ERROR`
 
 ## Inteligencia artificial
 

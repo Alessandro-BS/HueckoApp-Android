@@ -304,7 +304,12 @@ export function proposalsRepository(db: Db) {
 
     // Votación exprés (G4): todas las incidencias quedan resueltas; reprogramar abre una votación nueva. Solo sobre un
     // plan activo (CONFIRMADO o EN_RECOORDINACION); false, sin tocar nada, si ya no lo es.
-    resolveIncidences(id: string, newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO', votingDeadline: string | null): Promise<boolean> {
+    resolveIncidences(
+      id: string,
+      newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO',
+      votingDeadline: string | null,
+      windows: NewWindow[] | null = null,
+    ): Promise<boolean> {
       return db.transaction(async () => {
         const { rowCount } =
           newState === 'PROPUESTO'
@@ -315,7 +320,8 @@ export function proposalsRepository(db: Db) {
               )
             : await db.query('UPDATE proposals SET state = $1 WHERE id = $2 AND state = ANY($3::text[])', [newState, id, ACTIVE_STATES]);
         if (rowCount === 0) return false;
-        if (newState === 'PROPUESTO') await db.query('DELETE FROM votes WHERE proposal_id = $1', [id]);
+        // Reprogramar: franjas nuevas (borra las viejas con sus votos). Reentrante: va dentro de esta transacción.
+        if (newState === 'PROPUESTO') await this.replaceWindows(id, windows ?? [], votingDeadline!);
         await db.query('UPDATE incidences SET resolved = TRUE WHERE proposal_id = $1', [id]);
         return true;
       });
