@@ -61,7 +61,7 @@ describe('proposalsRepository: franjas con fecha', () => {
     const [first, second] = (await repo.findById(id, ana.id))!.windows;
     await repo.voteIfOpen(id, ana.id, first.id, NOW);
     await repo.voteIfOpen(id, beto.id, second.id, NOW);
-    await repo.confirm(id, first.id, '2026-09-30T21:00:00.000Z', '2026-09-30');
+    expect(await repo.confirm(id, first.id, '2026-09-30T21:00:00.000Z', '2026-09-30', NOW)).toBe(true);
 
     const deadline = '2026-10-07T01:00:00.000Z';
     const calls = recordQueries(db);
@@ -124,5 +124,20 @@ describe('proposalsRepository: voteIfOpen y unvoteIfOpen (comprobación con la p
     expect(await repo.unvoteIfOpen('no-existe', ana.id, null, NOW)).toBe('CLOSED');
     expect(await votesOf(db, 'no-existe')).toBe(0);
     expect(await db.one('SELECT COUNT(*) AS n FROM votes')).toEqual({ n: 0 });
+  });
+});
+
+describe('proposalsRepository: confirm (comprobación con la propuesta bloqueada)', () => {
+  it('en el plazo o después → false y no cambia nada (la votación se cierra sola)', async () => {
+    const { db, repo, create, ana } = await setup();
+    const id = await create([win('2026-10-05', '16:00', '18:00'), win('2026-10-06', '10:00', '12:00')]);
+    const [first] = (await repo.findById(id, ana.id))!.windows;
+    const stored = () => db.one('SELECT state, chosen_window_id, scheduled_at FROM proposals WHERE id = $1', [id]);
+    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(DEADLINE))).toBe(false);
+    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(new Date(DEADLINE).getTime() + 60_000))).toBe(false);
+    expect(await stored()).toEqual({ state: 'PROPUESTO', chosen_window_id: null, scheduled_at: null });
+    // Control positivo: un milisegundo antes del plazo sí confirma.
+    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(new Date(DEADLINE).getTime() - 1))).toBe(true);
+    expect(await stored()).toMatchObject({ state: 'CONFIRMADO', chosen_window_id: first.id });
   });
 });

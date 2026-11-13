@@ -235,7 +235,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
       throw new ApiError(409, 'WINDOW_STARTED', 'Esa franja ya empezó: replantea la propuesta.');
     }
     const { scheduledAt, scheduledDate } = scheduleFor(chosen.date, chosen.startTime);
-    if (!(await ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate))) throw invalidState();
+    if (!(await ctx.proposals.confirm(proposal.id, chosen.id, scheduledAt, scheduledDate, ctx.now()))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 

@@ -342,10 +342,15 @@ export function proposalsRepository(db: Db) {
     // Confirmar, además, bloquea el plan y comprueba que la franja elegida sigue en él: un replanteo que llegó entre la
     // lectura de la ruta y aquí ya la borró (con READ COMMITTED, un EXISTS dentro del UPDATE no lo vería). Si el
     // replanteo llega después, espera al candado y ve el plan ya CONFIRMADO.
-    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<boolean> {
+    // Confirmar a mano: solo PROPUESTO y antes del plazo, comprobado con la fila bloqueada (si el plazo vence mientras
+    // tanto, la cierra el cierre automático, no esto). false si no.
+    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string, now: Date): Promise<boolean> {
       return db.transaction(async () => {
-        const row = await db.one<{ state: ProposalState }>('SELECT id, state FROM proposals WHERE id = $1 FOR UPDATE', [id]);
-        if (!row || row.state !== 'PROPUESTO') return false;
+        const row = await db.one<{ state: ProposalState; voting_deadline: string }>(
+          'SELECT id, state, voting_deadline FROM proposals WHERE id = $1 FOR UPDATE',
+          [id],
+        );
+        if (!row || row.state !== 'PROPUESTO' || new Date(row.voting_deadline).getTime() <= now.getTime()) return false;
         const window = await db.one('SELECT id FROM proposal_windows WHERE id = $1 AND proposal_id = $2', [windowId, id]);
         if (!window) return false;
         const { rowCount } = await db.query(

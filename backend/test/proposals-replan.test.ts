@@ -188,7 +188,7 @@ describe('POST /api/proposals/:id/replan', () => {
 
   it('confirmar mientras otra petición replantea: 409, sigue PROPUESTO con las franjas nuevas', async () => {
     await voteFor(app, p.id, p.windows[0].id, ana.token);
-    interleaveWith(db, /^(SELECT id, state FROM proposals WHERE id = \$1 FOR UPDATE|UPDATE proposals SET state = 'CONFIRMADO')/, replanMeanwhile);
+    interleaveWith(db, /^(SELECT id, state, voting_deadline FROM proposals WHERE id = \$1 FOR UPDATE|UPDATE proposals SET state = 'CONFIRMADO')/, replanMeanwhile);
     const res = await request(app).post(`/api/proposals/${p.id}/confirm`).set(bearer(yo.token)).send({});
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await db.one('SELECT state, chosen_window_id, scheduled_at FROM proposals WHERE id = $1', [p.id])).toEqual({

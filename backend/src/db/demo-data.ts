@@ -82,7 +82,7 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
   const [meetingWindow] = (await proposals.findById(meetingId, ids.test))!.windows;
   await proposals.voteIfOpen(meetingId, ids.test, meetingWindow.id, new Date(ago(30)));
   await proposals.voteIfOpen(meetingId, ids.ana, meetingWindow.id, new Date(ago(30)));
-  await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date);
+  await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date, new Date(ago(30)));
   await proposals.reportIncidence(
     meetingId,
     {

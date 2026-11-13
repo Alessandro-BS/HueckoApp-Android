@@ -285,7 +285,7 @@ El servidor calcula su `availabilityPercentage` con los horarios **actuales** de
 `201 Proposal` · `400 VALIDATION_ERROR` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» (misma `date`, `startTime` y `endTime`) · `409 VOTING_CLOSED`
 
 ### `POST /proposals/:id/confirm`
-Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan») y solo si está `PROPUESTO` y **antes** del `votingDeadline` (`409 INVALID_STATE`): al vencer el plazo la votación se cierra sola (ver «Cierre automático») y ya no se confirma a mano. `{ "windowId": "..." }` es opcional:
+Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan») y solo si está `PROPUESTO` y **antes** del `votingDeadline` (`409 INVALID_STATE`): al vencer el plazo la votación se cierra sola (ver «Cierre automático») y ya no se confirma a mano. Estado y plazo se vuelven a comprobar al guardar, con la propuesta bloqueada: si el plazo vence justo mientras tanto, también `409 INVALID_STATE`. `{ "windowId": "..." }` es opcional:
 - con `windowId`: se confirma esa franja, tenga votos o no (`404 WINDOW_NOT_FOUND` si no es de la propuesta);
 - sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de fecha y hora más tempranas. Si nadie votó → `409 NO_VOTES`.
 - si la franja elegida (con o sin `windowId`) ya empezó → `409 WINDOW_STARTED` «Esa franja ya empezó: replantea la propuesta.»
