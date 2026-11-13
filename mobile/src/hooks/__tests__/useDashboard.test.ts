@@ -69,6 +69,17 @@ it('toggleVote sobre mi franja retira el voto', async () => {
   expect(result.current.dashboard?.pendingVotes[0].myVoteWindowIds).toEqual([]);
 });
 
+it('con voto múltiple, toggleVote sobre una franja mía retira solo esa', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  proposals.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+  const { result } = await load();
+  await act(async () => void (await result.current.toggleVote('prop_2', 'w_21')));
+  expect(proposals.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+  expect(result.current.dashboard?.pendingVotes[0].myVoteWindowIds).toEqual(['w_22']);
+});
+
 it('si el voto falla, no lanza: expone voteError y el resumen no cambia', async () => {
   proposals.voteWindow.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
   const { result } = await load();

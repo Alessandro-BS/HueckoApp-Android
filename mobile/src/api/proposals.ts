@@ -17,7 +17,9 @@ export const getProposal = async (id: string) => (await api.get<Proposal>(propos
 export const voteWindow = async (id: string, windowId: string) =>
   (await api.put<Proposal>(`${proposalPath(id)}/vote`, { windowId })).data;
 
-export const removeVote = async (id: string) => (await api.delete<Proposal>(`${proposalPath(id)}/vote`)).data;
+// Sin windowId quita todos mis votos; con windowId, solo el de esa franja (voto múltiple).
+export const removeVote = async (id: string, windowId?: string) =>
+  (await api.delete<Proposal>(`${proposalPath(id)}/vote`, windowId ? { params: { windowId } } : undefined)).data;
 
 export const addWindow = async (id: string, input: TimeWindowInput) =>
   (await api.post<Proposal>(`${proposalPath(id)}/windows`, input)).data;

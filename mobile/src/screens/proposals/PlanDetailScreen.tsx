@@ -71,6 +71,15 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   const canReport = activeUpcoming && proposal.state === 'CONFIRMADO';
   const openVoteId = proposal.expressVote?.status === 'ABIERTA' ? proposal.expressVote.id : null;
 
+  // El servidor marca `autoClosed` solo si la votación se cerró sola (confirmada al vencer el plazo, o cancelada por falta de votos).
+  const autoClosedNotice = !proposal.autoClosed
+    ? null
+    : proposal.state === 'CONFIRMADO'
+      ? 'Confirmado al cerrar la votación'
+      : proposal.state === 'CANCELADO'
+        ? 'Cancelado: nadie votó antes del plazo'
+        : null;
+
   const doCancel = async () => {
     try {
       await cancel();
@@ -90,6 +99,10 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload()} colors={[colors.primary]} />}
       >
         <ProposalHeader proposal={proposal} now={now} details />
+
+        {autoClosedNotice ? (
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{autoClosedNotice}</Text>
+        ) : null}
 
         {showExpress ? (
           <ExpressVoteCard proposal={proposal} now={now} onVote={voteExpress} onReplan={replan} onStale={() => void reload()} />
@@ -123,6 +136,12 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
               proposal.incidences.map((i) => <IncidenceRow key={i.id} incidence={i} />)
             )}
             {canReport ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
+          </View>
+        ) : null}
+
+        {canManage && proposal.state === 'CANCELADO' && proposal.autoClosed ? (
+          <View style={styles.list}>
+            <SecondaryButton title="Replantear" icon="event-repeat" onPress={() => setSheet('replan')} />
           </View>
         ) : null}
 

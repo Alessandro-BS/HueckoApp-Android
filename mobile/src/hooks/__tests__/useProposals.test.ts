@@ -56,6 +56,14 @@ describe('useProposal', () => {
     expect(result.current.proposal?.myVoteWindowIds).toEqual([]);
   });
 
+  it('con voto múltiple, toggleVote sobre una franja mía retira solo esa (DELETE ?windowId)', async () => {
+    mocked.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+    const { result } = await load(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }));
+    await act(async () => void (await result.current.toggleVote('w_21')));
+    expect(mocked.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+    expect(result.current.proposal?.myVoteWindowIds).toEqual(['w_22']);
+  });
+
   it('confirm, cancel, addWindow, reportIncidence y voteExpress reemplazan la propuesta con la respuesta', async () => {
     const confirmed = makeConfirmed({ id: 'prop_2' });
     mocked.confirmProposal.mockResolvedValue(confirmed);

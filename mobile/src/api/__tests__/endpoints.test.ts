@@ -83,6 +83,13 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   if (body !== undefined) expect(JSON.parse(calls[0].data)).toEqual(body);
 });
 
+it('DELETE /proposals/p1/vote con windowId manda ?windowId= solo esa franja', async () => {
+  await proposals.removeVote('p1', 'w1');
+  expect(calls[0].method?.toUpperCase()).toBe('DELETE');
+  expect(calls[0].url).toBe('/proposals/p1/vote');
+  expect(calls[0].params).toEqual({ windowId: 'w1' });
+});
+
 it('las llamadas que usan la IA esperan hasta 45 s; el resto, lo normal', async () => {
   await ai.suggestPlans('g1');
   await ai.draftProposal('g1', 'Estudiar', '2026-11-16');

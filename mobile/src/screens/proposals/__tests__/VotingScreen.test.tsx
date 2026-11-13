@@ -113,6 +113,33 @@ it('con 5 franjas ya no se ofrece agregar otra', async () => {
   expect(screen.queryByText('Agregar franja horaria')).toBeNull();
 });
 
+it('sin voto múltiple no muestra la ayuda de varias franjas, pero sí cuándo cierra la votación', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal());
+  await renderScreen();
+  expect(await screen.findByText('Elige una franja horaria')).toBeTruthy();
+  expect(screen.queryByText('Puedes votar todas las franjas que te sirvan')).toBeNull();
+  expect(screen.getByText('La votación cierra el Mar 29 sep, 20:00. Si nadie vota, el plan se cancela.')).toBeTruthy();
+});
+
+it('con voto múltiple muestra la ayuda, marca varias franjas y retira solo la tocada', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }));
+  mocked.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+  await renderScreen();
+  expect(await screen.findByText('Puedes votar todas las franjas que te sirvan')).toBeTruthy();
+  expect(screen.getAllByLabelText('Tu voto')).toHaveLength(2);
+  await fireEvent.press(screen.getByText('Mar 29 sep · 16:00 - 18:00'));
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto se ha retirado.'));
+  expect(mocked.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+  expect(screen.getAllByLabelText('Tu voto')).toHaveLength(1);
+});
+
+it('con la votación cerrada no muestra el aviso de cierre', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ votingDeadline: new Date(2026, 8, 29, 9, 0).toISOString() }));
+  await renderScreen();
+  expect(await screen.findByText('La votación está cerrada.')).toBeTruthy();
+  expect(screen.queryByText(/La votación cierra el/)).toBeNull();
+});
+
 const pickDeadline = async (date: Date) => {
   await fireEvent.press(screen.getByLabelText('Nueva fecha límite de votación'));
   await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);

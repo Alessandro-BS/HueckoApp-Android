@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import type { PlanCategory, TimeWindowInput } from '@hueckoapp/shared';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { createProposal } from '../../api/proposals';
 import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, SecondaryButton, TextField, WeekSelector } from '../../components';
@@ -37,6 +37,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const [deadline, setDeadline] = useState<Date | null>(prefill?.votingDeadline ? new Date(prefill.votingDeadline) : null);
   const [windows, setWindows] = useState<TimeWindowInput[]>(prefill ? prefillWindows(prefill) : []);
   const [auto, setAuto] = useState(windows.length === 0);
+  const [multipleVotes, setMultipleVotes] = useState(true);
   const [category, setCategory] = useState<PlanCategory | null>(prefill?.category ?? null);
   // La IA no eligió franja: se avisa en «Franjas» (el formulario queda en «las 3 mejores», que da 409 si no hay huecos).
   const [noWindow, setNoWindow] = useState(Boolean(prefill && windows.length === 0));
@@ -109,6 +110,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
       title: title.trim(),
       location: name ? { name, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null } : null,
       votingDeadline: deadline.toISOString(),
+      multipleVotes,
       ...(auto ? { windows: [], week } : { windows }),
     });
     if (result.ok) {
@@ -175,6 +177,21 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           error={deadlineError ?? (afterWindow ? DEADLINE_AFTER_WINDOW : undefined)}
           helperText="Después de esta hora ya no se puede votar."
         />
+
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={[typography.titleSmall, { color: colors.onSurface }]}>Permitir votar varias franjas</Text>
+            <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+              {multipleVotes ? 'Cada persona puede votar todas las franjas que le sirvan.' : 'Un voto por persona: votar otra franja mueve el voto.'}
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Permitir votar varias franjas"
+            value={multipleVotes}
+            onValueChange={setMultipleVotes}
+            trackColor={{ true: colors.primary, false: colors.outlineVariant }}
+          />
+        </View>
 
         <View style={styles.section}>
           <FieldLabel>Semana</FieldLabel>
@@ -257,6 +274,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingVertical: 20, gap: 20 },
   section: { gap: 8 },
   options: { gap: 8 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   windowRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 14, borderRadius: 12, backgroundColor: colors.surfaceContainer },
   iconButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
 });

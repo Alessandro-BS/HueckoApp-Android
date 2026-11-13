@@ -121,6 +121,14 @@ En el formulario de la propuesta de estudio:
 | 2 | **Usar** en una idea | Se abre «Crear propuesta» ya rellenado | — |
 | 3 | Pide ideas otra vez | Ideas distintas | — |
 
+### Editar un bloque y el aviso de solape (cualquier cuenta)
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | **Horario**, toca un bloque que ya tengas | Pantalla **Editar bloque** con sus datos | Se edita sin borrar y volver a crear |
+| 2 | Mueve su horario para que se cruce con otro bloque del mismo día y guarda | Mensaje del tipo **«Se solapa con …»** y la pantalla no se cierra | El servidor rechaza los bloques que se pisan (409) |
+| 3 | Corrige la hora para que no se cruce y guarda | Se guarda y vuelve al horario | Sin solape, sin error |
+
 ## 🔟 Votar (con cada cuenta)
 
 | Cuenta | Qué hacer |
@@ -130,6 +138,17 @@ En el formulario de la propuesta de estudio:
 | `carlos@test.com` | **No votes** todavía |
 
 **Por qué:** así el resumen siguiente tiene un caso realista (2 de 3 votos).
+
+### Voto múltiple y cierre automático
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | Al crear la propuesta, deja activado **Permitir votar varias franjas** | En **Votar**: «Puedes votar todas las franjas que te sirvan» | El voto múltiple viene activado por defecto |
+| 2 | Toca dos franjas, y luego una de ellas otra vez | Las dos quedan marcadas; al repetir una, se quita solo esa. En **Inicio**: «Votaste 2 franjas» / «Votaste 1 franja» | Con voto múltiple solo se retira la franja tocada |
+| 3 | Crea otra propuesta con el interruptor **apagado** y vota dos franjas distintas | La segunda mueve el voto; queda una sola marcada | Con voto único, votar otra franja mueve el voto |
+| 4 | Mira bajo el título de **Votar** | «La votación cierra el … Si nadie vota, el plan se cancela.» | Avisa del cierre automático |
+| 5 | Deja vencer el plazo con votos | El plan queda **Confirmado** con la franja más votada y el detalle dice «Confirmado al cerrar la votación» | Cierra sola, sin que nadie confirme |
+| 6 | Deja vencer el plazo sin ningún voto (con quien gestiona) | «Cancelado: nadie votó antes del plazo» y el botón **Replantear** | Solo una cancelación automática se puede replantear; una cancelada a mano, no |
 
 ## 1️⃣1️⃣ Resumen con IA y confirmar (`test@test.com`)
 

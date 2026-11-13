@@ -260,3 +260,26 @@ it('Inicio muestra la fecha de la próxima franja de cada grupo', async () => {
   expect(await screen.findByText('2 miembros · Vie 20 nov · 16:00 - 18:00')).toBeTruthy();
   expect(screen.getByText('80%')).toBeTruthy();
 });
+
+it('con voto múltiple dice cuántas franjas votaste y la ayuda; con 1, «Votaste 1 franja»', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  proposals.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+  await renderScreen();
+  expect(await screen.findByText('Votaste 2 franjas')).toBeTruthy();
+  expect(screen.getByText('Puedes votar todas las franjas que te sirvan')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Mar 29 sep · 16:00 - 18:00'));
+  expect(await screen.findByText('Votaste 1 franja')).toBeTruthy();
+  expect(proposals.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+});
+
+it('sin voto múltiple no muestra «Votaste» ni la ayuda', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Mar 29 sep · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.queryByText(/Votaste/)).toBeNull();
+  expect(screen.queryByText('Puedes votar todas las franjas que te sirvan')).toBeNull();
+});
