@@ -77,8 +77,8 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
   expect(await screen.findByText('Sesión de estudio antes del parcial')).toBeTruthy();
   expect(mockedAi.suggestPlans).toHaveBeenCalledWith('g1');
   expect(screen.getByText('Ideas con Huecko IA')).toBeTruthy();
-  expect(screen.getByText('Lun · 12:00 - 20:00')).toBeTruthy();
-  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Lun 16 nov · 12:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Jue 19 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Huecko IA no eligió franja: añade una a mano al crear (o deja que Huecko elija si el grupo tiene huecos en común).')).toBeTruthy();
   expect(screen.getByText('Comida')).toBeTruthy();
   expect(screen.getByText('Un plan corto.')).toBeTruthy();

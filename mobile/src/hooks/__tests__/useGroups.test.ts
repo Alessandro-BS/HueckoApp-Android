@@ -141,7 +141,14 @@ describe('useAvailability', () => {
     mocked.getAvailability.mockResolvedValue(windows);
     const { result } = await renderHook(() => useAvailability('g1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(mocked.getAvailability).toHaveBeenCalledWith('g1');
+    expect(mocked.getAvailability).toHaveBeenCalledWith('g1', undefined);
     expect(result.current.windows).toEqual(windows);
+  });
+
+  it('pide la semana indicada', async () => {
+    mocked.getAvailability.mockResolvedValue([]);
+    const { result } = await renderHook(() => useAvailability('g1', '2026-11-23'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mocked.getAvailability).toHaveBeenCalledWith('g1', '2026-11-23');
   });
 });

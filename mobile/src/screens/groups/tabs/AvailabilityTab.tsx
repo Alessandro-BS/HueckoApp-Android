@@ -31,7 +31,7 @@ export function AvailabilityTab({ groupId, threshold, memberCount }: Props) {
           />
         ) : (
           days.map((day) => (
-            <View key={day.dayOfWeek} style={styles.day}>
+            <View key={day.date} style={styles.day}>
               <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{dayLong(day.dayOfWeek)}</Text>
               {day.windows.map((w) => (
                 <HueckoCard key={`${w.dayOfWeek}-${w.startTime}`} padding={14}>

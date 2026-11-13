@@ -6,7 +6,8 @@ import {
 const NOW = new Date(2026, 8, 29, 10, 0);
 
 it('etiquetas de franja, votos y disponibilidad (quirk 20: siempre con « · »)', () => {
-  expect(windowLabel(makeWindow())).toBe('Mar · 16:00 - 18:00');
+  expect(windowLabel(makeWindow())).toBe('Mar 29 sep · 16:00 - 18:00');
+  expect(windowLabel({ date: '2026-11-19', startTime: '16:00', endTime: '18:00' })).toBe('Jue 19 nov · 16:00 - 18:00');
   expect(voteCountLabel(0)).toBe('0 votos');
   expect(voteCountLabel(1)).toBe('1 voto');
   expect(voteCountLabel(2)).toBe('2 votos');

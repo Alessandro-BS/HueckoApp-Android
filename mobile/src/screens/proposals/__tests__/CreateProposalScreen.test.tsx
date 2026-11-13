@@ -5,6 +5,7 @@ import { ApiError } from '../../../api/client';
 import * as aiApi from '../../../api/ai';
 import * as proposalsApi from '../../../api/proposals';
 import { makeDraft, makeProposal } from '../../../testing/fixtures';
+import { windowLabel } from '../../../utils/proposals';
 import { showToast } from '../../../utils/toast';
 import { features } from '../../../config';
 import { CreateProposalScreen } from '../CreateProposalScreen';
@@ -191,15 +192,15 @@ it('franjas elegidas a mano: valida las horas, no las repite y las envía', asyn
   await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), '08:00');
   expect(screen.getByText('Debe ser posterior')).toBeTruthy();
   await fireEvent(screen.getByLabelText('Hora de fin (HH:mm)'), 'submitEditing');
-  expect(screen.queryByText('Lun · 09:00 - 08:00')).toBeNull();
+  expect(screen.queryByText(windowLabel({ date: nextDateOf(1, '09:00'), startTime: '09:00', endTime: '08:00' }))).toBeNull();
 
   await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), '11:00');
   await fireEvent.press(screen.getByText('Añadir franja'));
-  expect(screen.getByText('Lun · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText(windowLabel({ date: nextDateOf(1, '09:00'), startTime: '09:00', endTime: '11:00' }))).toBeTruthy();
   expect(screen.getByText('Esa franja ya está en la lista.')).toBeTruthy();
   await fireEvent.press(screen.getByText('Vie'));
   await fireEvent.press(screen.getByText('Añadir franja'));
-  expect(screen.getByText('Vie · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText(windowLabel({ date: nextDateOf(5, '09:00'), startTime: '09:00', endTime: '11:00' }))).toBeTruthy();
 
   await fireEvent.press(screen.getByText('Crear propuesta'));
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
@@ -230,7 +231,7 @@ it('abre rellenada con una idea de la IA y la envía con su franja', async () =>
   await render(<CreateProposalScreen navigation={navigation} route={routeWith(prefill)} />);
   expect(screen.getByLabelText('Título del plan').props.value).toBe('Partido de fulbito');
   expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Losa del campus');
-  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Jue 19 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Categoría sugerida: Deporte')).toBeTruthy();
 
   await pickDeadline(new Date(2026, 9, 2, 20, 0));
@@ -254,7 +255,7 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
   expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes en la biblioteca');
   expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca central');
   expect(screen.getByText('Mié 30 sep, 10:00')).toBeTruthy();
-  expect(screen.getByText('Mar · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Mar 17 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Categoría sugerida: Estudio')).toBeTruthy();
   expect(showToast).toHaveBeenCalledWith('Borrador listo: revísalo antes de crear la propuesta.');
 
@@ -276,9 +277,9 @@ it('un borrador con varias opciones las carga todas en «Elegir yo las franjas»
   await renderScreen();
   await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Reunión de 2 horas el viernes');
   await fireEvent.press(screen.getByText('Rellenar con IA'));
-  await waitFor(() => expect(screen.getByText('Vie · 15:00 - 17:00')).toBeTruthy());
-  expect(screen.getByText('Vie · 09:00 - 11:00')).toBeTruthy();
-  expect(screen.getByText('Vie · 13:00 - 15:00')).toBeTruthy();
+  await waitFor(() => expect(screen.getByText('Vie 20 nov · 15:00 - 17:00')).toBeTruthy());
+  expect(screen.getByText('Vie 20 nov · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText('Vie 20 nov · 13:00 - 15:00')).toBeTruthy();
 
   await fireEvent.press(screen.getByText('Crear propuesta'));
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));

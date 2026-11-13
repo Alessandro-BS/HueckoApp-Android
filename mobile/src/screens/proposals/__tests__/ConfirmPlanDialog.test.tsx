@@ -15,6 +15,6 @@ it('sin franjas explica qué hacer en lugar de mostrar una lista vacía', async 
 
 it('con franjas las lista y no muestra el aviso', async () => {
   await render(<ConfirmPlanDialog {...props} windows={[makeWindow()]} />);
-  expect(screen.getByText('Mar · 16:00 - 18:00 · 0 votos')).toBeTruthy();
+  expect(screen.getByText('Mar 29 sep · 16:00 - 18:00 · 0 votos')).toBeTruthy();
   expect(screen.queryByText(NO_WINDOWS_TEXT)).toBeNull();
 });

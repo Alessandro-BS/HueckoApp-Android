@@ -27,7 +27,7 @@ it('muestra la propuesta, sus franjas y los recuentos (UI spec §2.7, con tildes
   expect(screen.getByText('En votación')).toBeTruthy();
   expect(screen.getByText('Elige una franja horaria')).toBeTruthy();
   expect(screen.getByText('Selecciona la opción que más te convenga. Un voto por persona.')).toBeTruthy();
-  expect(screen.getByText('Mar · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.getByText('Mar 29 sep · 16:00 - 18:00')).toBeTruthy();
   expect(screen.getByText('1 voto')).toBeTruthy();
   expect(screen.getAllByText('0 votos')).toHaveLength(2);
   expect(screen.getByText('50% del grupo disponible')).toBeTruthy();
@@ -44,12 +44,12 @@ it('votar una franja usa PUT; tocar la mía retira el voto con DELETE (G1, B8)',
   mocked.removeVote.mockResolvedValue(makeProposal());
   await renderScreen();
 
-  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
   expect(mocked.voteWindow).toHaveBeenCalledWith('prop_2', 'w_22');
   expect(screen.getByLabelText('Tu voto')).toBeTruthy();
 
-  await fireEvent.press(screen.getByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(screen.getByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto se ha retirado.'));
   expect(mocked.removeVote).toHaveBeenCalledWith('prop_2');
   expect(screen.queryByLabelText('Tu voto')).toBeNull();
@@ -60,7 +60,7 @@ it('votación cerrada: aviso y sin votar ni agregar franjas (C1)', async () => {
   await renderScreen();
   expect(await screen.findByText('Cerró: Mar 29 sep, 09:00')).toBeTruthy();
   expect(screen.getByText('La votación está cerrada.')).toBeTruthy();
-  await fireEvent.press(screen.getByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(screen.getByText('Jue 1 oct · 10:00 - 12:00'));
   expect(mocked.voteWindow).not.toHaveBeenCalled();
   expect(screen.queryByText('Agregar franja horaria')).toBeNull();
 });
@@ -93,7 +93,7 @@ it('agregar franja: valida HH:mm y el orden (quirk 13) y la envía', async () =>
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Franja horaria agregada.'));
   // TODO(franjas-con-fecha Task 8): el editor aún envía la próxima fecha del día elegido.
   expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { date: nextDateOf(5, '18:00'), startTime: '18:00', endTime: '19:30' });
-  expect(screen.getByText('Vie · 18:00 - 19:30')).toBeTruthy();
+  expect(screen.getByText('Vie 2 oct · 18:00 - 19:30')).toBeTruthy();
   expect(screen.queryByText('Selecciona el día y la franja horaria que propones.')).toBeNull();
 });
 
@@ -101,7 +101,7 @@ it('si votar falla, muestra el error sin avisar de éxito', async () => {
   mocked.getProposal.mockResolvedValue(makeProposal());
   mocked.voteWindow.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   expect(await screen.findByText('La votación ya cerró.')).toBeTruthy();
   expect(showToast).not.toHaveBeenCalled();
 });

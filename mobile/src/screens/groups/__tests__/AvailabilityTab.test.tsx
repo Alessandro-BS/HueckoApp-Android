@@ -22,7 +22,7 @@ it('muestra las franjas agrupadas por día con su % y los libres', async () => {
   expect(screen.getByText('08:00 - 14:00')).toBeTruthy();
   expect(screen.getByText('50%')).toBeTruthy();
   expect(screen.getByText('1 de 2 libres')).toBeTruthy();
-  expect(mocked.getAvailability).toHaveBeenCalledWith('g1');
+  expect(mocked.getAvailability).toHaveBeenCalledWith('g1', undefined);
 });
 
 it('sin franjas explica el umbral', async () => {

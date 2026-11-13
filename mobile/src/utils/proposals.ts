@@ -1,7 +1,8 @@
 import type { Criticality, Incidence, IncidenceType, Proposal, ProposalState, TimeWindow } from '@hueckoapp/shared';
 
 import { colors } from '../theme';
-import { dayShort, formatDateLabel, formatDateTime } from './days';
+import { formatDateLabel, formatDateTime } from './days';
+import { shortDate } from './zone';
 
 type BadgeStyle = { text: string; container: string; content: string };
 
@@ -27,17 +28,9 @@ export const CRITICALITY_BADGE: Record<Criticality, BadgeStyle> = {
   BAJA: { text: 'Baja', container: colors.surfaceContainerHigh, content: colors.onSurfaceVariant },
 };
 
-// TODO(franjas-con-fecha Task 7): windowLabel pasa a mostrar la fecha. Mientras tanto, una franja que solo trae `date`
-// (TimeWindowInput) toma el día de la semana de esa fecha.
-type WindowLike = Pick<TimeWindow, 'startTime' | 'endTime'> & ({ dayOfWeek: number } | { date: string });
-const dayOfWindow = (w: WindowLike) => {
-  if ('dayOfWeek' in w) return w.dayOfWeek;
-  const day = new Date(`${w.date}T00:00:00Z`).getUTCDay();
-  return day === 0 ? 7 : day;
-};
-
-/** «Mar · 16:00 - 18:00» en todas las pantallas (quirk 20: un solo formato). */
-export const windowLabel = (w: WindowLike) => `${dayShort(dayOfWindow(w))} · ${w.startTime} - ${w.endTime}`;
+/** «Jue 20 nov · 16:00 - 18:00» en todas las pantallas (quirk 20: un solo formato). */
+export const windowLabel = (w: Pick<TimeWindow, 'date' | 'startTime' | 'endTime'>) =>
+  `${shortDate(w.date)} · ${w.startTime} - ${w.endTime}`;
 
 export const voteCountLabel = (n: number) => (n === 1 ? '1 voto' : `${n} votos`);
 
