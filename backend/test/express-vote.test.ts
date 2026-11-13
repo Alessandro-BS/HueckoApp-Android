@@ -343,10 +343,22 @@ describe('cierre al consultar', () => {
   it('una votación cerrada sin aplicar sobre un plan cancelado no lo resucita aunque se hubiera votado REAGENDAR', async () => {
     const p = await planWithVote();
     await post(`${p.id}/cancel`, yo.token).expect(200);
-    await expressVote(p, ana.token, 'REAGENDAR').expect(200);
-    const res = await expressVote(p, carlos.token, 'REAGENDAR');
-    expect(res.body.state).toBe('CANCELADO');
-    expect(res.body.expressVote).toMatchObject({ status: 'CERRADA', result: 'REAGENDAR' });
+    // Votos que ya estaban (la API no admite votar con el plan cancelado): se guardan directo en la tabla.
+    const votes = expressVotesRepository(db);
+    await votes.castVote(p.expressVote!.id, ana.user.id, 'REAGENDAR', NOW.toISOString());
+    await votes.castVote(p.expressVote!.id, carlos.user.id, 'REAGENDAR', NOW.toISOString());
+    expect(await votes.closeDue(p.id, NOW)).toBe(true);
+    const plan = await getPlan(p);
+    expect(plan.state).toBe('CANCELADO');
+    expect(plan.expressVote).toMatchObject({ status: 'CERRADA', result: 'REAGENDAR' });
+  });
+
+  it('409 VOTING_CLOSED al votar con la votación abierta en un plan que quien gestiona ya canceló; no se guarda el voto', async () => {
+    const p = await planWithVote();
+    await post(`${p.id}/cancel`, yo.token).expect(200);
+    const res = await expressVote(p, ana.token, 'REAGENDAR');
+    expect([res.status, res.body.error?.code]).toEqual([409, 'VOTING_CLOSED']);
+    expect(await db.one('SELECT COUNT(*) AS n FROM express_vote_voters WHERE vote_id = $1 AND option IS NOT NULL', [p.expressVote!.id])).toEqual({ n: 0 });
   });
 });
 

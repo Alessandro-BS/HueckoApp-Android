@@ -74,11 +74,12 @@ export function groupSummaries(groups: readonly GroupSummary[], proposals: reado
 }
 
 /**
- * G5: de los planes que aún no ocurrieron, por prioridad: el primero con votación exprés ABIERTA (`VOTACION`, con el
- * motivo de quien reportó y cuándo vence), si no el primero EN_RECOORDINACION (`RECOORDINACION`: tras una votación que
- * reagendó el plan sus incidencias ya están resueltas, así que quién y por qué salen de la votación), si no el primero
+ * G5: por prioridad: el primer plan que aún no ocurrió con votación exprés ABIERTA (`VOTACION`, con el motivo de quien
+ * reportó y cuándo vence), si no el primero EN_RECOORDINACION (`RECOORDINACION`: tras una votación que reagendó el plan
+ * sus incidencias ya están resueltas, así que quién y por qué salen de la votación), si no el primero que aún no ocurrió
  * CONFIRMADO con incidencias sin resolver (`AVISO`). Sin votación se muestra la incidencia ALTA sin resolver o, si no,
- * la más antigua.
+ * la más antigua. EN_RECOORDINACION siempre está vigente aunque su fecha vieja ya pasara (la regla anterior la
+ * conservaba): hasta que quien gestiona lo replantee, el plan sigue atascado y hay que avisarlo.
  */
 export function expressAlertFor(proposals: readonly ProposalWithGroup[], now: Date): ExpressAlert | null {
   const upcoming = proposals.filter((p) => p.scheduledAt === null || isFuture(p.scheduledAt, now));
@@ -97,7 +98,7 @@ export function expressAlertFor(proposals: readonly ProposalWithGroup[], now: Da
     return alert(voting, 'VOTACION', v.reportedBy.name, v.reason, v.expiresAt);
   }
 
-  for (const p of upcoming.filter((x) => x.state === 'EN_RECOORDINACION')) {
+  for (const p of proposals.filter((x) => x.state === 'EN_RECOORDINACION')) {
     const shown = shownIncidence(p);
     if (p.expressVote) return alert(p, 'RECOORDINACION', p.expressVote.reportedBy.name, p.expressVote.reason, null);
     if (shown) return alert(p, 'RECOORDINACION', shown.user.name, shown.reason, null);

@@ -150,6 +150,18 @@ describe('alerta exprés (G5)', () => {
     expect(d.expressAlert).toBeNull();
   });
 
+  it('un plan EN_RECOORDINACION con la fecha vieja ya pasada sigue siendo RECOORDINACION (hay que sacarlo replanteando)', () => {
+    // Planes que la regla vieja dejó en recoordinación conservaron su scheduledAt; si ya pasó, siguen atascados.
+    const ayer = new Date(2026, 8, 27, 11, 0).toISOString();
+    const sinVoto = prop1({ state: 'EN_RECOORDINACION', scheduledAt: ayer, incidences: [incidence({ criticality: 'ALTA', reason: 'Enferma' })] });
+    expect(build([sinVoto]).expressAlert).toMatchObject({ proposalId: 'prop_1', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma' });
+    const conVoto = prop1({
+      state: 'EN_RECOORDINACION', scheduledAt: ayer, incidences: [incidence({ resolved: true })],
+      expressVote: voto({ status: 'CERRADA', result: 'REAGENDAR', closedAt: NOW.toISOString() }),
+    });
+    expect(build([conVoto]).expressAlert).toMatchObject({ kind: 'RECOORDINACION', who: 'Ana', reason: 'Me operan mañana.' });
+  });
+
   it('una tardanza sin resolver deja al asistente como RETRASADO con sus minutos', () => {
     const d = build([prop1({ incidences: [incidence({ type: 'TARDANZA', delayMinutes: 15, criticality: 'BAJA' })] })]);
     expect(d.nextPlan?.attendees[1]).toEqual({ user: ana, isEssential: false, status: 'RETRASADO', delayMinutes: 15 });

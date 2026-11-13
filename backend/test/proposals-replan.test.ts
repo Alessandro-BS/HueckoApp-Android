@@ -82,6 +82,18 @@ describe('POST /api/proposals/:id/replan', () => {
     expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
+  it('desde PROPUESTO conserva las incidencias resueltas (plan reprogramado por el flujo viejo de /resolve)', async () => {
+    await db.query(
+      `INSERT INTO incidences (id, proposal_id, user_id, type, reason, criticality, resolved, critical_reason, created_at)
+       VALUES ('inc-viejo', $1, $2, 'FALTA', 'No puedo ir', 'ALTA', TRUE, 'Organizador', $3)`,
+      [p.id, yo.user.id, NOW.toISOString()],
+    );
+    const res = await replan(yo.token);
+    expect([res.status, res.body.state]).toEqual([200, 'PROPUESTO']);
+    expect(res.body.incidences.map((i: { id: string }) => i.id)).toEqual(['inc-viejo']);
+    expect(await db.one('SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = $1', [p.id])).toEqual({ n: 1 });
+  });
+
   describe('desde EN_RECOORDINACION (resultado REAGENDAR de la votación exprés)', () => {
     // El estado en que un REAGENDAR deja el plan: sin franja elegida, con su incidencia resuelta y la votación cerrada.
     beforeEach(async () => {

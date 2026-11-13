@@ -4,6 +4,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
+import { type ExpressRecommendationInput, expressRecommendationPrompt } from '../src/ai/express-recommendation';
 import { MOCK_RESPONSES } from '../src/ai/mock-client';
 import type { Db } from '../src/db/db';
 import {
@@ -130,5 +131,23 @@ describe('recomendación de la IA en la votación exprés', () => {
     await report(p, carlos.token, { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 10 }).expect(201);
     await settle();
     expect(fake.calls).toHaveLength(0);
+  });
+});
+
+describe('expressRecommendationPrompt', () => {
+  const input: ExpressRecommendationInput = {
+    voteId: 'ev_1', planTitle: 'Reunión', location: null, startsAt: NOW.toISOString(), hoursLeft: 24,
+    reason: 'Estoy enfermo', criticalReason: 'Propuso el plan', eligibleVoters: 2, defaultResult: 'MANTENER',
+  };
+
+  it('con 2 o más votantes el quórum es 2', () => {
+    expect(expressRecommendationPrompt(input)).toContain('Si votan menos de 2 personas (el quórum), el resultado por defecto es MANTENER.');
+    expect(expressRecommendationPrompt({ ...input, eligibleVoters: 5 })).toContain('menos de 2 personas');
+  });
+
+  it('con un solo votante el quórum es 1: el resultado por defecto solo aplica si nadie vota', () => {
+    const prompt = expressRecommendationPrompt({ ...input, eligibleVoters: 1 });
+    expect(prompt).toContain('Si nadie vota, el resultado por defecto es MANTENER.');
+    expect(prompt).not.toContain('menos de 2');
   });
 });

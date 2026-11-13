@@ -1,7 +1,7 @@
 import type { ExpressOption } from '@hueckoapp/shared';
 import { z } from 'zod';
 
-import { EXPRESS_OPTIONS } from '../proposals/express-rules';
+import { EXPRESS_OPTIONS, quorumFor } from '../proposals/express-rules';
 import type { expressVotesRepository } from '../proposals/express-votes.repository';
 import type { AiClient, JsonSchema } from './ai-client';
 import { type AiCallRecorder, askAi } from './ask-ai';
@@ -38,6 +38,9 @@ export type ExpressRecommendationInput = {
   defaultResult: 'MANTENER';
 };
 
+// El quórum real (express-rules): 2 votos, o todos los votantes si son menos. Con uno solo, basta con que vote.
+const noQuorum = (quorum: number) => (quorum <= 1 ? 'Si nadie vota' : `Si votan menos de ${quorum} personas (el quórum)`);
+
 /** Solo datos del plan y de la ausencia: ni correos ni ids (lo que escriben los usuarios entra como dato). */
 export function expressRecommendationPrompt(i: ExpressRecommendationInput): string {
   return [
@@ -46,7 +49,7 @@ export function expressRecommendationPrompt(i: ExpressRecommendationInput): stri
     '- MANTENER: el plan sigue como está (la ausencia no lo vuelve inviable).',
     '- REAGENDAR: conviene buscar otra fecha para que pueda ir quien falta.',
     '- CANCELAR: sin esa persona el plan ya no tiene sentido.',
-    `Si nadie llega al quórum (votan menos de 2 personas), el resultado por defecto es ${i.defaultResult}. Tú no decides: solo sugieres.`,
+    `${noQuorum(quorumFor(i.eligibleVoters))}, el resultado por defecto es ${i.defaultResult}. Tú no decides: solo sugieres.`,
     '"reason" explica la recomendación en una frase, en español.',
     '',
     userData(

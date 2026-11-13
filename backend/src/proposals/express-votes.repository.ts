@@ -156,11 +156,18 @@ export function expressVotesRepository(db: Db) {
     },
 
     /**
-     * Guarda (o cambia) el voto solo si la votación sigue ABIERTA y sin vencer, con su fila bloqueada: un cierre a la
-     * vez espera al voto, o el voto ve la votación ya cerrada. false si ya cerró. Quién puede votar lo comprueba quien llama.
+     * Guarda (o cambia) el voto solo si el plan sigue CONFIRMADO y la votación sigue ABIERTA y sin vencer, con el plan y
+     * la votación bloqueados (en ese orden, como closeDue): un cierre o una cancelación a la vez esperan al voto, o el
+     * voto los ve ya aplicados. false si ya cerró o si quien gestiona canceló el plan con la votación abierta (votar ya
+     * no decide nada). Quién puede votar lo comprueba quien llama.
      */
     castVoteIfOpen(voteId: string, userId: string, option: ExpressOption, now: Date): Promise<boolean> {
       return db.transaction(async () => {
+        const plan = await db.one<{ state: ProposalState }>(
+          'SELECT state FROM proposals WHERE id = (SELECT proposal_id FROM express_votes WHERE id = $1) FOR UPDATE',
+          [voteId],
+        );
+        if (plan?.state !== 'CONFIRMADO') return false;
         const open = await db.one(
           "SELECT id FROM express_votes WHERE id = $1 AND status = 'ABIERTA' AND expires_at > $2 FOR UPDATE",
           [voteId, now.toISOString()],

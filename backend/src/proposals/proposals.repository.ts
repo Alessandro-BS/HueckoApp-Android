@@ -79,7 +79,6 @@ export type NewProposal = {
 };
 
 // Una fila de proposals con el nombre del grupo y los datos de quien la creó.
-
 const SELECT_PROPOSAL = `
   SELECT p.*, g.name AS group_name, u.name AS creator_name, u.email AS creator_email
   FROM proposals p
@@ -258,10 +257,11 @@ export function proposalsRepository(db: Db) {
     },
 
     // Replantear: igual que replaceWindows, pero solo si el plan sigue en uno de los estados admitidos (false si otra
-    // petición lo confirmó o canceló mientras tanto; entonces no se toca nada). Pasa a PROPUESTO. Desde EN_RECOORDINACION
-    // (lo que deja una votación exprés con resultado REAGENDAR) se limpia también lo de la ausencia: sus incidencias y
-    // sus votaciones cerradas, en la misma transacción. En PROPUESTO no hay incidencias ni votaciones (solo se abren con
-    // el plan CONFIRMADO), así que ese borrado no toca nada.
+    // petición lo confirmó o canceló mientras tanto; entonces no se toca nada). Pasa a PROPUESTO. Solo desde
+    // EN_RECOORDINACION (lo que deja una votación exprés con resultado REAGENDAR) se limpia también lo de la ausencia:
+    // sus incidencias y sus votaciones cerradas, en la misma transacción. Desde PROPUESTO se conservan: un plan que el
+    // flujo viejo de /resolve reprogramó sigue PROPUESTO con sus incidencias resueltas, y son su historial.
+    // El estado previo se lee bloqueando la fila (FOR UPDATE) para que nadie lo cambie antes del UPDATE.
     async replanWindows(
       proposalId: string,
       windows: NewWindow[],
@@ -269,13 +269,16 @@ export function proposalsRepository(db: Db) {
       fromStates: ProposalState[] = ['PROPUESTO'],
     ): Promise<boolean> {
       return db.transaction(async () => {
+        const previous = await db.one<{ state: ProposalState }>('SELECT state FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
         const { rowCount } = await db.query(
           "UPDATE proposals SET voting_deadline = $1, state = 'PROPUESTO' WHERE id = $2 AND state = ANY($3)",
           [votingDeadline, proposalId, fromStates],
         );
         if (rowCount === 0) return false;
-        await db.query('DELETE FROM incidences WHERE proposal_id = $1', [proposalId]);
-        await expressVotesRepository(db).deleteClosedFor(proposalId);
+        if (previous?.state === 'EN_RECOORDINACION') {
+          await db.query('DELETE FROM incidences WHERE proposal_id = $1', [proposalId]);
+          await expressVotesRepository(db).deleteClosedFor(proposalId);
+        }
         await this.replaceWindows(proposalId, windows, votingDeadline);
         return true;
       });
