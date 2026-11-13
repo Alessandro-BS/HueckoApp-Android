@@ -78,11 +78,14 @@ Cómo se disparan los avisos que dependen de la hora:
 |---|---|---|---|
 | `NEW_PROPOSAL` | se crea una propuesta | miembros del grupo menos quien la creó | `VOTING` |
 | `PLAN_CONFIRMED` | se confirma a mano o al cerrarse la votación sola | miembros del grupo; a mano, menos quien confirmó | `PLAN` |
-| `PLAN_CANCELLED` | se cancela a mano, desde el admin, sin votos (cierre automático) o por votación exprés `CANCELAR` | miembros del grupo; a mano, menos quien canceló | `PLAN` |
+| `PLAN_CANCELLED` | se cancela a mano, desde el admin o sin votos (cierre automático) | miembros del grupo; a mano, menos quien canceló | `PLAN` |
 | `EXPRESS_OPENED` | se abre una votación exprés | sus votantes (miembros menos quien avisó) | `PLAN` |
 | `EXPRESS_RESULT` | se cierra una votación exprés | miembros del grupo | `PLAN` |
 | `REMINDER` | desde 60 min antes del inicio de un plan `CONFIRMADO` que aún no empezó | miembros del grupo sin una incidencia `FALTA`/`IMPREVISTO` en ese plan | `PLAN` |
 
+- Una votación exprés que decide `CANCELAR` envía solo `EXPRESS_RESULT` («El grupo decidió cancelar…»), no además
+  `PLAN_CANCELLED`: un solo aviso por hecho. El admin que modera una propuesta que ya se canceló sola no envía nada
+  nuevo (el grupo ya recibió `PLAN_CANCELLED`).
 - Destinatarios = miembros **actuales** del grupo en el momento del cambio.
 - `data` = `{ kind, proposalId, groupId, screen }`.
 - Textos (título · cuerpo), con `{grupo}`, `{plan}` (título de la propuesta), `{nombre}` y `{cuándo}` = «jueves 16
@@ -122,6 +125,7 @@ CREATE TABLE notifications (
   dedupe_key TEXT COLLATE "C" UNIQUE,
   created_at TEXT COLLATE "C" NOT NULL,
   sent_at    TEXT COLLATE "C",
+  claimed_at TEXT COLLATE "C",
   attempts   INTEGER NOT NULL DEFAULT 0,
   last_error TEXT COLLATE "C"
 );
@@ -151,18 +155,21 @@ de las migraciones existentes.)
   - `push-client.ts`: interfaz `PushClient.send(messages): Promise<PushTicket[]>`; `createExpoPushClient({ accessToken
     })` con `fetch` a la Expo Push API (lotes de 100, `channelId: 'planes'`, `priority: 'high'`, `sound: 'default'`,
     timeout); `createNoopPushClient()` por defecto (dev sin red y tests que no lo inyectan).
-  - `flush.ts`: `flushNotifications(db, push, now)` — toma hasta N pendientes con `FOR UPDATE SKIP LOCKED` en una
-    transacción corta, arma un mensaje por cada token del destinatario, envía, y por cada aviso: algún ticket `ok` o
-    ningún token → `sent_at = now`; error de red/429/5xx → `attempts + 1` y `last_error` (con 5 intentos se marca
-    `sent_at` y se deja el error: abandonado); `DeviceNotRegistered` en un ticket → borra ese token. Nunca lanza.
+  - `flush.ts`: `flushNotifications(db, push, now)` — **reclama** hasta 100 pendientes en una transacción corta
+    (`SELECT … WHERE sent_at IS NULL AND (claimed_at IS NULL OR claimed_at < now − 5 min) … FOR UPDATE SKIP LOCKED` +
+    `UPDATE … SET claimed_at = now`), la cierra (no se mantiene un bloqueo durante la llamada HTTP), arma un mensaje por cada token del destinatario, envía, y por cada aviso: algún ticket `ok` o
+    ningún token → `sent_at = now`; error de red/429/5xx → `attempts + 1`, `last_error` y `claimed_at = NULL` (con 5 intentos se
+    marca `sent_at` y se deja el error: abandonado); un reclamo de más de 5 min sin resolver (el proceso murió a mitad)
+    vuelve a estar pendiente; `DeviceNotRegistered` en un ticket → borra ese token. Nunca lanza.
   - `tick.ts`: `tick(db, push, now)` = `closeDueProposals(db, { all: true }, now)` + cierre de las votaciones exprés
     vencidas de todos los grupos + `enqueueDueReminders(db, now)` + `flushNotifications`. Nunca lanza; devuelve los
     conteos.
 - Los avisos se encolan **dentro de la transacción** del cambio: crear propuesta (`proposals.create`), `confirm`,
   `cancel` (organizador y admin), `closeProposalIfDue`, `reportIncidence` al abrir la votación exprés, `closeDue` de la
-  exprés (resultado y, si `CANCELAR`, también `PLAN_CANCELLED`). Quien hace la acción a mano se excluye; en el admin no
-  hay excluido.
-- Tras responder una petición que encoló avisos, `onBackgroundTask(flushNotifications(...))` sin esperar (como la IA).
+  exprés (resultado). Quien hace la acción a mano se excluye; en el admin no hay excluido.
+- Envío inmediato: con un `PushClient` inyectado, al terminar cada petición a `/api` se pide un envío en segundo plano
+  (`onBackgroundTask`), con como mucho uno en curso y uno pendiente; sin cliente inyectado (la mayoría de los tests) no
+  se envía nada en segundo plano.
 - `index.ts`: `setInterval(() => void tick(db, push, new Date()), 60_000)` (con `unref` y parado en el apagado).
 - `ResolvedDeps` suma `push: PushClient` (por defecto el noop; `index.ts` crea el de Expo) y `cronSecret?: string`.
 - Entorno (zod): `CRON_SECRET` opcional (si viene, ≥ 32 caracteres); `EXPO_ACCESS_TOKEN` opcional. `.env.example` y
@@ -174,7 +181,8 @@ de las migraciones existentes.)
 ### App
 
 - `npx expo install expo-notifications` (y `expo-device` solo si hace falta para detectar emulador). Plugin en
-  `app.json` con `icon` (PNG blanco 96×96 con transparencia, generado del logo) y `color` de la marca.
+  `app.json` con `icon: "./assets/android-icon-monochrome.png"` (el ícono monocromo que ya existe) y `color: "#6750A4"`
+  (primario del tema).
 - `src/notifications/`:
   - `registerDevice()`: si es Expo Go (`Constants.executionEnvironment === 'storeClient'`) no hace nada. Crea el canal
     Android `planes` (importancia alta), pide permiso, `getExpoPushTokenAsync({ projectId })`, guarda el token en
@@ -210,6 +218,10 @@ de las migraciones existentes.)
 - El recordatorio no va a quien reportó `FALTA`/`IMPREVISTO`; sí a quien reportó `TARDANZA`.
 - Con la app abierta se muestra el banner y además se refresca Inicio y el plan.
 - La preferencia del interruptor es del celular y sobrevive al cerrar sesión; el token no.
+- Un solo aviso cuando la votación exprés decide cancelar (`EXPRESS_RESULT`); nada al moderar una ya cancelada sola.
+- El envío reclama filas (`claimed_at`) y suelta el bloqueo antes de llamar a Expo; un reclamo de más de 5 min se
+  reintenta.
+- Ícono de la notificación = `android-icon-monochrome.png` existente.
 - Sin `CRON_SECRET` la ruta del despertador no existe (no hay forma de llamarla sin configurar el secreto).
 
 ## Pruebas
