@@ -257,15 +257,25 @@ export function proposalsRepository(db: Db) {
       });
     },
 
-    // Replantear: igual que replaceWindows, pero solo si la propuesta sigue en PROPUESTO (false si otra petición la
-    // confirmó o canceló mientras tanto; entonces no se toca nada).
-    async replanWindows(proposalId: string, windows: NewWindow[], votingDeadline: string): Promise<boolean> {
+    // Replantear: igual que replaceWindows, pero solo si el plan sigue en uno de los estados admitidos (false si otra
+    // petición lo confirmó o canceló mientras tanto; entonces no se toca nada). Pasa a PROPUESTO. Desde EN_RECOORDINACION
+    // (lo que deja una votación exprés con resultado REAGENDAR) se limpia también lo de la ausencia: sus incidencias y
+    // sus votaciones cerradas, en la misma transacción. En PROPUESTO no hay incidencias ni votaciones (solo se abren con
+    // el plan CONFIRMADO), así que ese borrado no toca nada.
+    async replanWindows(
+      proposalId: string,
+      windows: NewWindow[],
+      votingDeadline: string,
+      fromStates: ProposalState[] = ['PROPUESTO'],
+    ): Promise<boolean> {
       return db.transaction(async () => {
         const { rowCount } = await db.query(
-          "UPDATE proposals SET voting_deadline = $1 WHERE id = $2 AND state = 'PROPUESTO'",
-          [votingDeadline, proposalId],
+          "UPDATE proposals SET voting_deadline = $1, state = 'PROPUESTO' WHERE id = $2 AND state = ANY($3)",
+          [votingDeadline, proposalId, fromStates],
         );
         if (rowCount === 0) return false;
+        await db.query('DELETE FROM incidences WHERE proposal_id = $1', [proposalId]);
+        await expressVotesRepository(db).deleteClosedFor(proposalId);
         await this.replaceWindows(proposalId, windows, votingDeadline);
         return true;
       });

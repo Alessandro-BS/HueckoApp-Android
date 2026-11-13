@@ -305,7 +305,7 @@ Votar en la votación exprés abierta del plan. Cuerpo = `ExpressVoteInput`: `{ 
 `200 Proposal` · `400 VALIDATION_ERROR` «Elige CANCELAR, REAGENDAR o MANTENER» · `403 NOT_A_VOTER` «No puedes votar en esta votación.» (quien avisó, quien no estaba en el grupo al abrirse o ya salió) · `409 VOTING_CLOSED` «La votación ya cerró.» (el plan no tiene votación abierta o ya venció).
 
 ### `POST /proposals/:id/replan`
-Replantea una propuesta **en votación**: reemplaza sus franjas y su plazo por otros nuevos. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo con la propuesta `PROPUESTO` (`409 INVALID_STATE`). Sirve sobre todo cuando todas las franjas ya pasaron (p. ej. propuestas anteriores a las fechas). Cuerpo = `ReplanInput`:
+Replantea una propuesta **en votación** (`PROPUESTO`) o **en recoordinación** (`EN_RECOORDINACION`, lo que deja una votación exprés con resultado REAGENDAR): reemplaza sus franjas y su plazo por otros nuevos y el plan vuelve a `PROPUESTO`. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo en esos dos estados (`409 INVALID_STATE`). Sirve también cuando todas las franjas ya pasaron (p. ej. propuestas anteriores a las fechas). Desde `EN_RECOORDINACION` se borran además las incidencias del plan y sus votaciones exprés cerradas (la respuesta trae `incidences: []` y `expressVote: null`), todo en la misma transacción que el cambio de franjas; el estado se vuelve a comprobar al guardar, así que si otra petición lo canceló justo antes, `409 INVALID_STATE` y no se toca nada. Cancelar también funciona desde `EN_RECOORDINACION`. Cuerpo = `ReplanInput`:
 ```json
 { "votingDeadline": "2026-10-04T20:00:00.000Z",
   "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" },

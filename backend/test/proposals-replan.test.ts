@@ -82,6 +82,51 @@ describe('POST /api/proposals/:id/replan', () => {
     expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
+  describe('desde EN_RECOORDINACION (resultado REAGENDAR de la votación exprés)', () => {
+    // El estado en que un REAGENDAR deja el plan: sin franja elegida, con su incidencia resuelta y la votación cerrada.
+    beforeEach(async () => {
+      await db.query("UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1", [p.id]);
+      await db.query(
+        `INSERT INTO incidences (id, proposal_id, user_id, type, reason, criticality, resolved, critical_reason, created_at)
+         VALUES ('inc-1', $1, $2, 'FALTA', 'No puedo ir', 'ALTA', TRUE, 'Organizador', $3)`,
+        [p.id, yo.user.id, NOW.toISOString()],
+      );
+      await db.query(
+        `INSERT INTO express_votes (id, proposal_id, reporter_id, reason, critical_reason, status, opened_at, expires_at, closed_at, result, result_by_default)
+         VALUES ('ev-1', $1, $2, 'No puedo ir', 'Organizador', 'CERRADA', $3, $3, $3, 'REAGENDAR', FALSE)`,
+        [p.id, yo.user.id, NOW.toISOString()],
+      );
+    });
+
+    it('vuelve a PROPUESTO con las franjas nuevas, sin incidencias ni votación', async () => {
+      const res = await replan(yo.token);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ state: 'PROPUESTO', votingDeadline: NEW_DEADLINE, incidences: [], expressVote: null });
+      expect(res.body.windows.map((w: { date: string }) => w.date)).toEqual([dateOf(3), dateOf(4)]);
+      expect(await db.one('SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
+      expect(await db.one('SELECT COUNT(*) AS n FROM express_votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
+    });
+
+    it('403 NOT_MANAGER si no la gestiono', async () => {
+      const res = await replan(ana.token);
+      expect([res.status, res.body.error.code]).toEqual([403, 'NOT_MANAGER']);
+      expect(await db.one('SELECT state FROM proposals WHERE id = $1', [p.id])).toEqual({ state: 'EN_RECOORDINACION' });
+    });
+
+    it('se puede cancelar', async () => {
+      const res = await request(app).post(`/api/proposals/${p.id}/cancel`).set(bearer(yo.token)).send({});
+      expect([res.status, res.body.state]).toEqual([200, 'CANCELADO']);
+    });
+
+    it('409 INVALID_STATE si se cancela mientras tanto, y no se borra nada', async () => {
+      interleave(db, /^UPDATE proposals SET voting_deadline/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+      const res = await replan(yo.token);
+      expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+      expect(await db.one('SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = $1', [p.id])).toEqual({ n: 1 });
+      expect(await db.one('SELECT COUNT(*) AS n FROM express_votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 1 });
+    });
+  });
+
   // Otra petición cancela justo entre la comprobación de la ruta y la escritura: 409 y no se toca nada.
   it('replantear una propuesta que otra petición acaba de cancelar: 409, sigue CANCELADA con sus franjas y votos', async () => {
     await voteFor(app, p.id, p.windows[0].id, ana.token);

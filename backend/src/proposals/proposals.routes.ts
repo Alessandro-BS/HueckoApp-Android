@@ -1,4 +1,4 @@
-import type { Group, Proposal, TimeWindowInput } from '@hueckoapp/shared';
+import type { Group, Proposal, ProposalState, TimeWindowInput } from '@hueckoapp/shared';
 import { Router } from 'express';
 
 import type { ResolvedDeps } from '../app';
@@ -265,15 +265,19 @@ export function proposalsRouter(deps: ResolvedDeps) {
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  // Replantear: con la propuesta en votación, quien la gestiona la reemplaza por franjas y plazo nuevos (se borran los votos).
+  // Replantear: con la propuesta en votación (o en recoordinación tras una votación exprés), quien la gestiona la
+  // reemplaza por franjas y plazo nuevos y vuelve a PROPUESTO (se borran los votos). Sin cierre perezoso: una votación
+  // exprés solo se abre con el plan CONFIRMADO, así que en estos estados no puede haber una ABIERTA.
+  const REPLANNABLE: ProposalState[] = ['PROPUESTO', 'EN_RECOORDINACION'];
   router.post('/:id/replan', async (req, res) => {
     const userId = getUserId(res);
     const { proposal, group } = await loadForManager(req.params.id, userId);
     const input = replanSchema(ctx.now()).parse(req.body);
-    if (proposal.state !== 'PROPUESTO') throw invalidState();
+    if (!REPLANNABLE.includes(proposal.state)) throw invalidState();
     assertDeadlineBeforeWindows(input.votingDeadline, input.windows);
     const windows = await ctx.withAvailability(group, input.windows);
-    if (!(await ctx.proposals.replanWindows(proposal.id, windows, new Date(input.votingDeadline).toISOString()))) throw invalidState();
+    const deadline = new Date(input.votingDeadline).toISOString();
+    if (!(await ctx.proposals.replanWindows(proposal.id, windows, deadline, REPLANNABLE))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
