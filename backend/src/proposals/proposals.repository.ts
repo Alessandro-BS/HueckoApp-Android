@@ -364,6 +364,12 @@ export function proposalsRepository(db: Db) {
       return rowCount > 0;
     },
 
+    // Moderar (admin) una propuesta que se canceló sola: sigue CANCELADO, pero como cancelada a mano (ya no se replantea).
+    async clearAutoCancelled(id: string): Promise<boolean> {
+      const { rowCount } = await db.query("UPDATE proposals SET auto_closed = FALSE WHERE id = $1 AND state = 'CANCELADO' AND auto_closed", [id]);
+      return rowCount > 0;
+    },
+
     /**
      * Guarda la incidencia y, si es crítica (`criticalReason`), abre la votación exprés del grupo: todo o nada, con el
      * plan bloqueado. Solo sobre un plan CONFIRMADO (según el estado bloqueado); `saved: false`, sin guardar nada, si

@@ -214,13 +214,41 @@ describe('cancelar desde la administración tras el plazo (sin que nadie la haya
     });
   });
 
-  it('sin votos: ya se canceló sola al cerrarse → 409 «ya está cancelada», sigue con autoClosed y no se anota', async () => {
+  it('sin votos: ya se canceló sola al cerrarse → 200, sigue CANCELADO con autoClosed false y se anota desde CANCELADO', async () => {
     const p = await plan();
     clock.set(AFTER_DEADLINE);
     const admin = await registerAdmin(app, db);
     const res = await adminCancel(p, admin.token);
+    expect([res.status, res.body.state, res.body.autoClosed]).toEqual([200, 'CANCELADO', false]);
+    expect(await stored(p)).toMatchObject({ state: 'CANCELADO', auto_closed: false });
+    const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
+    expect(audit.body.items[0]).toMatchObject({
+      action: 'PROPOSAL_CANCELLED',
+      targetId: p.id,
+      details: { title: 'Plan', groupId: group.id, from: 'CANCELADO', reason: 'Spam' },
+    });
+  });
+
+  it('después de moderarla, quien la organiza ya no la puede replantear → 409 INVALID_STATE', async () => {
+    const p = await plan();
+    clock.set(AFTER_DEADLINE);
+    const admin = await registerAdmin(app, db);
+    expect((await adminCancel(p, admin.token)).status).toBe(200);
+    const replan = await postTo(p, 'replan', yo.token, {
+      votingDeadline: new Date(2026, 9, 10, 20, 0).toISOString(),
+      windows: [{ date: '2026-10-12', startTime: '10:00', endTime: '12:00' }, { date: '2026-10-13', startTime: '16:00', endTime: '18:00' }],
+    });
+    expect([replan.status, replan.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await stored(p)).toMatchObject({ state: 'CANCELADO', auto_closed: false });
+  });
+
+  it('cancelada a mano (sin autoClosed) → 409 «ya está cancelada» y no se anota', async () => {
+    const p = await plan();
+    await postTo(p, 'cancel');
+    clock.set(AFTER_DEADLINE);
+    const admin = await registerAdmin(app, db);
+    const res = await adminCancel(p, admin.token);
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
-    expect(await stored(p)).toMatchObject({ state: 'CANCELADO', auto_closed: true });
     expect((await request(app).get('/api/admin/audit').set(bearer(admin.token))).body.items).toEqual([]);
   });
 });

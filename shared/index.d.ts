@@ -312,6 +312,7 @@ export type AdminProposalSummary = {
   scheduledDate: string | null;
   voteCount: number;               // solo votos de quienes siguen en el grupo
   incidenceCount: number;
+  autoClosed: boolean;             // la votación se cerró sola al vencer el plazo (CANCELADO + autoClosed: se puede moderar)
 };
 
 export type AdminGroupDetail = AdminGroupSummary & {
