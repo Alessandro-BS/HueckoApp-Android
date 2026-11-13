@@ -1,7 +1,7 @@
 import type { ProposalState } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
-import { type CloseScope, logCloseError, SCOPE_FILTER } from './express-votes.repository';
+import { type CloseScope, expressVotesRepository, logCloseError, SCOPE_FILTER } from './express-votes.repository';
 import { windowsWithVotes } from './proposals.repository';
 import { pickWinner, scheduleFor } from './rules';
 
@@ -68,6 +68,17 @@ export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: 
   } catch (error) {
     logCloseError(null, error, VOTING);
   }
+}
+
+/**
+ * Antes de que alguien entre o salga del grupo (salir, unirse con el código, aceptar por proximidad): cierra sus
+ * votaciones vencidas, de franjas y exprés, con los miembros de ese momento. Si no, el resultado de un cierre perezoso
+ * dependería de quién entró o salió después del plazo. Nunca lanza. Va fuera de cualquier transacción: cada cierre abre
+ * la suya.
+ */
+export async function closeDueBeforeMembershipChange(db: Db, groupId: string, now: Date): Promise<void> {
+  await closeDueProposals(db, { groupId }, now);
+  await expressVotesRepository(db).closeDueInScope({ groupId }, now);
 }
 
 /** Para logCloseError: qué votación no se pudo cerrar. */

@@ -109,6 +109,9 @@ Antes de desplegar, comprobar en Neon el nombre de la clave:
     `409 INVALID_STATE` con la propuesta ya cerrada);
   - en el admin: `GET /admin/groups/:id` cierra las de ese grupo; `GET /admin/stats`, `/admin/stats/timeseries`,
     `/admin/stats/popular-hours` y `/admin/reports` cierran todas las vencidas antes de calcular.
+  - antes de cambiar los miembros del grupo: `DELETE /groups/:id/members/me`, `POST /groups/join` (una vez resuelto el
+    código) y `POST /proximity/:id/accept` cierran las vencidas de ese grupo (de franjas y exprés), para que el recuento
+    no dependa de quién entró o salió después del plazo.
 - `POST /proposals/:id/replan` admite también `CANCELADO` con `autoClosed` (y lo deja en `false`); el resto de
   `CANCELADO` → `409 INVALID_STATE` como hoy.
 - `PUT /me/time-blocks/:id` (cuerpo `TimeBlockInput`): `200 TimeBlock` · `400 VALIDATION_ERROR` ·

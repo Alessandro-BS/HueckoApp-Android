@@ -410,3 +410,42 @@ describe('replantear una propuesta cerrada sola', () => {
     expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 });
+
+describe('los cambios de miembros cierran antes las votaciones vencidas del grupo', () => {
+  const leave = (token: string) => request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(token)).expect(204);
+  const later = (ms: number) => new Date(AFTER_DEADLINE.getTime() + ms);
+
+  it('la única votante sale tras el plazo sin que nadie lo haya consultado: igual CONFIRMADO con su voto', async () => {
+    const p = await plan();
+    await vote(p, 2, ana.token);
+    clock.set(AFTER_DEADLINE);
+    await leave(ana.token);
+    expect((await get(p, yo.token)).body).toMatchObject({ state: 'CONFIRMADO', chosenWindowId: windowOf(p, 2).id, autoClosed: true });
+  });
+
+  it('quien votó y salió antes del plazo vuelve con el código después: el resultado no cambia (CANCELADO)', async () => {
+    const p = await plan();
+    const luis = await registerUser(app, { name: 'Luis' });
+    await joinGroup(app, luis.token, group.inviteCode);
+    await vote(p, 2, luis.token);
+    await leave(luis.token);
+    clock.set(AFTER_DEADLINE);
+    await joinGroup(app, luis.token, group.inviteCode);
+    expect((await get(p, yo.token)).body).toMatchObject({ state: 'CANCELADO', autoClosed: true });
+  });
+
+  it('quien votó y salió antes del plazo vuelve por proximidad después: el resultado no cambia (CANCELADO)', async () => {
+    const p = await plan();
+    const luis = await registerUser(app, { name: 'Luis' });
+    await joinGroup(app, luis.token, group.inviteCode);
+    await vote(p, 2, luis.token);
+    await leave(luis.token);
+    clock.set(AFTER_DEADLINE);
+    const invite = await request(app).post('/api/proximity/invite').set(bearer(yo.token)).send({ groupId: group.id }).expect(201);
+    clock.set(later(1000));
+    await request(app).post('/api/proximity/join').set(bearer(luis.token)).send({}).expect(201);
+    clock.set(later(5000));
+    expect((await request(app).post(`/api/proximity/${invite.body.id}/accept`).set(bearer(yo.token))).body.status).toBe('ACCEPTED');
+    expect((await get(p, yo.token)).body).toMatchObject({ state: 'CANCELADO', autoClosed: true });
+  });
+});
