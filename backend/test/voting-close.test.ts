@@ -194,6 +194,37 @@ describe('popular-hours cierra antes de calcular', () => {
   });
 });
 
+describe('cancelar desde la administración tras el plazo (sin que nadie la haya consultado antes)', () => {
+  const adminCancel = (p: Proposal, token: string) =>
+    request(app).post(`/api/admin/proposals/${p.id}/cancel`).set(bearer(token)).send({ reason: 'Spam' });
+
+  it('con votos: primero se confirma sola y después se cancela; CANCELADO con autoClosed false y anotado desde CONFIRMADO', async () => {
+    const p = await plan();
+    await vote(p, 2, ana.token);
+    clock.set(AFTER_DEADLINE);
+    const admin = await registerAdmin(app, db);
+    const res = await adminCancel(p, admin.token);
+    expect([res.status, res.body.state]).toEqual([200, 'CANCELADO']);
+    expect(await stored(p)).toMatchObject({ state: 'CANCELADO', chosen_window_id: windowOf(p, 2).id, auto_closed: false });
+    const audit = await request(app).get('/api/admin/audit').set(bearer(admin.token));
+    expect(audit.body.items[0]).toMatchObject({
+      action: 'PROPOSAL_CANCELLED',
+      targetId: p.id,
+      details: { title: 'Plan', groupId: group.id, from: 'CONFIRMADO', reason: 'Spam' },
+    });
+  });
+
+  it('sin votos: ya se canceló sola al cerrarse → 409 «ya está cancelada», sigue con autoClosed y no se anota', async () => {
+    const p = await plan();
+    clock.set(AFTER_DEADLINE);
+    const admin = await registerAdmin(app, db);
+    const res = await adminCancel(p, admin.token);
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await stored(p)).toMatchObject({ state: 'CANCELADO', auto_closed: true });
+    expect((await request(app).get('/api/admin/audit').set(bearer(admin.token))).body.items).toEqual([]);
+  });
+});
+
 describe('acciones tras el plazo', () => {
   it('votar → 409 VOTING_CLOSED; confirmar → 409 INVALID_STATE (ya se cerró sola)', async () => {
     const p = await plan();
@@ -251,6 +282,17 @@ describe('acciones tras el plazo', () => {
     expect([falta.status, falta.body.state, falta.body.expressVote?.status]).toEqual([201, 'CONFIRMADO', 'ABIERTA']);
     const res = await request(app).put(`/api/proposals/${p.id}/express-vote`).set(bearer(yo.token)).send({ option: 'CANCELAR' });
     expect([res.status, res.body.state, res.body.autoClosed]).toEqual([200, 'CANCELADO', false]);
+  });
+
+  it('una votación exprés que reagenda un plan que se confirmó solo: EN_RECOORDINACION con autoClosed false', async () => {
+    const p = await plan();
+    await vote(p, 2, ana.token);
+    clock.set(AFTER_DEADLINE);
+    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true }).expect(200);
+    expect((await postTo(p, 'incidences', ana.token, { type: 'FALTA', reason: 'Viaje familiar' })).body.autoClosed).toBe(true);
+    const res = await request(app).put(`/api/proposals/${p.id}/express-vote`).set(bearer(yo.token)).send({ option: 'REAGENDAR' });
+    expect([res.status, res.body.state, res.body.autoClosed]).toEqual([200, 'EN_RECOORDINACION', false]);
+    expect(await stored(p)).toMatchObject({ state: 'EN_RECOORDINACION', auto_closed: false });
   });
 
   it('cancelar a mano un plan que se confirmó solo: CANCELADO con autoClosed false (no se puede replantear)', async () => {

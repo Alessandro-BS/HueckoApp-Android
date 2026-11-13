@@ -30,7 +30,7 @@ import {
   WINDOW_LIMITS,
 } from './proposals.schemas';
 import { bestWindows, canCancel, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
-import { closeDueProposals, closeProposalIfDue, logVotingCloseError } from './voting-close';
+import { closeDueProposals, closeProposalIfDue, VOTING } from './voting-close';
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
 function proposalsContext({ db, now, expressVoteMinutes, ai, onBackgroundTask }: ResolvedDeps) {
@@ -72,7 +72,7 @@ function proposalsContext({ db, now, expressVoteMinutes, ai, onBackgroundTask }:
     };
     let { proposal } = loaded;
     if (proposal.state === 'PROPUESTO' && new Date(proposal.votingDeadline).getTime() <= at.getTime()) {
-      await closeProposalIfDue(db, proposalId, at).catch((error: unknown) => logVotingCloseError(proposalId, error));
+      await closeProposalIfDue(db, proposalId, at).catch((error: unknown) => logCloseError(proposalId, error, VOTING));
       proposal = await reload();
     }
     const vote = proposal.expressVote;

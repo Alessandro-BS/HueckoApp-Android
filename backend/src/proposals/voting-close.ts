@@ -1,7 +1,8 @@
-import type { ProposalState, TimeWindow } from '@hueckoapp/shared';
+import type { ProposalState } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
-import { type CloseScope, SCOPE_FILTER } from './express-votes.repository';
+import { type CloseScope, logCloseError, SCOPE_FILTER } from './express-votes.repository';
+import { windowsWithVotes } from './proposals.repository';
 import { pickWinner, scheduleFor } from './rules';
 
 // Cierre automático de la votación de franjas (fase 4, regla 1). Sin procesos en segundo plano: una propuesta PROPUESTO
@@ -11,16 +12,6 @@ import { pickWinner, scheduleFor } from './rules';
 
 /** Dónde buscar propuestas vencidas: un grupo, los grupos de un usuario o todas (estadísticas del admin). */
 export type ProposalCloseScope = CloseScope | { all: true };
-
-type WindowRow = {
-  id: string;
-  date: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  availability_percentage: number;
-  vote_count: number;
-};
 
 /**
  * Cierra la votación de la propuesta si sigue PROPUESTO y su plazo venció: CONFIRMADO con la franja ganadora (la misma
@@ -34,31 +25,8 @@ export function closeProposalIfDue(db: Db, proposalId: string, now: Date): Promi
       [proposalId],
     );
     if (!row || row.state !== 'PROPUESTO' || new Date(row.voting_deadline).getTime() > now.getTime()) return false;
-    // El mismo recuento que hydrate: voteCount solo suma a quienes siguen en el grupo.
-    const windows = await db.many<WindowRow>(
-      `SELECT w.id, w.date, w.day_of_week, w.start_time, w.end_time, w.availability_percentage, COUNT(m.user_id) AS vote_count
-       FROM proposal_windows w
-       JOIN proposals p ON p.id = w.proposal_id
-       LEFT JOIN votes v ON v.window_id = w.id
-       LEFT JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
-       WHERE w.proposal_id = $1
-       GROUP BY w.id
-       ORDER BY w.date, w.start_time, w.end_time`,
-      [proposalId],
-    );
-    const winner = pickWinner(
-      windows.map(
-        (w): TimeWindow => ({
-          id: w.id,
-          date: w.date,
-          dayOfWeek: w.day_of_week,
-          startTime: w.start_time,
-          endTime: w.end_time,
-          availabilityPercentage: w.availability_percentage,
-          voteCount: w.vote_count,
-        }),
-      ),
-    );
+    // El mismo recuento que ve la app (windowsWithVotes): solo suman los votos de quienes siguen en el grupo.
+    const winner = pickWinner((await windowsWithVotes(db, [proposalId])).get(proposalId) ?? []);
     if (winner) {
       const { scheduledAt, scheduledDate } = scheduleFor(winner.date, winner.startTime);
       const { rowCount } = await db.query(
@@ -94,16 +62,13 @@ export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: 
       try {
         await closeProposalIfDue(db, id, now);
       } catch (error) {
-        logVotingCloseError(id, error);
+        logCloseError(id, error, VOTING);
       }
     }
   } catch (error) {
-    logVotingCloseError(null, error);
+    logCloseError(null, error, VOTING);
   }
 }
 
-/** Como logCloseError de la votación exprés: un cierre que falla no corta la petición (silencioso en los tests). */
-export function logVotingCloseError(proposalId: string | null, error: unknown): void {
-  if (process.env.NODE_ENV === 'test') return;
-  console.error(`No se pudo cerrar la votación${proposalId ? ` del plan ${proposalId}` : ''}:`, error instanceof Error ? error.message : error);
-}
+/** Para logCloseError: qué votación no se pudo cerrar. */
+export const VOTING = 'la votación de franjas';

@@ -115,6 +115,32 @@ const toWindow = (r: WindowRow): TimeWindow => ({
   voteCount: r.vote_count,
 });
 
+/**
+ * Las franjas de cada propuesta (por fecha y hora) con su voteCount. Es la ÚNICA definición del recuento: voteCount solo
+ * cuenta a quienes SIGUEN en el grupo de la propuesta (D5): el voto de quien sale no se borra, pero no suma; si vuelve a
+ * unirse, cuenta otra vez. De aquí salen lo que ve la app (hydrate), «la más votada» al confirmar y al cerrar la votación
+ * sola (voting-close), Inicio y el resumen con IA. Una sola consulta para cualquier número de propuestas.
+ */
+export async function windowsWithVotes(db: Db, proposalIds: readonly string[]): Promise<Map<string, TimeWindow[]>> {
+  if (proposalIds.length === 0) return new Map();
+  return groupBy(
+    await db.many<WindowRow>(
+      `SELECT w.id, w.proposal_id, w.date, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
+              COUNT(m.user_id) AS vote_count
+       FROM proposal_windows w
+       JOIN proposals p ON p.id = w.proposal_id
+       LEFT JOIN votes v ON v.window_id = w.id
+       LEFT JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
+       WHERE w.proposal_id ${inProposalIds(1)}
+       GROUP BY w.id
+       ORDER BY w.date, w.start_time, w.end_time`,
+      [proposalIds],
+    ),
+    (r) => r.proposal_id,
+    toWindow,
+  );
+}
+
 const toIncidence = (r: IncidenceRow): Incidence => ({
   id: r.id,
   user: { id: r.user_id, name: r.user_name, email: r.user_email },
@@ -136,24 +162,8 @@ export function proposalsRepository(db: Db) {
   const hydrate = async (rows: readonly ProposalRow[], viewerId: string): Promise<Proposal[]> => {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
-    // voteCount solo cuenta a quienes SIGUEN en el grupo de la propuesta (D5): el voto de quien sale no se borra,
-    // pero no suma; si vuelve a unirse, cuenta otra vez. De aquí salen pickWinner, Inicio y el resumen con IA.
-    const windows = groupBy(
-      await db.many<WindowRow>(
-        `SELECT w.id, w.proposal_id, w.date, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
-                COUNT(m.user_id) AS vote_count
-         FROM proposal_windows w
-         JOIN proposals p ON p.id = w.proposal_id
-         LEFT JOIN votes v ON v.window_id = w.id
-         LEFT JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
-         WHERE w.proposal_id ${inProposalIds(1)}
-         GROUP BY w.id
-         ORDER BY w.date, w.start_time, w.end_time`,
-        [ids],
-      ),
-      (r) => r.proposal_id,
-      toWindow,
-    );
+    // voteCount solo cuenta a quienes SIGUEN en el grupo (ver windowsWithVotes).
+    const windows = await windowsWithVotes(db, ids);
     const incidences = groupBy(
       await db.many<IncidenceRow>(
         `SELECT i.*, u.name AS user_name, u.email AS user_email

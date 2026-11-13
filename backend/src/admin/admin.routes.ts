@@ -3,7 +3,8 @@ import { Router, type Response } from 'express';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
-import { closeDueProposals } from '../proposals/voting-close';
+import { logCloseError } from '../proposals/express-votes.repository';
+import { closeDueProposals, closeProposalIfDue, VOTING } from '../proposals/voting-close';
 import { adminGroups } from './admin-groups';
 import { adminUsers, type AdminActor } from './admin-users';
 import {
@@ -93,8 +94,11 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   });
 
   // Moderación: cancelar la propuesta de cualquier grupo (D7). Cuerpo { reason } obligatorio (3-200 caracteres).
+  // Antes se cierra su votación si venció (como al cancelar quien gestiona): el resultado no depende de si alguien la
+  // consultó antes. Un plan que se confirma solo aquí se cancela igual (y queda con autoClosed false).
   router.post('/proposals/:id/cancel', async (req, res) => {
     const { reason } = cancelProposalSchema.parse(req.body ?? {});
+    await closeProposalIfDue(db, req.params.id, now()).catch((error: unknown) => logCloseError(req.params.id, error, VOTING));
     res.json(await groups.cancelProposal(actor(res), req.params.id, reason));
   });
 
