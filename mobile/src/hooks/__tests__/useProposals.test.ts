@@ -56,13 +56,13 @@ describe('useProposal', () => {
     expect(result.current.proposal?.myVoteWindowId).toBeNull();
   });
 
-  it('confirm, cancel, addWindow, reportIncidence y resolve reemplazan la propuesta con la respuesta', async () => {
+  it('confirm, cancel, addWindow, reportIncidence y voteExpress reemplazan la propuesta con la respuesta', async () => {
     const confirmed = makeConfirmed({ id: 'prop_2' });
     mocked.confirmProposal.mockResolvedValue(confirmed);
     mocked.cancelProposal.mockResolvedValue(makeProposal({ state: 'CANCELADO' }));
     mocked.addWindow.mockResolvedValue(makeProposal({ title: 'Con franja nueva' }));
     mocked.reportIncidence.mockResolvedValue(makeProposal({ title: 'Con imprevisto' }));
-    mocked.resolveIncidences.mockResolvedValue(makeProposal({ title: 'Resuelta' }));
+    mocked.voteExpress.mockResolvedValue(makeProposal({ title: 'Votada' }));
     const { result } = await load();
 
     await act(async () => void (await result.current.confirm('w_22')));
@@ -79,9 +79,9 @@ describe('useProposal', () => {
     await act(async () => void (await result.current.reportIncidence({ type: 'FALTA', reason: 'Enfermo' })));
     expect(result.current.proposal?.title).toBe('Con imprevisto');
 
-    await act(async () => void (await result.current.resolve({ newState: 'CONFIRMADO' })));
-    expect(mocked.resolveIncidences).toHaveBeenCalledWith('prop_2', { newState: 'CONFIRMADO' });
-    expect(result.current.proposal?.title).toBe('Resuelta');
+    await act(async () => void (await result.current.voteExpress('REAGENDAR')));
+    expect(mocked.voteExpress).toHaveBeenCalledWith('prop_2', 'REAGENDAR');
+    expect(result.current.proposal?.title).toBe('Votada');
   });
 
   it('si el voto falla, no lanza: devuelve { ok: false }, expone voteError y la propuesta no cambia', async () => {

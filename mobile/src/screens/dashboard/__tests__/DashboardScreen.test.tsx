@@ -54,10 +54,10 @@ it('pinta los valores de la semilla (domain spec §2.2, UI spec §2.3)', async (
   expect(await screen.findByText('Buenos días, Usuario')).toBeTruthy();
   expect(screen.getByText('Martes, 29 de septiembre')).toBeTruthy();
   expect(screen.getByText('Esto es lo que pasa hoy en tus grupos y horarios.')).toBeTruthy();
-  // Alerta (G5, aviso): quien gestiona el plan puede decidir.
+  // Alerta (G5, aviso): lleva al plan. TODO(votacion-expres Task 8): la alerta nueva distingue los tres tipos.
   expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
   expect(screen.getByText('Ana reportó un imprevisto en «Reunión de avance del proyecto»')).toBeTruthy();
-  expect(screen.getByText('Mantener')).toBeTruthy();
+  expect(screen.getByText('Ver plan')).toBeTruthy();
   // Métricas.
   expect(screen.getByText('Grupos activos')).toBeTruthy();
   expect(screen.getByText('Votaciones abiertas')).toBeTruthy();
@@ -181,13 +181,11 @@ it('las tarjetas y accesos navegan a Grupos, Horario, el plan y el grupo', async
   expect(navigation.navigate).toHaveBeenLastCalledWith('GroupDetail', { groupId: 'g1', name: 'Proyecto Integrador' });
 });
 
-it('«Mantener» en la alerta resuelve y recarga Inicio', async () => {
-  proposals.resolveIncidences.mockResolvedValue(makeProposal());
+// TODO(votacion-expres Task 8): la alerta nueva distingue VOTACION / RECOORDINACION / AVISO.
+it('«Ver plan» en la alerta abre el plan', async () => {
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Mantener'));
-  await waitFor(() => expect(dashboard.getDashboard).toHaveBeenCalledTimes(2));
-  expect(proposals.resolveIncidences).toHaveBeenCalledWith('prop_1', { newState: 'CONFIRMADO' });
-  expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: mantener.');
+  await fireEvent.press(await screen.findByText('Ver plan'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
 });
 
 it('si la primera carga falla muestra el error con «Reintentar»', async () => {

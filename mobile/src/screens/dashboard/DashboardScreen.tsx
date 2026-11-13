@@ -1,10 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import type { Group, ProposalWithGroup, UpcomingPlan } from '@hueckoapp/shared';
+import type { ExpressAlert, Group, ProposalWithGroup, UpcomingPlan } from '@hueckoapp/shared';
 import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createGroup } from '../../api/groups';
-import { resolveIncidences } from '../../api/proposals';
 import {
   Avatar, Badge, EmptyState, ErrorBanner, HueckoCard, LoadState, PrimaryButton, SecondaryButton, SectionHeader, VoteWindowRow, type IconName,
 } from '../../components';
@@ -13,14 +12,13 @@ import { useDashboard } from '../../hooks/useDashboard';
 import { useRefreshErrorToast } from '../../hooks/useRefreshErrorToast';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import type { TabScreen } from '../../navigation/types';
-import { categoryColor, colors, typography } from '../../theme';
+import { categoryColor, colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
 import { attendanceLabel, BLOCK_BADGE, greetingLine, groupMatchLabel, groupSlotLabel, longDate, weekBlocksLabel } from '../../utils/dashboard';
 import { blocksForDay, dayShort, isoDayOf } from '../../utils/days';
 import { deadlineLabel, isVotingOpen, scheduleLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { CreateGroupDialog } from '../groups/GroupDialogs';
-import { ExpressVoteCard } from '../proposals/ExpressVoteCard';
 
 type MetricProps = { icon: IconName; value: string; label: string; caption: string; onPress: () => void };
 
@@ -32,6 +30,28 @@ function MetricCard({ icon, value, label, caption, onPress }: MetricProps) {
       <Text style={[typography.titleSmall, { color: colors.onSurface }]}>{label}</Text>
       <Text style={[typography.bodySmall, styles.caption]}>{caption}</Text>
     </HueckoCard>
+  );
+}
+
+// TODO(votacion-expres Task 8): alerta provisional. Ya no se decide desde Inicio (se retiró el «resolver»): solo
+// avisa y lleva al plan, donde el grupo vota. Task 8 la reemplaza por la alerta de los tres tipos.
+const ALERT_TITLE: Record<ExpressAlert['kind'], string> = {
+  VOTACION: 'Votación exprés',
+  RECOORDINACION: 'Plan en recoordinación',
+  AVISO: 'Aviso de imprevisto',
+};
+
+function ExpressAlertCard({ alert, onOpen }: { alert: ExpressAlert; onOpen: () => void }) {
+  const headline = alert.kind === 'AVISO'
+    ? `${alert.who} reportó un imprevisto en «${alert.planTitle}»`
+    : `${alert.who} no podrá asistir a «${alert.planTitle}»`;
+  return (
+    <View style={styles.alert}>
+      <Text style={[typography.labelMedium, styles.onWarning]}>{ALERT_TITLE[alert.kind]}</Text>
+      <Text style={[typography.titleMedium, styles.alertHeadline]}>{headline}</Text>
+      <Text style={[typography.bodySmall, styles.onWarning, styles.alertReason]}>{alert.reason}</Text>
+      <PrimaryButton title="Ver plan" icon="event" style={styles.alertButton} onPress={onOpen} />
+    </View>
   );
 }
 
@@ -139,16 +159,9 @@ export function DashboardScreen({ navigation }: TabScreen<'Dashboard'>) {
                 </View>
               ) : null}
               {dashboard.expressAlert ? (
-                <ExpressVoteCard
-                  key={dashboard.expressAlert.proposalId}
-                  // TODO(votacion-expres Task 8): la tarjeta nueva distingue VOTACION; mientras, se muestra como RECOORDINACION.
-                  kind={dashboard.expressAlert.kind === 'VOTACION' ? 'RECOORDINACION' : dashboard.expressAlert.kind}
-                  who={dashboard.expressAlert.who}
-                  reason={dashboard.expressAlert.reason}
-                  planTitle={dashboard.expressAlert.planTitle}
-                  canResolve={dashboard.expressAlert.canResolve}
-                  onResolve={(input) => resolveIncidences(dashboard.expressAlert!.proposalId, input)}
-                  onResolved={() => void reload()}
+                <ExpressAlertCard
+                  alert={dashboard.expressAlert}
+                  onOpen={() => navigation.navigate('PlanDetail', { proposalId: dashboard.expressAlert!.proposalId })}
                 />
               ) : null}
 
@@ -300,4 +313,15 @@ const styles = StyleSheet.create({
   pendingTitle: { color: colors.onSurface, marginTop: 4, marginBottom: 2 },
   pendingWindows: { gap: 8, marginTop: 16 },
   quickActions: { flexDirection: 'row', gap: 10 },
+  alert: {
+    borderRadius: radius.card,
+    backgroundColor: colors.warningContainer,
+    borderWidth: 1,
+    borderColor: colors.warning + '59', // warning al 35 %
+    padding: 18,
+  },
+  onWarning: { color: colors.onWarningContainer },
+  alertHeadline: { color: colors.onSurface, marginTop: 8 },
+  alertReason: { marginTop: 4 },
+  alertButton: { marginTop: 16 },
 });

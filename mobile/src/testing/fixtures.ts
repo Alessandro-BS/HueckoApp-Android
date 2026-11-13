@@ -1,4 +1,4 @@
-import type { Dashboard, PlanSuggestion, Proposal, ProposalDraft, TimeWindow, User, VotingSummary } from '@hueckoapp/shared';
+import type { Dashboard, ExpressVote, PlanSuggestion, Proposal, ProposalDraft, TimeWindow, User, VotingSummary } from '@hueckoapp/shared';
 
 // Datos de prueba basados en la semilla (domain spec §3). Hoy, en los tests, es el martes 29/09/2026 a las 10:00.
 export const TEST_USER: User = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com' };
@@ -60,6 +60,28 @@ export const makeConfirmed = (over: Partial<Proposal> = {}): Proposal =>
     createdAt: new Date(2026, 8, 27, 10, 0).toISOString(),
     ...over,
   });
+
+// Votación exprés abierta: Ana (imprescindible) avisó a las 09:42 y cierra a las 10:42 (hoy, en los tests, son las 10:00:
+// «Cierra en 42 min»). Votan 3; ya hay un voto por «Reagendar» y el usuario actual aún no votó.
+export const makeExpressVote = (over: Partial<ExpressVote> = {}): ExpressVote => ({
+  id: 'ev_1',
+  status: 'ABIERTA',
+  reportedBy: ANA,
+  reason: 'Me surgió un viaje familiar.',
+  criticalReason: 'el grupo lo marcó como imprescindible',
+  openedAt: new Date(2026, 8, 29, 9, 42).toISOString(),
+  expiresAt: new Date(2026, 8, 29, 10, 42).toISOString(),
+  closedAt: null,
+  counts: { CANCELAR: 0, REAGENDAR: 1, MANTENER: 0 },
+  myVote: null,
+  canVote: true,
+  eligibleVoters: 3,
+  quorum: 2,
+  result: null,
+  resultByDefault: null,
+  recommendation: null,
+  ...over,
+});
 
 // GET /me/dashboard con la semilla, visto por Usuario de Prueba (domain spec §2.2).
 export const makeDashboard = (over: Partial<Dashboard> = {}): Dashboard => ({

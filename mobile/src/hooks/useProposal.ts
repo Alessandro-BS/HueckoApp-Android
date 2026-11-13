@@ -1,8 +1,6 @@
-import type { IncidenceInput, Proposal, ReplanInput, TimeWindowInput } from '@hueckoapp/shared';
+import type { ExpressOption, IncidenceInput, Proposal, ReplanInput, TimeWindowInput } from '@hueckoapp/shared';
 import { useCallback } from 'react';
 
-// TODO(votacion-expres Task 7): ResolveIncidencesInput ya no está en `shared` (se retira con el resolve).
-import type { ResolveIncidencesInput } from '../api/proposals';
 import {
   addWindow as postWindow,
   cancelProposal,
@@ -11,7 +9,7 @@ import {
   removeVote,
   replanProposal,
   reportIncidence as postIncidence,
-  resolveIncidences,
+  voteExpress as putExpressVote,
   voteWindow,
 } from '../api/proposals';
 import { useResource } from './useResource';
@@ -49,8 +47,9 @@ export function useProposal(proposalId: string) {
     async (input: IncidenceInput) => apply(await postIncidence(proposalId, input)),
     [proposalId, apply],
   );
-  const resolve = useCallback(
-    async (input: ResolveIncidencesInput) => apply(await resolveIncidences(proposalId, input)),
+  // Votación exprés: como las demás acciones, lanza si falla (409 VOTING_CLOSED, 403 si no puedo votar).
+  const voteExpress = useCallback(
+    async (option: ExpressOption) => apply(await putExpressVote(proposalId, option)),
     [proposalId, apply],
   );
 
@@ -59,6 +58,6 @@ export function useProposal(proposalId: string) {
   return {
     proposal: data, loading, refreshing, error, failedLoads, reload,
     toggleVote, voting, voteError, clearVoteError,
-    addWindow, confirm, cancel, reportIncidence, resolve, replan,
+    addWindow, confirm, cancel, reportIncidence, voteExpress, replan,
   };
 }

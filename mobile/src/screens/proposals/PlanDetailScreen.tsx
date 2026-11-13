@@ -10,7 +10,7 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
-import { CRITICALITY_BADGE, INCIDENCE_LABEL, isUpcoming, isVotingOpen, openIncidence } from '../../utils/proposals';
+import { CRITICALITY_BADGE, INCIDENCE_LABEL, isUpcoming, isVotingOpen } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { ConfirmPlanDialog } from './ConfirmPlanDialog';
 import { ReplanSheet } from './ReplanSheet';
@@ -42,7 +42,7 @@ function IncidenceRow({ incidence }: { incidence: Incidence }) {
 
 export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDetail'>) {
   const { proposalId } = route.params;
-  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, resolve, replan } = useProposal(proposalId);
+  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, voteExpress, replan } = useProposal(proposalId);
   useRefreshOnFocus(reload);
   useRefreshErrorToast(error, proposal !== undefined, failedLoads);
   const [sheet, setSheet] = useState<'confirm' | 'incidence' | 'replan' | null>(null);
@@ -63,7 +63,11 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   const active = proposal.state === 'CONFIRMADO' || proposal.state === 'EN_RECOORDINACION';
   // La votación exprés y «Reportar imprevisto» solo tienen sentido si el plan aún no ocurrió (D3).
   const activeUpcoming = active && isUpcoming(proposal, now);
-  const alertIncidence = activeUpcoming ? openIncidence(proposal) : null;
+  // Tarjeta de la votación exprés (abierta o la última cerrada) o, en recoordinación, «Proponer franjas».
+  const showExpress = activeUpcoming && (proposal.expressVote !== null || proposal.state === 'EN_RECOORDINACION');
+  // Solo se reporta sobre un plan confirmado: en recoordinación no hay fecha a la que faltar (409 INVALID_STATE).
+  const canReport = activeUpcoming && proposal.state === 'CONFIRMADO';
+  const openVoteId = proposal.expressVote?.status === 'ABIERTA' ? proposal.expressVote.id : null;
 
   const doCancel = async () => {
     try {
@@ -85,16 +89,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
       >
         <ProposalHeader proposal={proposal} now={now} details />
 
-        {alertIncidence ? (
-          <ExpressVoteCard
-            kind={proposal.state === 'EN_RECOORDINACION' ? 'RECOORDINACION' : 'AVISO'}
-            who={alertIncidence.user.name}
-            reason={alertIncidence.reason}
-            planTitle={proposal.title}
-            canResolve={canManage}
-            onResolve={resolve}
-          />
-        ) : null}
+        {showExpress ? <ExpressVoteCard proposal={proposal} now={now} onVote={voteExpress} onReplan={replan} /> : null}
 
         {proposal.state !== 'CANCELADO' ? <VotingSummaryCard proposalId={proposal.id} /> : null}
 
@@ -123,7 +118,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
             ) : (
               proposal.incidences.map((i) => <IncidenceRow key={i.id} incidence={i} />)
             )}
-            {activeUpcoming ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
+            {canReport ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
           </View>
         ) : null}
 
@@ -163,11 +158,10 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
       ) : null}
       {sheet === 'incidence' ? (
         <ReportIncidenceSheet
+          openVoteId={openVoteId}
           onReport={reportIncidence}
-          onDone={() => {
-            setSheet(null);
-            showToast('Imprevisto reportado.');
-          }}
+          // El aviso («Se abrió una votación del grupo» o «Avisamos al grupo») lo da la hoja según la respuesta.
+          onDone={() => setSheet(null)}
           onDismiss={() => setSheet(null)}
         />
       ) : null}
