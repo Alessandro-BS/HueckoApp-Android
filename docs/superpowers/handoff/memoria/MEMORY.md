@@ -1,0 +1,6 @@
+﻿- [Git flow](git-flow.md) — always use git flow branches + PRs; commit identity via env vars
+- [RN restructure](hueckoapp-rn-restructure.md) — monorepo mobile/ (Expo) + backend/ (Express) + AI in backend; phases 0–5
+- [Progreso v3.0.0 APK](v3-apk-progreso.md) — entornos de cada PC (fnm/Node 22) y estado del APK: release/3.0.0 lista (PR #53), falta generar APK y desplegar
+- [Requisitos tercera entrega](requisitos-tercera-entrega.md) — Retrofit≈axios (hecho), Volley≈TanStack Query, proximidad para unirse a un grupo (módulo nativo), giroscopio; cámara ya integrada
+- [Paridad con repos Nakusuo](nakusuo-paridad.md) — fases 1-6 + arreglos + config INTEGRADOS en develop (#43-#52); release/3.0.0 con PR #53 abierto sin integrar; falta APK, merge a main, tag, GitHub Release y prueba en celulares (ver final del archivo)
+- [Pruebas al final](pruebas-al-final.md) — terminar todas las funciones antes del APK y la prueba en celulares; no parar entre fases
