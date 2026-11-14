@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 
 import { useAuth } from '../context/AuthContext';
 import { navigationRef } from '../navigation/navigationRef';
+import { emitProposalChanged } from './proposalEvents';
 
 type Destination = { screen: 'Voting' | 'PlanDetail'; proposalId: string };
 
@@ -58,9 +59,12 @@ export function useNotificationNavigation() {
       pending.current = destination;
       flush.current();
     };
-    const received = Notifications.addNotificationReceivedListener(() => {
+    const received = Notifications.addNotificationReceivedListener((notification) => {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['groups'] });
+      // La propuesta abierta (Votar o detalle del plan) se recarga sola.
+      const data = parseData(notification.request.content.data);
+      if (data) emitProposalChanged(data.proposalId);
     });
     const responded = Notifications.addNotificationResponseReceivedListener(open);
     let cancelled = false;

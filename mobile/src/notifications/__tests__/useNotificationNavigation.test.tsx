@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import type { ReactNode } from 'react';
 
 import { navigationRef } from '../../navigation/navigationRef';
+import * as proposalEvents from '../proposalEvents';
 import { useNotificationNavigation } from '../useNotificationNavigation';
 
 jest.mock('../../context/AuthContext', () => ({ useAuth: () => ({ status: mockStatus }) }));
@@ -136,6 +137,16 @@ describe('useNotificationNavigation', () => {
     await act(async () => receivedListener({ request: { content: { data: data() } } } as never));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['groups'] });
+  });
+
+  it('recibir un aviso válido emite el cambio de su propuesta; uno inválido no', async () => {
+    const emit = jest.spyOn(proposalEvents, 'emitProposalChanged');
+    await setup();
+    await act(async () => receivedListener({ request: { content: { data: data({ proposalId: 'p9' }) } } } as never));
+    expect(emit).toHaveBeenCalledWith('p9');
+    emit.mockClear();
+    await act(async () => receivedListener({ request: { content: { data: { foo: 1 } } } } as never));
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it('desmontar quita las suscripciones', async () => {

@@ -1,5 +1,5 @@
 import type { ExpressOption, IncidenceInput, Proposal, ReplanInput, TimeWindowInput } from '@hueckoapp/shared';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import {
   addWindow as postWindow,
@@ -12,6 +12,7 @@ import {
   voteExpress as putExpressVote,
   voteWindow,
 } from '../api/proposals';
+import { subscribeProposalChanged } from '../notifications/proposalEvents';
 import { useResource } from './useResource';
 import { useVoteToggle } from './useVoteToggle';
 
@@ -25,6 +26,9 @@ const NO_VOTES: readonly string[] = [];
 export function useProposal(proposalId: string) {
   const load = useCallback(() => getProposal(proposalId), [proposalId]);
   const { data, loading, refreshing, error, failedLoads, reload, mutate } = useResource(load);
+
+  // Un aviso push de esta propuesta con la pantalla abierta: se vuelve a pedir al servidor.
+  useEffect(() => subscribeProposalChanged(proposalId, () => void reload()), [proposalId, reload]);
 
   const apply = useCallback(
     (proposal: Proposal) => {
