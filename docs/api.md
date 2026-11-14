@@ -131,11 +131,11 @@ El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos
 { "idToken": "<idToken de Google>" }
 ```
 Entra (o crea la cuenta) con un idToken de Google verificado en el servidor contra `GOOGLE_WEB_CLIENT_ID`. Comparte el límite por IP de `/auth/login`.
-- Busca por `google_sub`; si no hay, por el correo (en minúsculas) y vincula la cuenta. Sin cuenta, la crea (nombre de Google, sin contraseña, verificada).
+- Busca por `google_sub`; si no hay, por el correo (en minúsculas) y vincula la cuenta. Sin cuenta, la crea (nombre de Google recortado a 80 caracteres, sin contraseña, verificada).
 - Correo de una cuenta **ya verificada** → se vincula y conserva su contraseña y su verificación en dos pasos.
 - Correo de una cuenta **sin verificar** (alguien la registró sin demostrar que el correo es suyo) → se vincula, pierde la contraseña y la verificación en dos pasos, toma el nombre de Google y se anulan sus códigos pendientes.
 - No pide el segundo paso: Google ya autenticó a la persona. Responde `200 { "token": "<jwt>", "user": CurrentUser }`.
-- `401 GOOGLE_TOKEN_INVALID` (token inválido, correo de Google sin verificar, o el correo ya está vinculado a otra cuenta de Google) · `403 ACCOUNT_SUSPENDED` · `503 GOOGLE_NOT_CONFIGURED` (el servidor no tiene `GOOGLE_WEB_CLIENT_ID`) · `400 VALIDATION_ERROR`.
+- `401 GOOGLE_TOKEN_INVALID` (token inválido o correo de Google sin verificar) · `409 GOOGLE_ACCOUNT_MISMATCH` («Ese correo ya está vinculado a otra cuenta de Google.») · `403 ACCOUNT_SUSPENDED` · `503 GOOGLE_NOT_CONFIGURED` (el servidor no tiene `GOOGLE_WEB_CLIENT_ID`) · `400 VALIDATION_ERROR`.
 
 ### `POST /auth/password/forgot`
 ```json

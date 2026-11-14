@@ -167,6 +167,13 @@ describe('esquema: usuarios', () => {
     expect((await db.one<{ created_at: string }>("SELECT created_at FROM users WHERE id = '1'"))!.created_at).toMatch(ISO_MS);
   });
 
+  it('google_sub único: la restricción se llama users_google_sub_key (la captura /auth/google)', async () => {
+    const db = await openTestDatabase();
+    const insert = (id: string) => db.query('INSERT INTO users (id, name, email, password_hash, google_sub) VALUES ($1, $1, $2, NULL, $3)', [id, id + '@correo.com', 'sub-1']);
+    await insert('1');
+    await expect(insert('2')).rejects.toMatchObject({ code: '23505', constraint: 'users_google_sub_key' });
+  });
+
   it('seq sigue el orden de inserción y el texto se ordena byte a byte (COLLATE "C", como SQLite)', async () => {
     const db = await openTestDatabase();
     for (const name of ['b', 'B', 'á', 'a']) {

@@ -111,26 +111,28 @@ export function authRouter({
     const identity = await googleVerifier.verify(idToken);
     if (!identity || !identity.emailVerified) throw new ApiError(401, 'GOOGLE_TOKEN_INVALID', 'No pudimos verificar tu cuenta de Google.');
     const email = identity.email.trim().toLowerCase();
+    const name = identity.name.slice(0, 80); // el mismo máximo que el registro
 
     const resolve = async (): Promise<Account> => {
       const bySub = await users.findByGoogleSub(identity.sub);
       if (bySub) return bySub;
       const byEmail = await users.findByEmail(email);
       if (byEmail) {
-        // Ese correo ya tiene otro Google vinculado. Una cuenta suspendida no se toca (se rechaza abajo).
-        if (byEmail.hasGoogle) throw new ApiError(401, 'GOOGLE_TOKEN_INVALID', 'No pudimos verificar tu cuenta de Google.');
+        // Ese correo ya tiene otro Google vinculado (409, no 401: un 401 cerraría la sesión en la app). Una cuenta suspendida no se toca (se rechaza abajo).
+        if (byEmail.hasGoogle) throw new ApiError(409, 'GOOGLE_ACCOUNT_MISMATCH', 'Ese correo ya está vinculado a otra cuenta de Google.');
         if (byEmail.status === 'SUSPENDED') return byEmail;
-        const linked = await users.linkGoogle(byEmail.id, identity.sub, { googleName: identity.name, now: now().toISOString() });
+        const linked = await users.linkGoogle(byEmail.id, identity.sub, { googleName: name, now: now().toISOString() });
         if (!linked) throw new ApiError(401, 'GOOGLE_TOKEN_INVALID', 'No pudimos verificar tu cuenta de Google.');
         return linked;
       }
-      return users.createFromGoogle({ name: identity.name, email, sub: identity.sub, createdAt: now().toISOString() });
+      return users.createFromGoogle({ name, email, sub: identity.sub, createdAt: now().toISOString() });
     };
     let account: Account;
     try {
       account = await resolve();
     } catch (e) {
-      // Dos primeras entradas a la vez: el UNIQUE de correo o google_sub frena a una. Se repite la búsqueda una vez.
+      // Dos primeras entradas a la vez: el UNIQUE de correo o google_sub frena a una. Se repite la búsqueda una sola vez:
+      // si el reintento también choca, el error se propaga.
       if (!isUniqueViolation(e, 'users_email_key') && !isUniqueViolation(e, 'users_google_sub_key')) throw e;
       account = await resolve();
     }
