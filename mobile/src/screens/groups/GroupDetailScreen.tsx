@@ -2,7 +2,7 @@ import { createMaterialTopTabNavigator } from '@react-navigation/material-top-ta
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { LoadState } from '../../components';
+import { LoadState, SecondaryButton } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useGroup } from '../../hooks/useGroup';
 import type { AppStackScreen, GroupTabsParamList } from '../../navigation/types';
@@ -56,6 +56,12 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
         ) : null}
         <Text style={[typography.labelMedium, { color: colors.onSurfaceVariant }]}>{memberCountLabel(group.memberCount)}</Text>
         <InviteCodeCard code={group.inviteCode} />
+        <SecondaryButton
+          title="Acercar para invitar"
+          icon="nfc"
+          style={styles.proximity}
+          onPress={() => navigation.navigate('ProximityInvite', { groupId: group.id, name: group.name })}
+        />
       </View>
       <Tabs.Navigator
         screenOptions={{
@@ -88,5 +94,6 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: colors.surface },
   banner: { height: 120, alignItems: 'center', justifyContent: 'center' },
   bannerInitial: { fontSize: 45, lineHeight: 52, fontWeight: '400', color: '#FFFFFF' },
+  proximity: { marginTop: 8 },
   header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, gap: 4 },
 });

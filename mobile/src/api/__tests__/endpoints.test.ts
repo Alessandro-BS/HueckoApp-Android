@@ -6,6 +6,7 @@ import { api } from '../client';
 import * as dashboard from '../dashboard';
 import * as groups from '../groups';
 import * as proposals from '../proposals';
+import * as proximity from '../proximity';
 import * as schedule from '../schedule';
 
 const original = api.defaults.adapter;
@@ -62,6 +63,13 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes'), { text: 'Estudiar el viernes' }],
   ['POST', '/groups/g1/ai/suggestions', () => ai.suggestPlans('g1'), undefined],
   ['POST', '/proposals/p1/ai/summary', () => ai.summarizeVoting('p1'), undefined],
+  ['POST', '/proximity/invite', () => proximity.sendInvite('g1'), { groupId: 'g1' }],
+  ['POST', '/proximity/join', () => proximity.sendJoin(), {}],
+  ['GET', '/proximity/r%201', () => proximity.getProximity('r 1'), undefined],
+  ['POST', '/proximity/r1/accept', () => proximity.acceptProximity('r1'), undefined],
+  ['POST', '/proximity/r1/reject', () => proximity.rejectProximity('r1'), undefined],
+  ['DELETE', '/proximity/r1', () => proximity.cancelProximity('r1'), undefined],
+  ['GET', '/health', () => proximity.pingServer(), undefined],
 ])('%s %s', async (method, url, call, body) => {
   await call();
   expect(calls).toHaveLength(1);
@@ -86,4 +94,11 @@ it('POST /ai/schedule-ocr sube la foto como multipart/form-data', async () => {
   expect(calls[0].data).toBeInstanceOf(FormData);
   expect(String(calls[0].headers['Content-Type'])).toContain('multipart/form-data');
   expect(calls[0].timeout).toBe(45_000);
+});
+
+it('pingServer no lanza si el servidor no responde', async () => {
+  api.defaults.adapter = async () => {
+    throw new Error('sin red');
+  };
+  await expect(proximity.pingServer()).resolves.toBeUndefined();
 });

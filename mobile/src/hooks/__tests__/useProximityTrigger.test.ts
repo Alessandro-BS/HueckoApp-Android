@@ -1,0 +1,170 @@
+import { useIsFocused } from '@react-navigation/native';
+import { act, renderHook } from '@testing-library/react-native';
+import { Gyroscope } from 'expo-sensors';
+import { AppState, type AppStateStatus } from 'react-native';
+
+import * as Proximity from '../../../modules/proximity';
+import { ARM_WINDOW_MS, useProximityTrigger } from '../useProximityTrigger';
+
+jest.mock('@react-navigation/native', () => ({ useIsFocused: jest.fn(() => true) }));
+
+const emitNear = (near: boolean) => (Proximity as unknown as { __emit(n: boolean): void }).__emit(near);
+const emitGyro = (x: number) => (Gyroscope as unknown as { __emit(r: object): void }).__emit({ x, y: 0, z: 0 });
+
+// Lecturas cada 100 ms durante `ms`.
+async function readFor(ms: number, x = 0.1) {
+  for (let t = 0; t < ms; t += 100) {
+    await act(async () => {
+      emitGyro(x);
+      jest.advanceTimersByTime(100);
+    });
+  }
+}
+
+const appStateListeners = new Set<(state: AppStateStatus) => void>();
+const setAppState = (state: AppStateStatus) => appStateListeners.forEach((listener) => listener(state));
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.clearAllMocks();
+  appStateListeners.clear();
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
+    appStateListeners.add(listener);
+    return { remove: () => void appStateListeners.delete(listener) };
+  });
+  jest.mocked(Proximity.isAvailable).mockReturnValue(true);
+  jest.mocked(Gyroscope.isAvailableAsync).mockResolvedValue(true);
+  jest.mocked(useIsFocused).mockReturnValue(true);
+});
+afterEach(() => jest.useRealTimers());
+
+it('lejos→cerca quieto dispara una vez', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600);
+  await act(async () => emitNear(false)); // lectura inicial
+  await act(async () => emitNear(true));
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+  await readFor(200);
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+});
+
+it('cerca→lejos→cerca en 300 ms dispara una sola vez por transición', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600);
+  await act(async () => emitNear(false)); // lectura inicial
+  await act(async () => emitNear(true));
+  await readFor(100);
+  await act(async () => emitNear(false));
+  await readFor(100);
+  await act(async () => emitNear(true));
+  expect(onTrigger).toHaveBeenCalledTimes(2);
+});
+
+it('si ya estaba cerca al habilitarse no dispara hasta lejos→cerca', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600);
+  await act(async () => emitNear(true)); // primera lectura, aunque llegue tarde: estado inicial
+  await readFor(200);
+  expect(onTrigger).not.toHaveBeenCalled();
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+});
+
+it('primera lectura lejos y luego cerca enseguida dispara', async () => {
+  const onTrigger = jest.fn();
+  jest.mocked(Gyroscope.isAvailableAsync).mockResolvedValue(false); // siempre quieto
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+});
+
+it('al volver a enfocar con el sensor tapado no dispara', async () => {
+  const onTrigger = jest.fn();
+  const { rerender } = await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600);
+  jest.mocked(useIsFocused).mockReturnValue(false);
+  await rerender({});
+  jest.mocked(useIsFocused).mockReturnValue(true);
+  await rerender({});
+  await readFor(600);
+  await act(async () => emitNear(true)); // lectura inicial de la nueva suscripción
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('sin foco no escucha el giroscopio', async () => {
+  jest.mocked(useIsFocused).mockReturnValue(false);
+  await renderHook(() => useProximityTrigger(true, jest.fn()));
+  expect(Gyroscope.addListener).not.toHaveBeenCalled();
+});
+
+it('en movimiento no dispara', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600, 1);
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('con enabled=false no dispara', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(false, onTrigger));
+  await readFor(600);
+  await act(async () => emitNear(true));
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('quieto poco después de juntarlos (dentro de 1,5 s) dispara una sola vez', async () => {
+  expect(ARM_WINDOW_MS).toBe(1500);
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(300, 1); // aún se mueve
+  await act(async () => emitNear(false)); // lectura inicial
+  await act(async () => emitNear(true));
+  expect(onTrigger).not.toHaveBeenCalled();
+  await readFor(600); // se queda quieto, todavía cerca
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+  await readFor(1000, 1);
+  await readFor(600);
+  expect(onTrigger).toHaveBeenCalledTimes(1);
+});
+
+it('quieto pasados 1,5 s de juntarlos no dispara', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  await readFor(1200, 1);
+  await readFor(600);
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('si se aleja antes de quedarse quieto no dispara', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await act(async () => emitNear(false));
+  await act(async () => emitNear(true));
+  await readFor(100, 1);
+  await act(async () => emitNear(false));
+  await readFor(600);
+  expect(onTrigger).not.toHaveBeenCalled();
+});
+
+it('con la app en segundo plano no dispara, ni al volver con el sensor tapado', async () => {
+  const onTrigger = jest.fn();
+  await renderHook(() => useProximityTrigger(true, onTrigger));
+  await readFor(600);
+  await act(async () => emitNear(false)); // lectura inicial: lejos y quieto
+  await act(async () => setAppState('background')); // se bloquea la pantalla
+  await act(async () => emitNear(true)); // al bolsillo
+  expect(onTrigger).not.toHaveBeenCalled();
+  await act(async () => setAppState('active'));
+  await readFor(600);
+  await act(async () => emitNear(true)); // lectura inicial de la nueva suscripción
+  expect(onTrigger).not.toHaveBeenCalled();
+});

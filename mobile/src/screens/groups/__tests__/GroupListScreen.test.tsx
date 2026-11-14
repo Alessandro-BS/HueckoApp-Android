@@ -122,3 +122,10 @@ it('unirse con éxito añade el grupo y avisa', async () => {
   expect(await screen.findByText('Amigos de la Uni')).toBeTruthy();
   expect(showToast).toHaveBeenCalledWith('Te uniste a «Amigos de la Uni».');
 });
+
+it('«Unirme acercando el celular» abre la pantalla de proximidad', async () => {
+  mocked.listGroups.mockResolvedValue([]);
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Unirme acercando el celular'));
+  expect(navigation.navigate).toHaveBeenCalledWith('ProximityJoin');
+});

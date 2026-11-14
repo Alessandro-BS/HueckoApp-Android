@@ -28,6 +28,8 @@ export type AppStackParamList = {
   AddSchedule: { initialDay?: number } | undefined;
   OcrReview: { image: OcrImage };
   GroupDetail: { groupId: string; name: string };
+  ProximityInvite: { groupId: string; name: string };
+  ProximityJoin: undefined;
   // `prefill`: borrador o idea de Huecko IA que abre el formulario ya rellenado.
   CreateProposal: { groupId: string; groupName: string; prefill?: ProposalPrefill };
   Voting: { proposalId: string };

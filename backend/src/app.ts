@@ -15,6 +15,7 @@ import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
+import { proximityRouter } from './proximity/proximity.routes';
 import { timeBlocksRouter } from './schedule/time-blocks.routes';
 
 export type AppDeps = {
@@ -32,6 +33,8 @@ export type AppDeps = {
   ai?: AiClient;
   // Llamadas a la IA por usuario cada 15 min (20 si se omite); las pruebas lo suben.
   aiRateLimit?: number;
+  // Avisos de proximidad (invite + join) por usuario y minuto (10 si se omite); las pruebas lo suben.
+  proximityRateLimit?: number;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
@@ -73,6 +76,7 @@ export function createApp(appDeps: AppDeps) {
   api.use('/proposals', auth, proposalsRouter(deps));
   api.use('/proposals', auth, proposalAiRouter(deps));
   api.use('/ai', auth, aiRouter(deps));
+  api.use('/proximity', auth, proximityRouter(deps));
   // Administración de la app (Fase 4.5): además del token, rol ADMIN leído de la base (D2).
   api.use('/admin', auth, requireAdmin, adminRouter(deps));
 

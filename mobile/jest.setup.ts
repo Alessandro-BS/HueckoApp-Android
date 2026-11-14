@@ -112,3 +112,35 @@ jest.mock('expo-file-system', () => {
 // TanStack Query avisa a los componentes en un setTimeout(0); en los tests, al momento, para que act() lo incluya.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 require('@tanstack/react-query').notifyManager.setScheduler((callback: () => void) => callback());
+
+// Sensor de proximidad (módulo nativo local): cada test fija isAvailable y avisa con __emit(near) a los listeners activos.
+// addProximityListener devuelve una suscripción con `remove` como jest.fn, para comprobar que se deja de escuchar.
+type MockProximityListener = (change: { near: boolean }) => void;
+jest.mock('./modules/proximity', () => {
+  const mockListeners = new Set<MockProximityListener>();
+  return {
+    isAvailable: jest.fn(() => true),
+    addProximityListener: jest.fn((listener: MockProximityListener) => {
+      mockListeners.add(listener);
+      return { remove: jest.fn(() => void mockListeners.delete(listener)) };
+    }),
+    __emit: (near: boolean) => mockListeners.forEach((listener) => listener({ near })),
+  };
+});
+
+// Giroscopio (expo-sensors): cada test fija isAvailableAsync y avisa con __emit({x,y,z}) a los listeners activos.
+type MockGyroscopeListener = (reading: { x: number; y: number; z: number }) => void;
+jest.mock('expo-sensors', () => {
+  const mockGyroListeners = new Set<MockGyroscopeListener>();
+  return {
+    Gyroscope: {
+      isAvailableAsync: jest.fn(async () => true),
+      setUpdateInterval: jest.fn(),
+      addListener: jest.fn((listener: MockGyroscopeListener) => {
+        mockGyroListeners.add(listener);
+        return { remove: jest.fn(() => void mockGyroListeners.delete(listener)) };
+      }),
+      __emit: (reading: { x: number; y: number; z: number }) => mockGyroListeners.forEach((listener) => listener(reading)),
+    },
+  };
+});

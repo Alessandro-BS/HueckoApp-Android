@@ -31,6 +31,7 @@ export const queryKeys = {
   dashboard: (userId: string | undefined) => ['dashboard', userId ?? null] as const,
   groups: ['groups', 'list'] as const,
   group: (groupId: string) => ['groups', 'detail', groupId] as const,
+  proximity: (id: string) => ['proximity', id] as const,
 };
 
 // En React Native no hay «foco de ventana»: al volver la app a primer plano, las consultas viejas se recargan.

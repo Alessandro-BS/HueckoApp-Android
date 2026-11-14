@@ -1,6 +1,6 @@
 import type { Group } from '@hueckoapp/shared';
 import { NavigationContainer } from '@react-navigation/native';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { GroupDetailScreen } from '../GroupDetailScreen';
 
@@ -34,4 +34,16 @@ it('muestra el nombre, el código de invitación y las tres pestañas', async ()
   expect(screen.getAllByText('Planes').length).toBeGreaterThan(0);
   expect(screen.getAllByText('Huecos').length).toBeGreaterThan(0);
   expect(screen.getAllByText('Miembros').length).toBeGreaterThan(0);
+});
+
+it('«Acercar para invitar» abre la pantalla de proximidad con el grupo', async () => {
+  const navigation = { setOptions: jest.fn(), goBack: jest.fn(), navigate: jest.fn() } as any;
+  const route = { key: 'k', name: 'GroupDetail', params: { groupId: 'g1', name: 'Proyecto Integrador' } } as any;
+  await render(
+    <NavigationContainer>
+      <GroupDetailScreen navigation={navigation} route={route} />
+    </NavigationContainer>,
+  );
+  await fireEvent.press(screen.getByText('Acercar para invitar'));
+  expect(navigation.navigate).toHaveBeenCalledWith('ProximityInvite', { groupId: 'g1', name: 'Proyecto Integrador' });
 });
