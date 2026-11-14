@@ -27,6 +27,8 @@ export function ProfileScreen() {
       if (cancelled) return;
       setEnabled(preference && permission.granted);
       setDenied(!permission.granted);
+      // Concedieron el permiso en los ajustes: el servidor aún puede no tener el token (el PUT es idempotente).
+      if (preference && permission.granted) void registerDevice();
     })();
     return () => {
       cancelled = true;

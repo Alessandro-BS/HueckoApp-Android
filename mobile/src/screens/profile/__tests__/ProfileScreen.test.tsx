@@ -96,3 +96,33 @@ it('al volver a primer plano revisa de nuevo el permiso (p. ej. tras activarlo e
   await waitFor(() => expect(screen.queryByText('Abrir ajustes')).toBeNull());
   expect(screen.getByLabelText('Notificaciones en este celular').props.value).toBe(true);
 });
+
+async function foregroundAfterGrant(preference: boolean) {
+  let onChange: (state: string) => void = () => undefined;
+  jest.spyOn(AppState, 'addEventListener').mockImplementation(((_: string, l: (s: string) => void) => {
+    onChange = l;
+    return { remove: jest.fn() };
+  }) as never);
+  await notificationsPreference.set(preference);
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({ status: 'denied', granted: false } as never);
+  await render(<ProfileScreen />);
+  expect(await screen.findByText('Abrir ajustes')).toBeTruthy();
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({ status: 'granted', granted: true } as never);
+  await act(async () => {
+    onChange('background');
+  });
+  await act(async () => {
+    onChange('active');
+  });
+  await waitFor(() => expect(screen.queryByText('Abrir ajustes')).toBeNull());
+}
+
+it('al volver de los ajustes con el permiso concedido y la preferencia activa, registra el celular', async () => {
+  await foregroundAfterGrant(true);
+  await waitFor(() => expect(reg.registerDevice).toHaveBeenCalledTimes(1));
+});
+
+it('al volver de los ajustes con el permiso concedido pero la preferencia apagada, no registra el celular', async () => {
+  await foregroundAfterGrant(false);
+  expect(reg.registerDevice).not.toHaveBeenCalled();
+});
