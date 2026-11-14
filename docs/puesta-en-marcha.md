@@ -24,6 +24,7 @@ Los avisos usan FCM V1. Es una sola vez; el detalle está en [Avisos push (Fireb
 Si usas **el mismo proyecto** de Firebase, los clientes OAuth ya aparecen en su [consola de Google Cloud](https://console.cloud.google.com/apis/credentials) y puedes reutilizarlos o crear los que falten.
 
 - [ ] **Pantalla de consentimiento** (*APIs y servicios → Pantalla de consentimiento de OAuth*): tipo *Externo*, nombre «HueckoApp», correo de contacto. Mientras esté en modo *Prueba*, agrega como usuarios de prueba las cuentas de Google con las que vas a entrar; o publícala.
+  - Para **publicarla** (*Público → Publicar app*), Google exige en *Información de la marca* una página principal, una política de privacidad y su dominio autorizado. Están en la rama `gh-pages` (GitHub Pages): `https://alessandro-bs.github.io/HueckoApp-Android/` y `…/privacidad.html`, con el dominio autorizado `alessandro-bs.github.io`. **No subas logotipo**: obliga a una verificación de Google que tarda días. Si cambian los datos que guarda la app, actualiza `privacidad.html` en esa rama.
 - [ ] Obtén el **SHA-1 del keystore de EAS** (no uno local): desde `mobile/`, `npx eas-cli@latest credentials -p android`, elige el perfil (`preview`) y copia el *SHA1 Fingerprint*. Si todavía no hay keystore, se crea con el primer `eas build` (paso 8): vuelve a este paso después.
 - [ ] Crea un **ID de cliente OAuth de tipo Android** con el paquete `com.hueckoapp.mobile` y ese SHA-1. No se copia en ningún archivo: Google lo reconoce por paquete y huella.
 - [ ] Crea un **ID de cliente OAuth de tipo Web**. Su ID (`xxxx.apps.googleusercontent.com`) es el que usa todo lo demás. **No es secreto.** Pégalo en:
@@ -42,7 +43,10 @@ Registro, entrada con verificación en dos pasos y recuperar la contraseña mand
 
 - [ ] Crea una cuenta gratis (**300 correos al día**).
 - [ ] *Remitentes, dominios e IP → Remitentes*: agrega y **verifica** el correo desde el que saldrán los códigos (te llega un correo de confirmación). Sin remitente verificado, Brevo rechaza los envíos.
-- [ ] *SMTP y API → Claves API*: genera una clave. Es **secreta**.
+- [ ] Verifica tu **teléfono** en Brevo (lo pide antes del primer envío).
+- [ ] *SMTP y API → Claves API*: genera una clave. Es **secreta** y Brevo la muestra una sola vez. Acceso **Restringido** con solo *Emails transaccionales → Todos* (el backend solo llama a `POST /v3/smtp/email`) y el vencimiento más largo.
+  - ⏰ Además de su fecha, **la clave caduca tras 90 días sin uso**: si la app pasa ese tiempo sin enviar códigos, genera otra y cámbiala en Render.
+  - 🚫 **No actives** «bloquear direcciones IP no autorizadas» para las claves API: Render no tiene una IP fija y los correos dejarían de salir.
 - [ ] En Render (paso 4): `BREVO_API_KEY` (la clave), `BREVO_SENDER_EMAIL` (el remitente verificado) y, si quieres otro nombre, `BREVO_SENDER_NAME` (por defecto `HueckoApp`).
 
 > 🚫 Con `NODE_ENV=production`, **si falta `BREVO_API_KEY` o `BREVO_SENDER_EMAIL` el servidor no arranca**. Un valor vacío en Render cuenta como no puesto.
