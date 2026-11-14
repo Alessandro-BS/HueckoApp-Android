@@ -20,7 +20,8 @@ describe('migrate', () => {
     expect(await versions(db)).toEqual(ALL_VERSIONS);
     const dates = await db.many<{ applied_at: string }>('SELECT applied_at FROM schema_migrations');
     for (const { applied_at } of dates) expect(applied_at).toMatch(ISO_MS);
-  });
+    // Aplica las 13 migraciones en un PGlite nuevo: con la suite completa en paralelo roza los 20 s por defecto.
+  }, 60_000);
 
   it('lo primero, dentro de su transacción, es el candado de migraciones (dos servidores a la vez no migran dos veces)', async () => {
     // PGlite tiene una sola conexión y no puede reproducir la carrera: este test impide que un cambio quite el candado.
