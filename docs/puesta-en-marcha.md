@@ -48,6 +48,8 @@ Registro, entrada con verificación en dos pasos y recuperar la contraseña mand
 > 🚫 Con `NODE_ENV=production`, **si falta `BREVO_API_KEY` o `BREVO_SENDER_EMAIL` el servidor no arranca**. Un valor vacío en Render cuenta como no puesto.
 >
 > 💡 En desarrollo, sin `BREVO_API_KEY`, los códigos se escriben en el log del backend (no se manda ningún correo).
+>
+> 🧮 El backend se frena antes de agotar el plan gratis: como mucho `BREVO_DAILY_LIMIT` correos cada 24 h entre todas las cuentas (`280` en `render.yaml`). Pasado eso, pedir o reenviar un código responde «Hoy no podemos enviar más códigos. Inténtalo mañana.» (`503 EMAIL_QUOTA_EXHAUSTED`) y el log de Render lo registra. Si pasas a un plan de Brevo con más correos, sube el valor en Render.
 
 ---
 
@@ -70,6 +72,7 @@ Registro, entrada con verificación en dos pasos y recuperar la contraseña mand
 | `BREVO_API_KEY` | Clave de la API de Brevo (paso 3) | ✅ Sí |
 | `BREVO_SENDER_EMAIL` | Remitente verificado en Brevo | No |
 | `BREVO_SENDER_NAME` | `HueckoApp` (en `render.yaml`) | No |
+| `BREVO_DAILY_LIMIT` | `280` (en `render.yaml`; bajo los 300/día de Brevo gratis, paso 3) | No |
 | `GOOGLE_WEB_CLIENT_ID` | ID de cliente **Web** de Google (paso 2) | No |
 
 `CODE_RATE_LIMIT` (30 intentos por IP cada 15 min en verificar, reenviar y «¿Olvidaste tu contraseña?») es opcional: el valor por defecto sirve.
@@ -116,9 +119,9 @@ Ejecútalas en el *SQL Editor* de Neon sobre la base de producción. Cada una de
 
 Los PR están apilados: cada uno parte del anterior.
 
-- [ ] Integra, **en este orden**, a `develop`: **#43 → #44 → #45 → #46 → #47 → #48 → #49 → #50** (esta fase). Cuando uno entra y se borra su rama, GitHub cambia la base del siguiente a `develop`; espera a que lo haga y a que el CI esté en verde antes de integrar el siguiente.
+- [ ] Integra, **en este orden**, a `develop`: **#43 → #44 → #45 → #46 → #47 → #48 → #49 → #50**; el último es el PR de esta fase (#50). Cuando uno entra y se borra su rama, GitHub cambia la base del siguiente a `develop`; espera a que lo haga y a que el CI esté en verde antes de integrar el siguiente.
 - [ ] Crea `release/3.0.0` desde `develop` y ábrele un PR a `main`. Al integrarlo, pon el tag `v3.0.0` y vuelve a integrar la release en `develop` (git flow, ver [README](../README.md#-flujo-de-trabajo-git-flow)).
-- [ ] En el panel de Render, cambia la **rama** del servicio a `main` (según las notas, hoy despliega `feature/apk-eas`; `render.yaml` ya dice `branch: main`).
+- [ ] Comprueba en el panel de Render qué rama despliega el servicio y cámbiala a `main` (`render.yaml` ya dice `branch: main`).
 - [ ] Borra la rama remota `wip/votacion-expres-task3` (`git push origin --delete wip/votacion-expres-task3`).
 
 > ⏰ El despertador solo corre desde `main`: empezará a funcionar cuando la release llegue ahí.
@@ -128,6 +131,8 @@ Los PR están apilados: cada uno parte del anterior.
 ## 7️⃣ Desplegar el backend antes del APK
 
 > ⚠️ **El APK nuevo no funciona con el backend viejo** (pide códigos, Google y rutas que el servidor antiguo no tiene).
+>
+> ⚠️ **Y al revés: los APK anteriores a esta fase no pueden registrar cuentas contra el backend nuevo** (el registro ya no devuelve un token, sino un reto con código, que esos APK no saben mostrar). Despliega el backend y reparte el APK nuevo **a la vez**, y pide a quienes tengan el APK viejo que lo actualicen.
 
 - [ ] Con los pasos 3 y 4 hechos, despliega el backend en Render y espera a que termine. Abre `https://hueckoapp-api.onrender.com/api/health`: debe decir `{"status":"ok"}`. Al arrancar, el servidor aplica las migraciones solo.
 - [ ] Corre la consulta de la fase 6 del paso 5: debe dar `0`.

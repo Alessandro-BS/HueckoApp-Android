@@ -173,7 +173,7 @@ Cuenta con contraseña correcta → `200 { "challenge": Challenge }` con `purpos
 ### `POST /auth/me/2fa/disable`
 Requiere token. Mismo cuerpo `PasswordInput`. Contraseña correcta → desactiva la verificación en dos pasos y responde `204`; después `/auth/login` vuelve a dar el token directo. Mismos errores `400 WRONG_PASSWORD`, `409 PASSWORD_REQUIRED` y `429 TOO_MANY_REQUESTS`. No cambia la versión de sesión.
 
-**Límite de `enable` y `disable`:** comparten un cupo de **5 intentos cada 15 min por cuenta** (no por IP; se cuenta tras validar el token) → `429 TOO_MANY_REQUESTS`; otra cuenta en la misma IP no se ve afectada.
+**Límite de `enable` y `disable`:** comparten un cupo de **5 intentos cada 15 min por cuenta** (no por IP; se cuenta tras validar el token) → `429 TOO_MANY_REQUESTS`; otra cuenta en la misma IP no se ve afectada. Cuenta **toda** llamada con token válido, también las que salen bien (no solo las de contraseña incorrecta): activar y desactivar varias veces seguidas también lo agota.
 
 ### Códigos por correo
 - 6 dígitos, valen **15 minutos**, **5 intentos** (el quinto fallo quema el reto).

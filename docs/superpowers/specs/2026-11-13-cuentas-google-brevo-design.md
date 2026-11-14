@@ -92,6 +92,12 @@ generar el APK** para la exposición; gestión del grupo (expulsar, regenerar c�
   como mucho **10 correos por cuenta cada 24 h** (todos los propósitos); pasado eso, crear o reenviar responde
   `429 EMAIL_DAILY_LIMIT` «Ya te enviamos muchos códigos hoy. Inténtalo mañana.» (en `/password/forgot` no se responde
   el 429, ver abajo). Así nadie llena el correo de otro ni agota el cupo de Brevo.
+- **Presupuesto real de adivinanzas (añadido tras la revisión final):** los envíos fallidos también cuentan para los
+  10 correos diarios, y en `/password/forgot` un código que no salió se anula (se responde un reto falso). Así, por
+  cuenta y día hay como mucho 10 códigos × 5 intentos = **50 intentos** (probabilidad de acertar ~5×10⁻⁵ al día),
+  además del límite por IP. La ventana de 24 h se cuenta por la **creación** del reto (sus reenvíos suman a ese día).
+  Encima, un freno global: `BREVO_DAILY_LIMIT` (280 por defecto) correos cada 24 h entre todas las cuentas →
+  `503 EMAIL_QUOTA_EXHAUSTED` «Hoy no podemos enviar más códigos. Inténtalo mañana.» (en `forgot`, reto falso).
 
 ### Endpoints (todos en `/api/auth`, con limitador por IP como los actuales)
 
