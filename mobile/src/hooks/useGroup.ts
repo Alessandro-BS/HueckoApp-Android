@@ -30,10 +30,12 @@ export function useGroup(groupId: string) {
     [groupId, replaceMember],
   );
 
-  // Lanza si falla. Si sale bien, el grupo desaparece ya de «Mis grupos» (sin esperar a recargar la lista).
+  // Lanza si falla. Si sale bien, el grupo desaparece ya de «Mis grupos» (sin esperar a recargar la lista) e Inicio
+  // se vuelve a pedir: sus grupos, votaciones, próximo plan y métricas cambian, y solo el servidor sabe cómo.
   const leave = useCallback(async () => {
     await leaveGroup(groupId);
     queryClient.setQueryData<GroupSummary[]>(queryKeys.groups, (prev) => prev?.filter((g) => g.id !== groupId));
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboards });
   }, [groupId, queryClient]);
 
   return { group: data, loading, refreshing, error, reload, setEssential, setMemberRole, leave };

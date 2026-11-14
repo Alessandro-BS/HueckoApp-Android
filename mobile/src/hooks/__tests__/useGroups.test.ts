@@ -2,14 +2,22 @@ import type { Group, GroupMember, GroupSummary } from '@hueckoapp/shared';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../api/client';
+import * as dashboardApi from '../../api/dashboard';
 import * as groupsApi from '../../api/groups';
+import * as scheduleApi from '../../api/schedule';
+import { makeDashboard } from '../../testing/fixtures';
 import { useAvailability } from '../useAvailability';
+import { useDashboard } from '../useDashboard';
 import { useGroup } from '../useGroup';
 import { useGroups } from '../useGroups';
 import { withQueryClient } from '../../testing/queryClient';
 
 jest.mock('../../api/groups');
+jest.mock('../../api/dashboard');
+jest.mock('../../api/schedule');
 const mocked = groupsApi as jest.Mocked<typeof groupsApi>;
+const dashboard = dashboardApi as jest.Mocked<typeof dashboardApi>;
+const schedule = scheduleApi as jest.Mocked<typeof scheduleApi>;
 
 const owner: GroupMember = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'ORGANIZER', isEssential: false };
 const ana: GroupMember = { id: 'u2', name: 'Ana', email: 'ana@test.com', role: 'MEMBER', isEssential: false };
@@ -69,6 +77,35 @@ describe('useGroups', () => {
     });
     expect(result.current.groups).toEqual([summary]);
   });
+
+  const estudio: GroupSummary = { id: 'g2', name: 'Estudio', description: '', memberCount: 1, availabilityThreshold: 80 };
+
+  it('create antes de que llegue la lista no deja solo el grupo nuevo: vuelve a pedir la lista', async () => {
+    let finish!: (groups: GroupSummary[]) => void;
+    mocked.listGroups.mockReturnValueOnce(new Promise((resolve) => (finish = resolve))).mockResolvedValue([summary, estudio]);
+    mocked.createGroup.mockResolvedValue(group({ id: 'g2', name: 'Estudio', memberCount: 1, members: [owner] }));
+    const { result } = await renderHook(() => useGroups(), withQueryClient());
+
+    await act(async () => {
+      await result.current.create('Estudio');
+    });
+    await act(async () => finish([summary]));
+    await waitFor(() => expect(result.current.groups.map((g) => g.id)).toEqual(['g1', 'g2']));
+  });
+
+  it('join tras fallar la carga de la lista vuelve a pedirla en vez de dejar solo el grupo nuevo', async () => {
+    mocked.listGroups
+      .mockRejectedValueOnce(new ApiError(0, 'NETWORK_ERROR', 'Sin red.'))
+      .mockResolvedValue([estudio, summary]);
+    mocked.joinGroup.mockResolvedValue(group());
+    const { result } = await renderHook(() => useGroups(), withQueryClient());
+    await waitFor(() => expect(result.current.error).toBe('Sin red.'));
+
+    await act(async () => {
+      await result.current.join('PROY2026');
+    });
+    await waitFor(() => expect(result.current.groups.map((g) => g.id)).toEqual(['g2', 'g1']));
+  });
 });
 
 describe('useGroup', () => {
@@ -115,6 +152,23 @@ describe('useGroup', () => {
     expect(mocked.listGroups).toHaveBeenCalledTimes(1);
   });
 
+  it('al salir, Inicio vuelve a cargarse y deja de mostrar el grupo', async () => {
+    const enInicio = (id: string, name: string) => ({ id, name, memberCount: 2, nextWindow: null });
+    schedule.listTimeBlocks.mockResolvedValue([]);
+    dashboard.getDashboard
+      .mockResolvedValueOnce(makeDashboard({ groups: [enInicio('g1', 'Proyecto Integrador'), enInicio('g2', 'Estudio')] }))
+      .mockResolvedValue(makeDashboard({ groups: [enInicio('g2', 'Estudio')] }));
+    mocked.getGroup.mockResolvedValue(group());
+    mocked.leaveGroup.mockResolvedValue();
+    const queries = withQueryClient();
+    const home = await renderHook(() => useDashboard(), queries);
+    await waitFor(() => expect(home.result.current.dashboard?.groups).toHaveLength(2));
+
+    const detail = await renderHook(() => useGroup('g1'), queries);
+    await act(async () => detail.result.current.leave());
+    await waitFor(() => expect(home.result.current.dashboard?.groups.map((g) => g.id)).toEqual(['g2']));
+  });
+
   it('un setEssential que termina después de cambiar de grupo no toca el grupo nuevo', async () => {
     mocked.getGroup.mockImplementation(async (id) => group({ id }));
     let finishSetEssential!: (member: GroupMember) => void;
@@ -150,7 +204,7 @@ describe('useAvailability', () => {
   it('carga las franjas del grupo', async () => {
     const windows = [{ date: '2026-11-16', dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 }];
     mocked.getAvailability.mockResolvedValue(windows);
-    const { result } = await renderHook(() => useAvailability('g1'));
+    const { result } = await renderHook(() => useAvailability('g1'), withQueryClient());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(mocked.getAvailability).toHaveBeenCalledWith('g1', undefined);
     expect(result.current.windows).toEqual(windows);
@@ -158,8 +212,20 @@ describe('useAvailability', () => {
 
   it('pide la semana indicada', async () => {
     mocked.getAvailability.mockResolvedValue([]);
-    const { result } = await renderHook(() => useAvailability('g1', '2026-11-23'));
+    const { result } = await renderHook(() => useAvailability('g1', '2026-11-23'), withQueryClient());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(mocked.getAvailability).toHaveBeenCalledWith('g1', '2026-11-23');
+  });
+
+  it('reintenta sola si el servidor tarda en despertar o da un 5xx', async () => {
+    const windows = [{ date: '2026-11-16', dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 }];
+    mocked.getAvailability
+      .mockRejectedValueOnce(new ApiError(0, 'TIMEOUT', 'El servidor tardó demasiado.'))
+      .mockRejectedValueOnce(new ApiError(503, 'UNKNOWN', 'Servicio no disponible.'))
+      .mockResolvedValue(windows);
+    const { result } = await renderHook(() => useAvailability('g1'), withQueryClient({ retries: true }));
+    await waitFor(() => expect(result.current.windows).toEqual(windows));
+    expect(result.current.error).toBeNull();
+    expect(mocked.getAvailability).toHaveBeenCalledTimes(3);
   });
 });

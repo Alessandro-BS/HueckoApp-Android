@@ -4,6 +4,7 @@ import * as aiApi from '../../../api/ai';
 import { ApiError } from '../../../api/client';
 import * as proposalsApi from '../../../api/proposals';
 import { makeConfirmed, makeProposal, makeSuggestion } from '../../../testing/fixtures';
+import { withQueryClient } from '../../../testing/queryClient';
 import { PlansTab } from '../tabs/PlansTab';
 
 jest.mock('../../../api/proposals');
@@ -28,7 +29,7 @@ it('lista las propuestas no canceladas con su estado, su plazo o su fecha, y nav
     makeConfirmed(),
     makeProposal({ id: 'p3', title: 'Plan cancelado', state: 'CANCELADO' }),
   ]);
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
 
   expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.getByText('Google Meet')).toBeTruthy();
@@ -57,7 +58,7 @@ it('una propuesta que se canceló sola (nadie votó) sigue en la lista con «Can
     makeProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: true, votingDeadline: '2026-09-28T20:00:00.000Z' }),
     makeProposal({ id: 'mano', title: 'Cancelada a mano', state: 'CANCELADO', autoClosed: false }),
   ]);
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   expect(await screen.findByText('Sin votos')).toBeTruthy();
   expect(screen.getByText('Cancelado')).toBeTruthy();
   expect(screen.queryByText('Cancelada a mano')).toBeNull();
@@ -68,7 +69,7 @@ it('una propuesta que se canceló sola (nadie votó) sigue en la lista con «Can
 
 it('sin propuestas muestra el texto vacío (con tildes)', async () => {
   mocked.listGroupProposals.mockResolvedValue([]);
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   expect(await screen.findByText('Nadie ha propuesto un plan todavía.')).toBeTruthy();
 });
 
@@ -85,7 +86,7 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
       }),
     ],
   });
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   await fireEvent.press(await screen.findByText('Ideas con IA'));
 
   expect(await screen.findByText('Sesión de estudio antes del parcial')).toBeTruthy();
@@ -120,7 +121,7 @@ it('si la IA falla: el motivo y «Reintentar»', async () => {
   mockedAi.suggestPlans
     .mockRejectedValueOnce(new ApiError(429, 'TOO_MANY_REQUESTS', 'Usaste mucho la IA en poco tiempo. Espera unos minutos.'))
     .mockResolvedValueOnce({ suggestions: [makeSuggestion()] });
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   await fireEvent.press(await screen.findByText('Ideas con IA'));
   expect(await screen.findByText('Usaste mucho la IA en poco tiempo. Espera unos minutos.')).toBeTruthy();
   await fireEvent.press(screen.getByText('Reintentar'));

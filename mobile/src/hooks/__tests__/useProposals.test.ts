@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client';
 import * as proposalsApi from '../../api/proposals';
 import { emitProposalChanged } from '../../notifications/proposalEvents';
 import { makeConfirmed, makeProposal, makeWindow } from '../../testing/fixtures';
+import { withQueryClient } from '../../testing/queryClient';
 import { useProposal } from '../useProposal';
 import { useProposals } from '../useProposals';
 
@@ -15,11 +16,22 @@ beforeEach(() => jest.clearAllMocks());
 describe('useProposals', () => {
   it('carga las propuestas del grupo y recarga si cambia el grupo', async () => {
     mocked.listGroupProposals.mockImplementation(async (groupId) => [makeProposal({ groupId })]);
-    const { result, rerender } = await renderHook(({ id }: { id: string }) => useProposals(id), { initialProps: { id: 'g1' } });
+    const { result, rerender } = await renderHook(({ id }: { id: string }) => useProposals(id), { initialProps: { id: 'g1' }, ...withQueryClient() });
     await waitFor(() => expect(result.current.proposals[0]?.groupId).toBe('g1'));
     await rerender({ id: 'g2' });
     await waitFor(() => expect(result.current.proposals[0]?.groupId).toBe('g2'));
     expect(mocked.listGroupProposals).toHaveBeenCalledWith('g2');
+  });
+
+  it('reintenta sola si el servidor tarda en despertar o da un 5xx', async () => {
+    mocked.listGroupProposals
+      .mockRejectedValueOnce(new ApiError(0, 'TIMEOUT', 'El servidor tardó demasiado.'))
+      .mockRejectedValueOnce(new ApiError(503, 'UNKNOWN', 'Servicio no disponible.'))
+      .mockResolvedValue([makeProposal()]);
+    const { result } = await renderHook(() => useProposals('g1'), withQueryClient({ retries: true }));
+    await waitFor(() => expect(result.current.proposals).toHaveLength(1));
+    expect(result.current.error).toBeNull();
+    expect(mocked.listGroupProposals).toHaveBeenCalledTimes(3);
   });
 });
 

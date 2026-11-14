@@ -418,7 +418,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 | | Qué | Cómo |
 |---|---|---|
-| ✅ | **1836 tests** | 1061 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 775 de la app (Jest + Testing Library) |
+| ✅ | **1848 tests** | 1068 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 780 de la app (Jest + Testing Library) |
 | 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
 | 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
 | 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |
@@ -475,7 +475,7 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | Requisito | Estado | Cómo se cumple |
 |---|---|---|
 | 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
-| 🌐 **Volley** (equivalente en React Native) | ✅ Integrado (PR #43) | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio y Grupos. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
+| 🌐 **Volley** (equivalente en React Native) | ✅ Integrado (PR #43) | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio, Grupos y las pestañas Planes y Disponibilidad. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
 | 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
 | 📡 **Sensor de proximidad** | ✅ Integrado (PR #44); 🚧 falta probarlo en dos celulares | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go; el módulo Kotlin aún no se ha compilado en un build |
 | 🌀 **Giroscopio** | ✅ Integrado (PR #44); 🚧 falta probarlo en dos celulares | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
