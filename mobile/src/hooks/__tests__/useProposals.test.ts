@@ -2,7 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../api/client';
 import * as proposalsApi from '../../api/proposals';
+import { emitProposalChanged } from '../../notifications/proposalEvents';
 import { makeConfirmed, makeProposal, makeWindow } from '../../testing/fixtures';
+import { withQueryClient } from '../../testing/queryClient';
 import { useProposal } from '../useProposal';
 import { useProposals } from '../useProposals';
 
@@ -14,15 +16,37 @@ beforeEach(() => jest.clearAllMocks());
 describe('useProposals', () => {
   it('carga las propuestas del grupo y recarga si cambia el grupo', async () => {
     mocked.listGroupProposals.mockImplementation(async (groupId) => [makeProposal({ groupId })]);
-    const { result, rerender } = await renderHook(({ id }: { id: string }) => useProposals(id), { initialProps: { id: 'g1' } });
+    const { result, rerender } = await renderHook(({ id }: { id: string }) => useProposals(id), { initialProps: { id: 'g1' }, ...withQueryClient() });
     await waitFor(() => expect(result.current.proposals[0]?.groupId).toBe('g1'));
     await rerender({ id: 'g2' });
     await waitFor(() => expect(result.current.proposals[0]?.groupId).toBe('g2'));
     expect(mocked.listGroupProposals).toHaveBeenCalledWith('g2');
   });
+
+  it('reintenta sola si el servidor tarda en despertar o da un 5xx', async () => {
+    mocked.listGroupProposals
+      .mockRejectedValueOnce(new ApiError(0, 'TIMEOUT', 'El servidor tardó demasiado.'))
+      .mockRejectedValueOnce(new ApiError(503, 'UNKNOWN', 'Servicio no disponible.'))
+      .mockResolvedValue([makeProposal()]);
+    const { result } = await renderHook(() => useProposals('g1'), withQueryClient({ retries: true }));
+    await waitFor(() => expect(result.current.proposals).toHaveLength(1));
+    expect(result.current.error).toBeNull();
+    expect(mocked.listGroupProposals).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('useProposal', () => {
+  it('recarga la propuesta cuando llega un aviso de su id (y no de otra)', async () => {
+    mocked.getProposal.mockResolvedValue(makeProposal());
+    const hook = await renderHook(() => useProposal('prop_2'));
+    await waitFor(() => expect(hook.result.current.proposal).toBeDefined());
+    mocked.getProposal.mockClear();
+    await act(async () => emitProposalChanged('otra'));
+    expect(mocked.getProposal).not.toHaveBeenCalled();
+    await act(async () => emitProposalChanged('prop_2'));
+    await waitFor(() => expect(mocked.getProposal).toHaveBeenCalledWith('prop_2'));
+  });
+
   const load = async (initial = makeProposal()) => {
     mocked.getProposal.mockResolvedValue(initial);
     const hook = await renderHook(() => useProposal('prop_2'));
@@ -31,7 +55,7 @@ describe('useProposal', () => {
   };
 
   it('toggleVote sobre otra franja vota con PUT y devuelve «voted»', async () => {
-    const votada = makeProposal({ myVoteWindowId: 'w_22', windows: [makeWindow({ voteCount: 1 }), makeWindow({ id: 'w_22', dayOfWeek: 4, voteCount: 1 })] });
+    const votada = makeProposal({ myVoteWindowIds: ['w_22'], windows: [makeWindow({ voteCount: 1 }), makeWindow({ id: 'w_22', dayOfWeek: 4, voteCount: 1 })] });
     mocked.voteWindow.mockResolvedValue(votada);
     const { result } = await load();
     let outcome;
@@ -45,7 +69,7 @@ describe('useProposal', () => {
 
   it('toggleVote sobre mi franja retira el voto con DELETE y devuelve «unvoted» (G1)', async () => {
     mocked.removeVote.mockResolvedValue(makeProposal());
-    const { result } = await load(makeProposal({ myVoteWindowId: 'w_21' }));
+    const { result } = await load(makeProposal({ myVoteWindowIds: ['w_21'] }));
     let outcome;
     await act(async () => {
       outcome = await result.current.toggleVote('w_21');
@@ -53,16 +77,24 @@ describe('useProposal', () => {
     expect(outcome).toEqual({ ok: true, value: 'unvoted' });
     expect(mocked.removeVote).toHaveBeenCalledWith('prop_2');
     expect(mocked.voteWindow).not.toHaveBeenCalled();
-    expect(result.current.proposal?.myVoteWindowId).toBeNull();
+    expect(result.current.proposal?.myVoteWindowIds).toEqual([]);
   });
 
-  it('confirm, cancel, addWindow, reportIncidence y resolve reemplazan la propuesta con la respuesta', async () => {
+  it('con voto múltiple, toggleVote sobre una franja mía retira solo esa (DELETE ?windowId)', async () => {
+    mocked.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+    const { result } = await load(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }));
+    await act(async () => void (await result.current.toggleVote('w_21')));
+    expect(mocked.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+    expect(result.current.proposal?.myVoteWindowIds).toEqual(['w_22']);
+  });
+
+  it('confirm, cancel, addWindow, reportIncidence y voteExpress reemplazan la propuesta con la respuesta', async () => {
     const confirmed = makeConfirmed({ id: 'prop_2' });
     mocked.confirmProposal.mockResolvedValue(confirmed);
     mocked.cancelProposal.mockResolvedValue(makeProposal({ state: 'CANCELADO' }));
     mocked.addWindow.mockResolvedValue(makeProposal({ title: 'Con franja nueva' }));
     mocked.reportIncidence.mockResolvedValue(makeProposal({ title: 'Con imprevisto' }));
-    mocked.resolveIncidences.mockResolvedValue(makeProposal({ title: 'Resuelta' }));
+    mocked.voteExpress.mockResolvedValue(makeProposal({ title: 'Votada' }));
     const { result } = await load();
 
     await act(async () => void (await result.current.confirm('w_22')));
@@ -72,16 +104,16 @@ describe('useProposal', () => {
     await act(async () => void (await result.current.cancel()));
     expect(result.current.proposal?.state).toBe('CANCELADO');
 
-    await act(async () => void (await result.current.addWindow({ dayOfWeek: 5, startTime: '18:00', endTime: '19:00' })));
-    expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { dayOfWeek: 5, startTime: '18:00', endTime: '19:00' });
+    await act(async () => void (await result.current.addWindow({ date: '2026-10-02', startTime: '18:00', endTime: '19:00' })));
+    expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { date: '2026-10-02', startTime: '18:00', endTime: '19:00' });
     expect(result.current.proposal?.title).toBe('Con franja nueva');
 
     await act(async () => void (await result.current.reportIncidence({ type: 'FALTA', reason: 'Enfermo' })));
     expect(result.current.proposal?.title).toBe('Con imprevisto');
 
-    await act(async () => void (await result.current.resolve({ newState: 'CONFIRMADO' })));
-    expect(mocked.resolveIncidences).toHaveBeenCalledWith('prop_2', { newState: 'CONFIRMADO' });
-    expect(result.current.proposal?.title).toBe('Resuelta');
+    await act(async () => void (await result.current.voteExpress('REAGENDAR')));
+    expect(mocked.voteExpress).toHaveBeenCalledWith('prop_2', 'REAGENDAR');
+    expect(result.current.proposal?.title).toBe('Votada');
   });
 
   it('si el voto falla, no lanza: devuelve { ok: false }, expone voteError y la propuesta no cambia', async () => {

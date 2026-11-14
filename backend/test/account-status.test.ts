@@ -3,14 +3,18 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
+import { setRoleByEmail } from '../src/admin/admin-users';
 import { requireAdmin, requireAuth } from '../src/auth/require-auth';
 import type { Db } from '../src/db/db';
 import { errorHandler } from '../src/middleware/errors';
-import { bearer, createGroup, makeTestApp, NOW, registerUser, TEST_SECRET } from './helpers';
+import { bearer, createGroup, makeTestApp, NOW, registerUnverified, registerUser, TEST_SECRET } from './helpers';
 
 const setRole = (db: Db, id: string, role: 'USER' | 'ADMIN') => db.query('UPDATE users SET role = $1 WHERE id = $2', [role, id]);
 const setStatus = (db: Db, id: string, status: 'ACTIVE' | 'SUSPENDED') =>
   db.query('UPDATE users SET status = $1 WHERE id = $2', [status, id]);
+
+// Los datos de la cuenta que /auth añade a `User` + `role` (cuenta registrada por la API y verificada).
+const ACCOUNT = { emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false };
 
 const SUSPENDED = {
   code: 'ACCOUNT_SUSPENDED',
@@ -18,23 +22,39 @@ const SUSPENDED = {
 };
 
 describe('rol en la sesión (D1)', () => {
-  it('registro, login y /auth/me devuelven role USER', async () => {
+  it('verificar el correo, login y /auth/me devuelven role USER', async () => {
     const { app } = await makeTestApp();
-    const reg = await request(app).post('/api/auth/register').send({ name: 'Ana', email: 'ana@correo.com', password: 'contrasena-segura' });
-    expect(reg.body.user).toEqual({ id: expect.any(String), name: 'Ana', email: 'ana@correo.com', role: 'USER' });
+    const ana = await registerUser(app, { name: 'Ana', email: 'ana@correo.com', password: 'contrasena-segura' });
     const login = await request(app).post('/api/auth/login').send({ email: 'ana@correo.com', password: 'contrasena-segura' });
-    expect(login.body.user).toEqual(reg.body.user);
+    expect(login.body.user).toEqual({ ...ana.user, ...ACCOUNT, role: 'USER' });
     const me = await request(app).get('/api/auth/me').set(bearer(login.body.token));
-    expect(me.body).toEqual(reg.body.user);
+    expect(me.body).toEqual(login.body.user);
   });
 
   it('el registro nunca crea administradores, aunque el cuerpo lo pida', async () => {
-    const { app } = await makeTestApp();
+    const { app, db, emails } = await makeTestApp();
     const res = await request(app)
       .post('/api/auth/register')
       .send({ name: 'Eva', email: 'eva@correo.com', password: 'contrasena-segura', role: 'ADMIN' });
     expect(res.status).toBe(201);
-    expect(res.body.user.role).toBe('USER');
+    expect(await db.one("SELECT role FROM users WHERE email = 'eva@correo.com'")).toEqual({ role: 'USER' });
+    const verified = await request(app)
+      .post(`/api/auth/challenges/${res.body.challenge.id}/verify`)
+      .send({ code: emails.lastCodeTo('eva@correo.com') });
+    expect(verified.body.user.role).toBe('USER');
+  });
+
+  it('una cuenta sin verificar nombrada administradora con make-admin entra con su contraseña, sin pedir código', async () => {
+    const { app, db, emails } = await makeTestApp();
+    await registerUnverified(app, { email: 'ana@correo.com', password: 'contrasena-segura' });
+    const sentBefore = emails.sent.length;
+    await setRoleByEmail(db, 'ana@correo.com', 'ADMIN', NOW);
+    const login = await request(app).post('/api/auth/login').send({ email: 'ana@correo.com', password: 'contrasena-segura' });
+    expect(login.status).toBe(200);
+    expect(login.body.challenge).toBeUndefined();
+    expect(typeof login.body.token).toBe('string');
+    expect(login.body.user).toMatchObject({ role: 'ADMIN', emailVerified: true });
+    expect(emails.sent).toHaveLength(sentBefore);
   });
 
   it('/auth/me lee el rol de la base en cada petición: el mismo token ve el cambio', async () => {

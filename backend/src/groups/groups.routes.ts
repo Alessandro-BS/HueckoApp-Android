@@ -3,9 +3,10 @@ import { Router } from 'express';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
-import { groupWindows } from '../availability/group-availability';
+import { groupWeekWindows, parseWeek } from '../availability/group-availability';
 import { isForeignKeyViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
+import { closeDueBeforeMembershipChange } from '../proposals/voting-close';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { loadGroupForMember } from './group-access';
 import { groupsRepository } from './groups.repository';
@@ -20,10 +21,10 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
   // 404 si el grupo no existe; 403 si existe pero no soy miembro.
   const loadForMember = (groupId: string, userId: string) => loadGroupForMember(groups, groupId, userId);
 
-  const loadForOwner = async (groupId: string, userId: string) => {
+  const loadForOrganizer = async (groupId: string, userId: string) => {
     const loaded = await loadForMember(groupId, userId);
-    if (loaded.me.role !== 'OWNER') {
-      throw new ApiError(403, 'NOT_OWNER', 'Solo el administrador del grupo puede hacer esto.');
+    if (loaded.me.role !== 'ORGANIZER') {
+      throw new ApiError(403, 'NOT_ORGANIZER', 'Solo un organizador del grupo puede hacer esto.');
     }
     return loaded;
   };
@@ -43,6 +44,7 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
     const groupId = await groups.findIdByInviteCode(inviteCode);
     const invalidCode = () => new ApiError(404, 'INVALID_INVITE_CODE', 'Código de invitación inválido.');
     if (!groupId) throw invalidCode();
+    await closeDueBeforeMembershipChange(db, groupId, now());
     // addMember no inserta si ya era miembro (también si llegan dos peticiones a la vez). Si el grupo se borró justo
     // ahora (se fue su último miembro), su clave foránea falla: el código ya no vale.
     const added = await groups.addMember(groupId, userId).catch((error: unknown) => {
@@ -56,35 +58,42 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
     res.json((await loadForMember(req.params.id, getUserId(res))).group);
   });
 
-  // Permisos antes que validación: a quien no es OWNER no le importa por qué el cuerpo es inválido.
+  // Permisos antes que validación: a quien no es organizador no le importa por qué el cuerpo es inválido.
   router.patch('/:id', async (req, res) => {
-    const { group } = await loadForOwner(req.params.id, getUserId(res));
+    const { group } = await loadForOrganizer(req.params.id, getUserId(res));
     await groups.update(group.id, updateGroupSchema.parse(req.body));
     res.json(await groups.findById(group.id));
   });
 
+  // Orden: grupo (404), miembro (403), organizador (403), cuerpo (400), persona del grupo (404), último organizador (409).
   router.patch('/:id/members/:userId', async (req, res) => {
-    const { group } = await loadForOwner(req.params.id, getUserId(res));
-    const { isEssential } = updateMemberSchema.parse(req.body);
+    const actorId = getUserId(res);
+    const { group } = await loadForOrganizer(req.params.id, actorId);
+    const change = updateMemberSchema.parse(req.body);
     const { userId } = req.params;
-    if (!group.members.some((m) => m.id === userId)) {
-      throw new ApiError(404, 'MEMBER_NOT_FOUND', 'Esa persona no pertenece al grupo.');
-    }
-    await groups.setEssential(group.id, userId, isEssential);
-    const member: GroupMember = (await groups.findById(group.id))!.members.find((m) => m.id === userId)!;
+    const memberNotFound = () => new ApiError(404, 'MEMBER_NOT_FOUND', 'Esa persona no pertenece al grupo.');
+    if (!group.members.some((m) => m.id === userId)) throw memberNotFound();
+    const result = await groups.updateMember(group.id, userId, change, actorId);
+    // Dejó de ser organizador entre la comprobación de arriba y el bloqueo del grupo.
+    if (result === 'NOT_ORGANIZER') throw new ApiError(403, 'NOT_ORGANIZER', 'Solo un organizador del grupo puede hacer esto.');
+    if (result === 'LAST_ORGANIZER') throw new ApiError(409, 'LAST_ORGANIZER', 'El grupo necesita al menos un organizador.');
+    // Si salió del grupo justo antes de guardar (o se borró el grupo), el UPDATE no tocó nada: igual que si no estuviera.
+    const member: GroupMember | undefined = (await groups.findById(group.id))?.members.find((m) => m.id === userId);
+    if (!member) throw memberNotFound();
     res.json(member);
   });
 
   router.delete('/:id/members/me', async (req, res) => {
     const userId = getUserId(res);
     const { group } = await loadForMember(req.params.id, userId);
+    await closeDueBeforeMembershipChange(db, group.id, now());
     await groups.leave(group.id, userId);
     res.status(204).end();
   });
 
   router.get('/:id/availability', async (req, res) => {
     const { group } = await loadForMember(req.params.id, getUserId(res));
-    const windows: MatchWindow[] = await groupWindows(group, blocks);
+    const windows: MatchWindow[] = await groupWeekWindows(group, blocks, parseWeek(req.query.week, now()), now());
     res.json(windows);
   });
 

@@ -23,21 +23,22 @@ async function groupWithProposals(count: number) {
       title: `Plan ${i}`,
       location: i % 2 === 0 ? { name: `Lugar ${i}`, latitude: -12.07, longitude: -77.08 } : null,
       votingDeadline: DEADLINE,
+      multipleVotes: false,
       windows: [
-        { dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 50 },
-        { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
+        { date: '2026-10-01', startTime: '10:00', endTime: '12:00', availabilityPercentage: 50 },
+        { date: '2026-09-29', startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
       ],
       createdAt: new Date(NOW.getTime() - (count - i) * MINUTE).toISOString(),
     });
     const [martes, jueves] = (await repo.findById(id, yoId))!.windows;
-    await repo.vote(id, yoId, martes.id, NOW.toISOString());
-    await repo.vote(id, anaId, (i % 2 === 0 ? martes : jueves).id, NOW.toISOString());
+    await repo.voteIfOpen(id, yoId, martes.id, NOW);
+    await repo.voteIfOpen(id, anaId, (i % 2 === 0 ? martes : jueves).id, NOW);
     if (i % 3 === 0) {
-      await repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29');
+      await repo.confirm(id, martes.id, NOW.toISOString(), '2026-09-29', NOW, yoId);
       await repo.reportIncidence(
         id,
-        { userId: anaId, type: 'TARDANZA', reason: `Tráfico ${i}`, delayMinutes: 10, criticality: 'BAJA', createdAt: NOW.toISOString() },
-        false,
+        { userId: anaId, type: 'TARDANZA', reason: `Tráfico ${i}`, delayMinutes: 10, criticality: 'BAJA', criticalReason: null, createdAt: NOW.toISOString() },
+        60,
       );
     }
   }
@@ -87,7 +88,7 @@ describe('carga en lote de propuestas (sin N+1)', () => {
       const [martes, jueves] = p.windows;
       expect([martes.dayOfWeek, jueves.dayOfWeek]).toEqual([2, 4]);
       expect([martes.voteCount, jueves.voteCount]).toEqual(i % 2 === 0 ? [2, 0] : [1, 1]);
-      expect(p.myVoteWindowId).toBe(martes.id);
+      expect(p.myVoteWindowIds).toEqual([martes.id]);
       expect(p.createdBy.id).toBe(i % 2 === 0 ? yo.user.id : ana.user.id);
       expect(p.location).toEqual(i % 2 === 0 ? { name: `Lugar ${i}`, latitude: -12.07, longitude: -77.08 } : null);
       expect(p.state).toBe(i % 3 === 0 ? 'CONFIRMADO' : 'PROPUESTO');
@@ -98,7 +99,7 @@ describe('carga en lote de propuestas (sin N+1)', () => {
     // Cada persona ve su propio voto.
     const deAna: Proposal[] = (await request(app).get(`/api/groups/${group.id}/proposals`).set(bearer(ana.token))).body;
     for (const p of deAna) {
-      expect(p.myVoteWindowId).toBe(p.windows[Number(p.title.slice(5)) % 2 === 0 ? 0 : 1].id);
+      expect(p.myVoteWindowIds).toEqual([p.windows[Number(p.title.slice(5)) % 2 === 0 ? 0 : 1].id]);
     }
   });
 });

@@ -4,10 +4,15 @@ import { useAuth } from '../context/AuthContext';
 import { AdminGroupDetailScreen } from '../screens/admin/AdminGroupDetailScreen';
 import { AdminUserDetailScreen } from '../screens/admin/AdminUserDetailScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
+import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { VerifyCodeScreen } from '../screens/auth/VerifyCodeScreen';
 import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
+import { ProximityInviteScreen } from '../screens/groups/ProximityInviteScreen';
+import { ProximityJoinScreen } from '../screens/groups/ProximityJoinScreen';
 import { CreateProposalScreen } from '../screens/proposals/CreateProposalScreen';
 import { PlanDetailScreen } from '../screens/proposals/PlanDetailScreen';
+import { EnableTwoFactorScreen } from '../screens/profile/EnableTwoFactorScreen';
 import { VotingScreen } from '../screens/proposals/VotingScreen';
 import { AddScheduleScreen } from '../screens/schedule/AddScheduleScreen';
 import { OcrReviewScreen } from '../screens/schedule/OcrReviewScreen';
@@ -30,6 +35,8 @@ export function RootNavigator() {
       <AuthStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
         <AuthStack.Screen name="Login" component={LoginScreen} />
         <AuthStack.Screen name="Register" component={RegisterScreen} />
+        <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        <AuthStack.Screen name="VerifyCode" component={VerifyCodeScreen} />
       </AuthStack.Navigator>
     );
   }
@@ -44,12 +51,15 @@ export function RootNavigator() {
       }}
     >
       <AppStack.Screen name="Main" component={AppDrawer} options={{ headerShown: false }} />
-      <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={{ title: 'Nuevo bloque' }} />
+      <AppStack.Screen name="AddSchedule" component={AddScheduleScreen} options={({ route }) => ({ title: route.params?.block ? 'Editar bloque' : 'Nuevo bloque' })} />
       <AppStack.Screen name="OcrReview" component={OcrReviewScreen} options={{ title: 'Revisar escaneo' }} />
       <AppStack.Screen name="GroupDetail" component={GroupDetailScreen} options={({ route }) => ({ title: route.params.name })} />
+      <AppStack.Screen name="ProximityInvite" component={ProximityInviteScreen} options={{ title: 'Acercar para invitar' }} />
+      <AppStack.Screen name="ProximityJoin" component={ProximityJoinScreen} options={{ title: 'Unirse acercando' }} />
       <AppStack.Screen name="CreateProposal" component={CreateProposalScreen} options={{ title: 'Nueva propuesta' }} />
       <AppStack.Screen name="Voting" component={VotingScreen} options={{ title: 'Votar' }} />
       <AppStack.Screen name="PlanDetail" component={PlanDetailScreen} options={{ title: 'Detalle del plan' }} />
+      <AppStack.Screen name="EnableTwoFactor" component={EnableTwoFactorScreen} options={{ title: 'Verificación en dos pasos' }} />
       {/* Solo ADMIN (defensa en profundidad; el servidor lo comprueba siempre): si pierde el rol, estas rutas
           desaparecen y el stack vuelve a la pantalla anterior. */}
       {canSeeAdmin(user) ? (

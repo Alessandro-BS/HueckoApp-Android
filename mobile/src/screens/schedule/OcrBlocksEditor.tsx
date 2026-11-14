@@ -3,6 +3,7 @@ import type { TimeBlockInput } from '@hueckoapp/shared';
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ApiError } from '../../api/client';
 import { createTimeBlocksBulk } from '../../api/schedule';
 import { AiDemoHint, DaySelector, ErrorBanner, HueckoCard, PrimaryButton, SecondaryButton, TextField, TimeField } from '../../components';
 import { useAction } from '../../hooks/useAction';
@@ -21,9 +22,9 @@ const toBlockInput = (d: Draft): TimeBlockInput => ({
   label: d.label.trim(), type: 'CLASE', startTime: d.startTime, endTime: d.endTime, isRecurring: true, dayOfWeek: d.dayOfWeek, date: null,
 });
 
-type CardProps = { draft: Draft; index: number; onChange: (patch: Partial<Draft>) => void; onRemove: () => void };
+type CardProps = { draft: Draft; index: number; overlap?: string; onChange: (patch: Partial<Draft>) => void; onRemove: () => void };
 
-function DraftCard({ draft, index, onChange, onRemove }: CardProps) {
+function DraftCard({ draft, index, overlap, onChange, onRemove }: CardProps) {
   const n = index + 1;
   const startHint = startTimeHint(draft.startTime);
   const endHint = endTimeHint(draft.startTime, draft.endTime);
@@ -67,6 +68,11 @@ function DraftCard({ draft, index, onChange, onRemove }: CardProps) {
           />
         </View>
       </View>
+      {overlap ? (
+        <Text accessibilityLiveRegion="polite" style={[typography.bodySmall, { color: colors.error }]}>
+          {overlap}
+        </Text>
+      ) : null}
     </HueckoCard>
   );
 }
@@ -76,7 +82,19 @@ export function OcrBlocksEditor({ initial, onDiscard, onSaved }: Props) {
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     initial.map((b, i) => ({ key: String(i), label: b.label, dayOfWeek: b.dayOfWeek ?? 1, startTime: b.startTime, endTime: b.endTime })),
   );
-  const save = useAction(createTimeBlocksBulk);
+  // Borrador (por su key) que el servidor dijo que se solapa, con el mensaje.
+  const [overlap, setOverlap] = useState<{ key: string; message: string } | null>(null);
+  const saveBulk = async (inputs: TimeBlockInput[], keys: string[]) => {
+    try {
+      return await createTimeBlocksBulk(inputs);
+    } catch (e) {
+      const path: unknown = e instanceof ApiError && e.code === 'TIME_BLOCK_OVERLAP' ? (e.details as { path?: unknown } | null)?.path : null;
+      const index = Array.isArray(path) ? path[1] : undefined;
+      if (typeof index === 'number' && e instanceof ApiError && keys[index] !== undefined) setOverlap({ key: keys[index], message: e.message });
+      throw e;
+    }
+  };
+  const save = useAction(saveBulk);
   // Si la pantalla se cerró mientras guardaba, onSaved no debe volver a navegar (sacaría al usuario de «Mi horario»).
   const mounted = useRef(true);
   useEffect(() => {
@@ -87,12 +105,16 @@ export function OcrBlocksEditor({ initial, onDiscard, onSaved }: Props) {
   }, []);
   const canSave = drafts.length > 0 && drafts.every(isValidDraft);
 
-  const update = (key: string, patch: Partial<Draft>) => setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  const update = (key: string, patch: Partial<Draft>) => {
+    setOverlap((prev) => (prev?.key === key ? null : prev));
+    setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  };
   const remove = (key: string) => setDrafts((prev) => prev.filter((d) => d.key !== key));
 
   const submit = async () => {
     if (!canSave) return;
-    const result = await save.run(drafts.map(toBlockInput));
+    setOverlap(null);
+    const result = await save.run(drafts.map(toBlockInput), drafts.map((d) => d.key));
     if (result.ok && mounted.current) onSaved(result.value.length);
   };
 
@@ -115,7 +137,7 @@ export function OcrBlocksEditor({ initial, onDiscard, onSaved }: Props) {
           </Text>
         ) : (
           drafts.map((d, i) => (
-            <DraftCard key={d.key} draft={d} index={i} onChange={(patch) => update(d.key, patch)} onRemove={() => remove(d.key)} />
+            <DraftCard key={d.key} draft={d} index={i} overlap={overlap?.key === d.key ? overlap.message : undefined} onChange={(patch) => update(d.key, patch)} onRemove={() => remove(d.key)} />
           ))
         )}
         {save.error ? <ErrorBanner message={save.error} /> : null}

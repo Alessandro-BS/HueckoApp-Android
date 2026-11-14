@@ -1,11 +1,14 @@
-import type { CurrentUser } from '@hueckoapp/shared';
+import type { Challenge, CurrentUser } from '@hueckoapp/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
-import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../api/auth';
+import { googleRequest, loginRequest, meRequest, registerRequest, verifyChallengeRequest, type AuthResponse, type AuthResult } from '../api/auth';
 import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
+import { queryClient } from '../api/queryClient';
+import { getGoogleIdToken, signOutGoogle } from '../auth/googleSignIn';
 import { tokenStorage } from '../auth/tokenStorage';
-import { dashboardCache, lastEmailStorage, sessionUserStorage } from '../storage/appStorage';
+import { registerDevice, unregisterDevice } from '../notifications/registration';
+import { dashboardCache, lastEmailStorage, notificationsPreference, pushTokenStorage, sessionUserStorage } from '../storage/appStorage';
 import { showToast } from '../utils/toast';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
@@ -13,9 +16,26 @@ type Status = 'loading' | 'signedOut' | 'signedIn';
 type AuthContextValue = {
   status: Status;
   user: CurrentUser | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  /** Devuelve el reto si hay que escribir un código antes de entrar; null si ya hay sesión. */
+  login: (email: string, password: string) => Promise<Challenge | null>;
+  register: (name: string, email: string, password: string) => Promise<Challenge | null>;
+  /** Confirma el código del correo e inicia la sesión con la respuesta. */
+  completeChallenge: (id: string, code: string, newPassword?: string) => Promise<void>;
+  /** Entra con Google. false si la persona canceló (sin error visible); lanza si algo falla. */
+  loginWithGoogle: () => Promise<boolean>;
+  /** Vuelve a pedir el usuario al servidor (p. ej. tras activar o desactivar el 2FA). */
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
+};
+
+// Registra el celular para los avisos si la persona no los apagó en Perfil (la preferencia es del celular).
+const registerIfEnabled = async () => {
+  if (await notificationsPreference.get()) {
+    await registerDevice();
+  } else if (await pushTokenStorage.get()) {
+    // Se apagó con el interruptor pero el servidor no alcanzó a borrar el token: se reintenta.
+    await unregisterDevice();
+  }
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -25,18 +45,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
 
   const logout = useCallback(async () => {
+    // Antes de soltar el JWT: el DELETE lo necesita. Si la sesión ya venció (401), falla y se ignora.
+    await unregisterDevice({ forgetAlways: true }).catch(() => undefined);
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');
-    await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll()]);
+    void signOutGoogle(); // sin esperar: nunca bloquea el cierre de sesión
+    queryClient.clear(); // la caché de TanStack Query es de esta cuenta
+    await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll(), pushTokenStorage.clear()]);
   }, []);
 
   const startSession = useCallback(async ({ token, user }: AuthResponse) => {
     await Promise.all([tokenStorage.set(token), lastEmailStorage.set(user.email), sessionUserStorage.set(user)]);
+    queryClient.clear();
     setAuthToken(token);
     setUser(user);
     setStatus('signedIn');
+    void registerIfEnabled();
   }, []);
+
+  // Una respuesta con reto no trae token: no se inicia sesión hasta confirmar el código.
+  const startOrChallenge = useCallback(
+    async (result: AuthResult): Promise<Challenge | null> => {
+      if ('challenge' in result) return result.challenge;
+      await startSession(result);
+      return null;
+    },
+    [startSession],
+  );
 
   // Al abrir la app: si hay token guardado, comprobar que siga siendo válido.
   useEffect(() => {
@@ -54,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(me);
           setStatus('signedIn');
           void sessionUserStorage.set(me);
+          void registerIfEnabled();
         }
       } catch (e) {
         if (cancelled) return;
@@ -120,12 +157,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
-      login: async (email, password) => startSession(await loginRequest(email.trim(), password)),
+      login: async (email, password) => startOrChallenge(await loginRequest(email.trim(), password)),
       register: async (name, email, password) =>
-        startSession(await registerRequest(name.trim(), email.trim(), password)),
+        startOrChallenge(await registerRequest(name.trim(), email.trim(), password)),
+      completeChallenge: async (id, code, newPassword) => {
+        const session = await verifyChallengeRequest(id, code, newPassword);
+        if (session) await startSession(session);
+      },
+      loginWithGoogle: async () => {
+        const idToken = await getGoogleIdToken();
+        if (!idToken) return false;
+        await startSession(await googleRequest(idToken));
+        return true;
+      },
+      refreshUser: async () => {
+        const me = await meRequest();
+        setUser(me);
+        await sessionUserStorage.set(me);
+      },
       logout,
     }),
-    [status, user, startSession, logout],
+    [status, user, startSession, startOrChallenge, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -4,6 +4,7 @@ import * as aiApi from '../../../api/ai';
 import { ApiError } from '../../../api/client';
 import * as proposalsApi from '../../../api/proposals';
 import { makeConfirmed, makeProposal, makeSuggestion } from '../../../testing/fixtures';
+import { withQueryClient } from '../../../testing/queryClient';
 import { PlansTab } from '../tabs/PlansTab';
 
 jest.mock('../../../api/proposals');
@@ -28,7 +29,7 @@ it('lista las propuestas no canceladas con su estado, su plazo o su fecha, y nav
     makeConfirmed(),
     makeProposal({ id: 'p3', title: 'Plan cancelado', state: 'CANCELADO' }),
   ]);
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
 
   expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.getByText('Google Meet')).toBeTruthy();
@@ -52,9 +53,23 @@ it('lista las propuestas no canceladas con su estado, su plazo o su fecha, y nav
   expect(mockNavigate).toHaveBeenCalledWith('CreateProposal', { groupId: 'g1', groupName: 'Proyecto Integrador' });
 });
 
+it('una propuesta que se canceló sola (nadie votó) sigue en la lista con «Cancelado»; una cancelada a mano no', async () => {
+  mocked.listGroupProposals.mockResolvedValue([
+    makeProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: true, votingDeadline: '2026-09-28T20:00:00.000Z' }),
+    makeProposal({ id: 'mano', title: 'Cancelada a mano', state: 'CANCELADO', autoClosed: false }),
+  ]);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
+  expect(await screen.findByText('Sin votos')).toBeTruthy();
+  expect(screen.getByText('Cancelado')).toBeTruthy();
+  expect(screen.queryByText('Cancelada a mano')).toBeNull();
+  expect(screen.queryByText('Votar')).toBeNull();
+  await fireEvent.press(screen.getByText('Ver detalles'));
+  expect(mockNavigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'auto' });
+});
+
 it('sin propuestas muestra el texto vacío (con tildes)', async () => {
   mocked.listGroupProposals.mockResolvedValue([]);
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   expect(await screen.findByText('Nadie ha propuesto un plan todavía.')).toBeTruthy();
 });
 
@@ -67,18 +82,18 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
       makeSuggestion({ title: 'Almuerzo del grupo', category: 'COMIDA', placeIdea: null, window: null, reason: 'Un plan corto.' }),
       makeSuggestion({
         title: 'Partido de fulbito', category: 'DEPORTE', placeIdea: 'Losa del campus',
-        window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+        window: { date: '2026-11-19', dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
       }),
     ],
   });
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   await fireEvent.press(await screen.findByText('Ideas con IA'));
 
   expect(await screen.findByText('Sesión de estudio antes del parcial')).toBeTruthy();
   expect(mockedAi.suggestPlans).toHaveBeenCalledWith('g1');
   expect(screen.getByText('Ideas con Huecko IA')).toBeTruthy();
-  expect(screen.getByText('Lun · 12:00 - 20:00')).toBeTruthy();
-  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Lun 16 nov · 12:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Jue 19 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Huecko IA no eligió franja: añade una a mano al crear (o deja que Huecko elija si el grupo tiene huecos en común).')).toBeTruthy();
   expect(screen.getByText('Comida')).toBeTruthy();
   expect(screen.getByText('Un plan corto.')).toBeTruthy();
@@ -94,7 +109,7 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
     groupId: 'g1',
     groupName: 'Proyecto Integrador',
     prefill: {
-      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
       votingDeadline: null, category: 'DEPORTE',
     },
   });
@@ -106,7 +121,7 @@ it('si la IA falla: el motivo y «Reintentar»', async () => {
   mockedAi.suggestPlans
     .mockRejectedValueOnce(new ApiError(429, 'TOO_MANY_REQUESTS', 'Usaste mucho la IA en poco tiempo. Espera unos minutos.'))
     .mockResolvedValueOnce({ suggestions: [makeSuggestion()] });
-  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />, withQueryClient());
   await fireEvent.press(await screen.findByText('Ideas con IA'));
   expect(await screen.findByText('Usaste mucho la IA en poco tiempo. Espera unos minutos.')).toBeTruthy();
   await fireEvent.press(screen.getByText('Reintentar'));

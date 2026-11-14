@@ -9,6 +9,9 @@ export const listTimeBlocks = async () => (await api.get<TimeBlock[]>('/me/time-
 export const createTimeBlock = async (input: TimeBlockInput) =>
   (await api.post<TimeBlock>('/me/time-blocks', input)).data;
 
+export const updateTimeBlock = async (id: string, input: TimeBlockInput) =>
+  (await api.put<TimeBlock>(`/me/time-blocks/${encodeURIComponent(id)}`, input)).data;
+
 export const deleteTimeBlock = async (id: string): Promise<void> => {
   await api.delete(`/me/time-blocks/${encodeURIComponent(id)}`);
 };

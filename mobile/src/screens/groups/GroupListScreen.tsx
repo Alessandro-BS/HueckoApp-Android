@@ -63,6 +63,7 @@ export function GroupListScreen({ navigation }: TabScreen<'Groups'>) {
             <SecondaryButton title="Unirme" icon="vpn-key" style={styles.flex} onPress={() => setDialog('join')} />
             <PrimaryButton title="Crear grupo" icon="group-add" style={styles.flex} onPress={() => setDialog('create')} />
           </View>
+          <SecondaryButton title="Unirme acercando el celular" icon="nfc" onPress={() => navigation.navigate('ProximityJoin')} />
         </View>
         <LoadState loading={loading} error={error} hasData={loaded} onRetry={() => void reload()}>
           {groups.length === 0 ? (
@@ -97,7 +98,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 16, paddingVertical: 20, gap: 12 },
   subtitle: { color: colors.onSurfaceVariant, marginTop: 6 },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 8 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 10 },
   list: { gap: 12 },
   banner: { height: 100, alignItems: 'center', justifyContent: 'center' },
   initial: { color: '#FFFFFF' },

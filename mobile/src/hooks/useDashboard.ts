@@ -3,14 +3,16 @@ import { useEffect, useState } from 'react';
 
 import { getDashboard } from '../api/dashboard';
 import { removeVote, voteWindow } from '../api/proposals';
+import { queryKeys } from '../api/queryClient';
 import { listTimeBlocks } from '../api/schedule';
 import { dashboardCache } from '../storage/appStorage';
-import { useResource } from './useResource';
+import { useApiQuery } from './useApiQuery';
 import { useVoteToggle } from './useVoteToggle';
 
 export type DashboardData = { dashboard: Dashboard; blocks: TimeBlock[] };
 
 const NO_BLOCKS: TimeBlock[] = [];
+const NO_VOTES: readonly string[] = [];
 
 // El resumen del servidor y mis bloques (el «horario de hoy» depende de la zona horaria del teléfono)
 // en una sola carga: se recargan juntos y un error de cualquiera de los dos es el error de Inicio.
@@ -22,7 +24,7 @@ const loadDashboard = async (): Promise<DashboardData> => {
 // `userId` activa la copia local (AsyncStorage): al abrir Inicio se muestra la última copia mientras llega la del
 // servidor, o en su lugar si no hay red (`stale`). Cada carga buena reemplaza la copia.
 export function useDashboard(userId?: string) {
-  const { data: fresh, loading, refreshing, error, failedLoads, reload, mutate } = useResource(loadDashboard);
+  const { data: fresh, loading, refreshing, error, failedLoads, reload, mutate } = useApiQuery(queryKeys.dashboard(userId), loadDashboard);
   const [cached, setCached] = useState<{ userId: string; data: DashboardData }>();
 
   useEffect(() => {
@@ -59,9 +61,11 @@ export function useDashboard(userId?: string) {
 
   // Votar desde «Votaciones en curso»: misma alternancia que en Votar (useVoteToggle). No lanza.
   const { toggle: toggleVote, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
-    currentVote: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowId,
+    votesOf: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowIds ?? NO_VOTES,
+    isMultiple: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.multipleVotes ?? false,
     vote: async (id, windowId) => replacePending(await voteWindow(id, windowId)),
-    unvote: async (id) => replacePending(await removeVote(id)),
+    // Sin windowId se llama con un solo argumento: DELETE sin ?windowId= quita todos mis votos (voto único).
+    unvote: async (id, windowId) => replacePending(windowId ? await removeVote(id, windowId) : await removeVote(id)),
   });
 
   // Con la copia en pantalla no se vota: sus votaciones pueden estar desactualizadas (y votar sobre ellas pisaría la carga en curso).

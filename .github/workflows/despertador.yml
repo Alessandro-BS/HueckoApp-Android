@@ -1,0 +1,25 @@
+# Despierta el servicio de Render (plan gratuito, se duerme tras 15 min) y ejecuta el barrido de avisos push.
+name: Despertador
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Llamar a /api/internal/tick
+        env:
+          API_URL: ${{ vars.API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::warning::Falta la variable API_URL o el secreto CRON_SECRET: no se llama al servidor."
+            exit 0
+          fi
+          curl -fsS --max-time 120 -X POST "$API_URL/api/internal/tick" -H "Authorization: Bearer $CRON_SECRET"

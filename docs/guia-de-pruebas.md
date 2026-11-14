@@ -121,6 +121,16 @@ En el formulario de la propuesta de estudio:
 | 2 | **Usar** en una idea | Se abre «Crear propuesta» ya rellenado | — |
 | 3 | Pide ideas otra vez | Ideas distintas | — |
 
+### Editar un bloque y el aviso de solape (cualquier cuenta)
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | **Horario**, toca un bloque que ya tengas | Pantalla **Editar bloque** con sus datos | Se edita sin borrar y volver a crear |
+| 2 | Mueve su horario para que se cruce con otro bloque del mismo día y guarda | Mensaje del tipo **«Se solapa con …»** y la pantalla no se cierra | El servidor rechaza los bloques que se pisan (409) |
+| 3 | Corrige la hora para que no se cruce y guarda | Se guarda y vuelve al horario | Sin solape, sin error |
+
+Ojo: si un bloque ya se cruzaba con otro antes de esta versión, guardarlo da el aviso de solape aunque solo le cambies el nombre; corrige primero la hora de uno de los dos.
+
 ## 🔟 Votar (con cada cuenta)
 
 | Cuenta | Qué hacer |
@@ -131,13 +141,24 @@ En el formulario de la propuesta de estudio:
 
 **Por qué:** así el resumen siguiente tiene un caso realista (2 de 3 votos).
 
+### Voto múltiple y cierre automático
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | Al crear la propuesta, deja activado **Permitir votar varias franjas** | En **Votar**: «Puedes votar todas las franjas que te sirvan» | El voto múltiple viene activado por defecto |
+| 2 | Toca dos franjas, y luego una de ellas otra vez | Las dos quedan marcadas; al repetir una, se quita solo esa. En **Inicio**: «Votaste 2 franjas» / «Votaste 1 franja» | Con voto múltiple solo se retira la franja tocada |
+| 3 | Crea otra propuesta con el interruptor **apagado** y vota dos franjas distintas | La segunda mueve el voto; queda una sola marcada | Con voto único, votar otra franja mueve el voto |
+| 4 | Mira bajo el título de **Votar** | «La votación cierra el … Si nadie vota, el plan se cancela.» | Avisa del cierre automático |
+| 5 | **Cómo probar el cierre:** con `test@test.com`, crea una propuesta con la fecha límite a pocos minutos (lo mínimo que deje el formulario), vota una franja con esa misma cuenta y espera a que pase el plazo; luego reabre el plan (sal y entra, o desliza para actualizar) | El plan queda **Confirmado** con la franja más votada y el detalle dice «Confirmado al cerrar la votación» | Cierra sola, sin que nadie confirme |
+| 6 | Igual, pero **sin votar** con ninguna cuenta. Pasado el plazo, con `test@test.com` (quien creó el plan) ve a **Grupos → el grupo → Planes**: el plan sigue en la lista con **Cancelado**; toca **Ver detalles** | «Cancelado: nadie votó antes del plazo» y el botón **Replantear** | Solo una cancelación automática se puede replantear (y sigue a la vista en Planes); una cancelada a mano desaparece de la lista y no se replantea |
+
 ## 1️⃣1️⃣ Resumen con IA y confirmar (`test@test.com`)
 
 | # | Qué hacer | Qué deberías ver | Por qué |
 |---|---|---|---|
 | 1 | **Planes → Ver detalles** de la propuesta | Tarjeta **«Resumen con Huecko IA»** | — |
 | 2 | **Resumir votación** | «Votaron 2 de 3…», una **recomendación** (p. ej. Confirmar) y su motivo | La IA **solo sugiere**: nunca cambia el plan |
-| 3 | **Confirmar plan** | El plan pasa a confirmado | Confirmar siempre lo decide una persona |
+| 3 | **Confirmar plan** | El plan pasa a confirmado | Lo decide quien gestiona el plan: quien lo creó o un organizador |
 
 ## 1️⃣2️⃣ Imprevisto (Ana) y resumen de nuevo
 
@@ -146,8 +167,10 @@ En el formulario de la propuesta de estudio:
 | 1 | `ana@test.com` → plan confirmado → **Reportar imprevisto** → «¿Qué pasó?»: `Cruce de examen` → **Reportar** | — | — |
 | 2 | `test@test.com` → **Inicio** | Aviso del imprevisto de Ana | Quien organiza se entera al instante |
 | 3 | **Ver detalles → Actualizar resumen** | Sigue recomendando **Confirmar** | Ana no es imprescindible y 2 de 3 sí pueden ir |
-| 4 | **Grupos → Prueba IA → Miembros**: activa **Imprescindible** en Ana | — | Solo el dueño del grupo puede marcarlo |
+| 4 | **Grupos → Prueba IA → Miembros**: activa **Imprescindible** en Ana | — | Solo un organizador del grupo puede marcarlo |
 | 5 | **Ver detalles → Actualizar resumen** | Ahora debería recomendar **Reprogramar** (la IA sigue la regla, pero no es 100 % determinista) | Regla del servidor: si un imprescindible no puede ir, se reprograma ([`voting-summary.ts`](../backend/src/ai/voting-summary.ts)) |
+| 6 | `test@test.com` → **Grupos → Proyecto Integrador → Miembros** | Dos organizadores (tú y Ana) con **Quitar organizador**; Carlos u otros miembros, con **Hacer organizador** | Un grupo puede tener varios organizadores (en la semilla, Ana también lo es) |
+| 7 | Pulsa **Hacer organizador** en un miembro y luego **Quitar organizador** en el mismo; deja a un solo organizador y prueba a quitarle el rol | «El grupo necesita al menos un organizador.» y el rol no cambia | Un grupo nunca se queda sin organizadores |
 
 ## 1️⃣3️⃣ Administración (`admin@test.com`)
 
@@ -163,6 +186,42 @@ En el formulario de la propuesta de estudio:
 
 ---
 
+## 🔔 Avisos push (development build y dos celulares)
+
+> Los avisos remotos **no funcionan en Expo Go**: instala el APK `development` (`eas build -p android --profile development`) con Firebase configurado (ver [despliegue](despliegue.md#-avisos-push-firebase)), abre `npx expo start --dev-client` y usa **dos celulares** con cuentas distintas (p. ej. `test@test.com` y `ana@test.com`) en el mismo grupo. El backend debe ser alcanzable y, para probarlo en local, puedes forzar el barrido con `POST /api/internal/tick`.
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | En ambos celulares: **Perfil → Notificaciones en este celular** (acepta el permiso de Android) | El interruptor queda encendido | La app registra el token del celular en el servidor |
+| 2 | Con `test@test.com`, crea una propuesta en el grupo | Ana recibe «nueva propuesta» | Se avisa a los demás miembros |
+| 3 | Ana, con la app **abierta**, espera el aviso | Banner con sonido y Inicio se actualiza solo | La app refresca Inicio y los grupos al recibir |
+| 4 | Ana, con la app **en segundo plano**, toca el aviso | Se abre **Votar** de esa propuesta | `data.screen = VOTING` |
+| 5 | Cierra la app de Ana del todo, confirma el plan con `test@test.com` y toca el aviso | La app arranca y abre el **detalle del plan** | El destino se abre cuando la sesión y la navegación están listas |
+| 6 | Ana: apaga el interruptor y confirma otro plan | No llega ningún aviso | El celular se borra del servidor |
+
+> **Limitación conocida:** si cierras sesión **sin conexión**, la app no puede borrar el token y el servidor sigue asociándolo a esa cuenta: sus avisos seguirán llegando a ese celular hasta que alguien inicie sesión en él (el nuevo inicio de sesión reasigna el token).
+
+---
+
+## 🔐 Cuentas: código por correo, 2FA y Google (fase 6)
+
+> Con el backend local y **sin** `BREVO_API_KEY`, el código **no llega por correo: sale en el log del backend** (`npm run backend`). Con la clave de Brevo llega a la bandeja. «Continuar con Google» solo existe en el APK o un *development build* con `extra.googleWebClientId` lleno (no en Expo Go). La lista completa para el APK está en [puesta en marcha](puesta-en-marcha.md).
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | **Regístrate** con un correo nuevo | Pantalla **«Escribe el código»** con «Te enviamos un código a a***@…» y **Reenviar en N s** | Sin código no hay sesión: el servidor no da token hasta confirmar el correo |
+| 2 | Escribe un código equivocado | Error con los intentos que quedan; al quinto fallo, «Pide un código nuevo.» | 5 intentos por código; vale 15 minutos |
+| 3 | Espera 60 s y toca **Reenviar código** | Llega otro y el anterior deja de valer | Reenvío cada 60 s, 5 envíos por código |
+| 4 | Escribe el código correcto | Entras a la app | El correo queda verificado |
+| 5 | **Perfil → Verificación en dos pasos** (te pide la contraseña y luego un código) | El interruptor queda encendido | Se confirma con un código al correo |
+| 6 | Cierra sesión y entra de nuevo | Tras la contraseña pide **otro código** | Con 2FA el login no da token sin código |
+| 7 | Apaga la verificación en dos pasos (pide la contraseña) | El siguiente login entra directo | — |
+| 8 | En el login toca **¿Olvidaste tu contraseña?**, escribe el correo, el código y una contraseña nueva | Entras con la contraseña nueva; las sesiones abiertas en otros celulares se cierran | Cambia la versión de sesión (los tokens viejos dan 401) |
+| 9 | Pide recuperar la contraseña con un correo que **no** tiene cuenta | Misma pantalla del código, sin delatar nada | El servidor responde igual exista o no la cuenta |
+| 10 | (APK) **Continuar con Google** | Entras sin contraseña ni código | Google ya autenticó; con una cuenta de Google no se puede activar 2FA hasta crear una contraseña con «¿Olvidaste tu contraseña?» |
+
+---
+
 ## 🐞 Si algo falla
 
 Anota **la cuenta**, **el paso**, **qué esperabas** y **qué viste** (con captura). Mensajes útiles:
@@ -173,3 +232,5 @@ Anota **la cuenta**, **el paso**, **qué esperabas** y **qué viste** (con captu
 | Error de red al iniciar sesión | La app no llega al backend: revisa `EXPO_PUBLIC_API_URL` y que estén en la misma Wi-Fi |
 | `429` / «demasiadas solicitudes» | Se pasó el límite de la IA (20 cada 15 min por cuenta) |
 | «La base local … está abierta por otro proceso» | Detén el servidor antes de `seed` o `make-admin` |
+| «No pudimos enviar el correo» (`503 EMAIL_SEND_FAILED`) | Brevo rechazó el envío: revisa `BREVO_API_KEY` y el remitente verificado; en local, sin clave, mira el código en el log |
+| «Ya te enviamos muchos códigos hoy» (`429 EMAIL_DAILY_LIMIT`) | 10 correos por cuenta cada 24 h |

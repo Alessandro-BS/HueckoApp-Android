@@ -11,18 +11,20 @@ type Props = {
   /** 'title' para chips de día (titleSmall); 'label' para opciones (labelMedium). */
   variant?: 'label' | 'title';
   accessibilityLabel?: string;
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 // Botón de elección: relleno primary si está elegido, surfaceContainer si no (UI spec §2.10 y §3.8).
-export function ChoiceChip({ label, selected, onPress, caption, variant = 'label', accessibilityLabel, style }: Props) {
+export function ChoiceChip({ label, selected, onPress, caption, variant = 'label', accessibilityLabel, disabled = false, style }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
-      style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.surfaceContainer }, style]}
+      style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.surfaceContainer }, disabled && styles.disabled, style]}
     >
       <Text
         numberOfLines={1}
@@ -40,6 +42,7 @@ export function ChoiceChip({ label, selected, onPress, caption, variant = 'label
 }
 
 const styles = StyleSheet.create({
+  disabled: { opacity: 0.38 },
   chip: {
     minHeight: 48,
     borderRadius: radius.xxl,

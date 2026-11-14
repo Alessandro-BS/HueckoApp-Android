@@ -38,13 +38,13 @@ it('useProposalDraft devuelve el borrador, o null con el mensaje del servidor', 
 
   let draft: Awaited<ReturnType<typeof result.current.generate>> = null;
   await act(async () => {
-    draft = await result.current.generate('Estudiar el martes');
+    draft = await result.current.generate('Estudiar el martes', '2026-11-16');
   });
   expect(draft).toEqual(makeDraft());
-  expect(mocked.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes');
+  expect(mocked.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes', '2026-11-16');
 
   await act(async () => {
-    draft = await result.current.generate('Otra vez');
+    draft = await result.current.generate('Otra vez', '2026-11-16');
   });
   expect(draft).toBeNull();
   expect(result.current.error).toBe(UNAVAILABLE.message);

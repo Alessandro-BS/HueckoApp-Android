@@ -10,9 +10,10 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
-import { CRITICALITY_BADGE, INCIDENCE_LABEL, isUpcoming, isVotingOpen, openIncidence } from '../../utils/proposals';
+import { CRITICALITY_BADGE, INCIDENCE_LABEL, isUpcoming, isVotingOpen } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { ConfirmPlanDialog } from './ConfirmPlanDialog';
+import { ReplanSheet } from './ReplanSheet';
 import { confirmCancelPlan } from './confirmCancelPlan';
 import { ExpressVoteCard } from './ExpressVoteCard';
 import { ProposalHeader } from './ProposalHeader';
@@ -41,10 +42,10 @@ function IncidenceRow({ incidence }: { incidence: Incidence }) {
 
 export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDetail'>) {
   const { proposalId } = route.params;
-  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, resolve } = useProposal(proposalId);
+  const { proposal, loading, refreshing, error, failedLoads, reload, confirm, cancel, reportIncidence, voteExpress, replan } = useProposal(proposalId);
   useRefreshOnFocus(reload);
   useRefreshErrorToast(error, proposal !== undefined, failedLoads);
-  const [sheet, setSheet] = useState<'confirm' | 'incidence' | null>(null);
+  const [sheet, setSheet] = useState<'confirm' | 'incidence' | 'replan' | null>(null);
 
   if (!proposal) {
     return (
@@ -57,12 +58,27 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
   }
 
   const now = today();
-  // Quién gestiona lo decide el servidor (canManage: el creador o, si se fue, el OWNER); la app no compara ids.
+  // Quién gestiona lo decide el servidor (canManage: el creador mientras siga en el grupo, o cualquier organizador); la app no compara ids.
   const canManage = proposal.canManage;
   const active = proposal.state === 'CONFIRMADO' || proposal.state === 'EN_RECOORDINACION';
   // La votación exprés y «Reportar imprevisto» solo tienen sentido si el plan aún no ocurrió (D3).
   const activeUpcoming = active && isUpcoming(proposal, now);
-  const alertIncidence = activeUpcoming ? openIncidence(proposal) : null;
+  // Tarjeta de la votación exprés (abierta o la última cerrada) o, en recoordinación, «Proponer franjas». La
+  // recoordinación siempre está vigente: la regla anterior conservaba la fecha vieja y, aunque ya pasara, el plan
+  // sigue atascado hasta que quien gestiona lo replantee.
+  const showExpress = proposal.state === 'EN_RECOORDINACION' || (activeUpcoming && proposal.expressVote !== null);
+  // Solo se reporta sobre un plan confirmado: en recoordinación no hay fecha a la que faltar (409 INVALID_STATE).
+  const canReport = activeUpcoming && proposal.state === 'CONFIRMADO';
+  const openVoteId = proposal.expressVote?.status === 'ABIERTA' ? proposal.expressVote.id : null;
+
+  // El servidor marca `autoClosed` solo si la votación se cerró sola (confirmada al vencer el plazo, o cancelada por falta de votos).
+  const autoClosedNotice = !proposal.autoClosed
+    ? null
+    : proposal.state === 'CONFIRMADO'
+      ? 'Confirmado al cerrar la votación'
+      : proposal.state === 'CANCELADO'
+        ? 'Cancelado: nadie votó antes del plazo'
+        : null;
 
   const doCancel = async () => {
     try {
@@ -84,15 +100,12 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
       >
         <ProposalHeader proposal={proposal} now={now} details />
 
-        {alertIncidence ? (
-          <ExpressVoteCard
-            kind={proposal.state === 'EN_RECOORDINACION' ? 'RECOORDINACION' : 'AVISO'}
-            who={alertIncidence.user.name}
-            reason={alertIncidence.reason}
-            planTitle={proposal.title}
-            canResolve={canManage}
-            onResolve={resolve}
-          />
+        {autoClosedNotice ? (
+          <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>{autoClosedNotice}</Text>
+        ) : null}
+
+        {showExpress ? (
+          <ExpressVoteCard proposal={proposal} now={now} onVote={voteExpress} onReplan={replan} onStale={() => void reload()} />
         ) : null}
 
         {proposal.state !== 'CANCELADO' ? <VotingSummaryCard proposalId={proposal.id} /> : null}
@@ -103,7 +116,7 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
         ) : (
           <View style={styles.list}>
             {proposal.windows.map((w) => (
-              <VoteWindowRow key={w.id} window={w} voted={proposal.myVoteWindowId === w.id} chosen={proposal.chosenWindowId === w.id} />
+              <VoteWindowRow key={w.id} window={w} voted={proposal.myVoteWindowIds.includes(w.id)} chosen={proposal.chosenWindowId === w.id} />
             ))}
           </View>
         )}
@@ -122,7 +135,13 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
             ) : (
               proposal.incidences.map((i) => <IncidenceRow key={i.id} incidence={i} />)
             )}
-            {activeUpcoming ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
+            {canReport ? <SecondaryButton title="Reportar imprevisto" icon="report-problem" onPress={() => setSheet('incidence')} /> : null}
+          </View>
+        ) : null}
+
+        {canManage && proposal.state === 'CANCELADO' && proposal.autoClosed ? (
+          <View style={styles.list}>
+            <SecondaryButton title="Replantear" icon="event-repeat" onPress={() => setSheet('replan')} />
           </View>
         ) : null}
 
@@ -144,16 +163,28 @@ export function PlanDetailScreen({ navigation, route }: AppStackScreen<'PlanDeta
             setSheet(null);
             showToast('Plan confirmado.');
           }}
+          onReplan={() => setSheet('replan')}
+          onDismiss={() => setSheet(null)}
+        />
+      ) : null}
+      {sheet === 'replan' ? (
+        <ReplanSheet
+          title="Replantear propuesta"
+          submitLabel="Replantear votación"
+          onSubmit={async (input) => {
+            await replan(input);
+            setSheet(null);
+            showToast('Propuesta replanteada: se borraron los votos.');
+          }}
           onDismiss={() => setSheet(null)}
         />
       ) : null}
       {sheet === 'incidence' ? (
         <ReportIncidenceSheet
+          openVoteId={openVoteId}
           onReport={reportIncidence}
-          onDone={() => {
-            setSheet(null);
-            showToast('Imprevisto reportado.');
-          }}
+          // El aviso («Se abrió una votación del grupo» o «Avisamos al grupo») lo da la hoja según la respuesta.
+          onDone={() => setSheet(null)}
           onDismiss={() => setSheet(null)}
         />
       ) : null}

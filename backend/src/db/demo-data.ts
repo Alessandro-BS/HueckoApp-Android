@@ -5,8 +5,10 @@ import { randomUUID } from 'node:crypto';
 
 import type { BlockType } from '@hueckoapp/shared';
 
+import { addDays, instant, isoDay, today } from '../common/zone';
+import { EXPRESS_VOTE_MINUTES_DEFAULT } from '../proposals/express-rules';
 import { proposalsRepository } from '../proposals/proposals.repository';
-import { criticalityFor, scheduleFor } from '../proposals/rules';
+import { criticalityFor } from '../proposals/rules';
 import type { Db } from './db';
 
 export const DEMO_PASSWORD = 'password123';
@@ -26,14 +28,15 @@ const USERS = [
 ] as const;
 type UserKey = (typeof USERS)[number]['key'];
 
-const GROUPS: { name: string; inviteCode: string; members: { user: UserKey; role: 'OWNER' | 'MEMBER' }[] }[] = [
+const GROUPS: { name: string; inviteCode: string; members: { user: UserKey; role: 'ORGANIZER' | 'MEMBER' }[] }[] = [
   {
     name: 'Proyecto Integrador',
     inviteCode: 'PROY2026',
-    members: [{ user: 'test', role: 'OWNER' }, { user: 'ana', role: 'MEMBER' }],
+    // Dos organizadores, para probar desde la app que un grupo puede tener varios.
+    members: [{ user: 'test', role: 'ORGANIZER' }, { user: 'ana', role: 'ORGANIZER' }],
   },
   // Solo Carlos: así test@test.com puede probar «Unirme» con HUECKO123 (y una segunda vez da 409).
-  { name: 'Amigos de la Uni', inviteCode: 'HUECKO123', members: [{ user: 'carlos', role: 'OWNER' }] },
+  { name: 'Amigos de la Uni', inviteCode: 'HUECKO123', members: [{ user: 'carlos', role: 'ORGANIZER' }] },
 ];
 
 const BLOCKS: { user: UserKey; label: string; type: BlockType; dayOfWeek: number; startTime: string; endTime: string }[] = [
@@ -46,8 +49,8 @@ const BLOCKS: { user: UserKey; label: string; type: BlockType; dayOfWeek: number
 
 const HOUR = 3_600_000;
 
-/** Día ISO (1 = lunes … 7 = domingo) de una fecha en hora local. */
-const isoDayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1;
+/** Primera fecha con ese día de la semana (1 = lunes … 7 = domingo) a partir de `from` (incluida). */
+const onOrAfter = (from: string, dayOfWeek: number) => addDays(from, (dayOfWeek - isoDay(from) + 7) % 7);
 
 // Los porcentajes son los fijos de la semilla Kotlin (el viernes figura con 50 % aunque el cruce dé 100 %, B15).
 async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): Promise<number> {
@@ -58,27 +61,31 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
 
   // Se renuevan en cada ejecución: se borran las de la semilla anterior (sus franjas, votos e incidencias caen por
   // ON DELETE CASCADE) y se crean otra vez con fechas de hoy. Las propuestas creadas desde la app no se tocan.
-  const remove = 'DELETE FROM proposals WHERE group_id = $1 AND title = $2 AND created_by = $3';
-  await db.query(remove, [groupId, meetingTitle, ids.test]);
-  await db.query(remove, [groupId, reviewTitle, ids.ana]);
+  // notifications no tiene clave foránea a proposals: los avisos de las de antes se borran aparte (al final).
+  const remove = 'DELETE FROM proposals WHERE group_id = $1 AND title = $2 AND created_by = $3 RETURNING id';
+  const removedIds = [
+    ...(await db.many<{ id: string }>(remove, [groupId, meetingTitle, ids.test])),
+    ...(await db.many<{ id: string }>(remove, [groupId, reviewTitle, ids.ana])),
+  ].map((r) => r.id);
 
   // «Reunión de avance del proyecto»: confirmada para dentro de 2 días a las 11:00, votada por los dos y con el
-  // imprevisto de Ana sin resolver (aviso en Inicio).
-  const inTwoDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+  // imprevisto de Ana sin resolver (aviso en Inicio). Las fechas son días de Lima (common/zone).
+  const day = today(now);
+  const inTwoDays = addDays(day, 2);
   const meetingId = await proposals.create({
     groupId,
     createdBy: ids.test,
     title: meetingTitle,
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: ago(24),
-    windows: [{ dayOfWeek: isoDayOf(inTwoDays), startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
+    windows: [{ date: inTwoDays, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 }],
+    multipleVotes: true,
     createdAt: ago(48),
   });
   const [meetingWindow] = (await proposals.findById(meetingId, ids.test))!.windows;
-  await proposals.vote(meetingId, ids.test, meetingWindow.id, ago(30));
-  await proposals.vote(meetingId, ids.ana, meetingWindow.id, ago(30));
-  const { scheduledAt, scheduledDate } = scheduleFor(meetingWindow.dayOfWeek, meetingWindow.startTime, now);
-  await proposals.confirm(meetingId, meetingWindow.id, scheduledAt, scheduledDate);
+  await proposals.voteIfOpen(meetingId, ids.test, meetingWindow.id, new Date(ago(30)));
+  await proposals.voteIfOpen(meetingId, ids.ana, meetingWindow.id, new Date(ago(30)));
+  await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date, new Date(ago(30)), ids.test);
   await proposals.reportIncidence(
     meetingId,
     {
@@ -87,27 +94,37 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
       reason: 'Cruce con un examen de laboratorio a última hora.',
       delayMinutes: null,
       criticality: criticalityFor('IMPREVISTO', false, null),
+      // Ana no propuso el plan, no es imprescindible ni organizadora: solo informa (no abre votación exprés).
+      criticalReason: null,
       createdAt: ago(2),
     },
-    false,
+    EXPRESS_VOTE_MINUTES_DEFAULT,
   );
 
   // «Repaso antes de la entrega»: en votación hasta mañana a las 20:00 (siempre en el futuro), con el voto de Ana.
+  // Sus franjas (martes, jueves y viernes) son las primeras desde pasado mañana: empiezan después del plazo y caen en
+  // esta semana o la siguiente (dentro de las semanas válidas).
   const reviewId = await proposals.create({
     groupId,
     createdBy: ids.ana,
     title: reviewTitle,
     location: { name: 'Google Meet', latitude: null, longitude: null },
-    votingDeadline: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 20, 0).toISOString(),
+    votingDeadline: instant(addDays(day, 1), '20:00').toISOString(),
     windows: [
-      { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
-      { dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 },
-      { dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 50 },
+      { date: onOrAfter(inTwoDays, 2), startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
+      { date: onOrAfter(inTwoDays, 4), startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 },
+      { date: onOrAfter(inTwoDays, 5), startTime: '16:00', endTime: '18:00', availabilityPercentage: 50 },
     ],
+    multipleVotes: true,
     createdAt: ago(1),
   });
   const tuesday = (await proposals.findById(reviewId, ids.ana))!.windows.find((w) => w.dayOfWeek === 2)!;
-  await proposals.vote(reviewId, ids.ana, tuesday.id, now.toISOString());
+  await proposals.voteIfOpen(reviewId, ids.ana, tuesday.id, now);
+
+  // La semilla no deja avisos pendientes: ni los que acaba de encolar al crear y confirmar (el envío mandaría historia
+  // de demo a los celulares de prueba) ni los de las propuestas de ejemplo que borró (apuntarían a propuestas que ya
+  // no existen).
+  await db.query("DELETE FROM notifications WHERE data::json->>'proposalId' = ANY($1::text[])", [[...removedIds, meetingId, reviewId]]);
 
   return DEMO_PROPOSAL_TITLES.length;
 }
@@ -125,7 +142,8 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<S
       }
       ids[u.key] = randomUUID();
       // created_at del reloj inyectado (ISO), como el registro por la API: las estadísticas comparan rangos ISO.
-      await db.query('INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+      // Nacen verificadas: las cuentas demo entran con su contraseña sin pedir código.
+      await db.query('INSERT INTO users (id, name, email, password_hash, role, created_at, email_verified) VALUES ($1, $2, $3, $4, $5, $6, true)', [
         ids[u.key], u.name, u.email, passwordHash, u.role, now.toISOString(),
       ]);
       created.users++;
@@ -147,12 +165,13 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<S
         ]);
         created.groups++;
       }
-      // Quien salió del grupo desde la app vuelve a entrar; como MEMBER si el grupo ya tiene OWNER (nunca dos).
+      // Quien salió del grupo desde la app vuelve a entrar con su rol de la semilla (puede haber varios organizadores).
+      // A quien sigue dentro se le sube a ORGANIZER si la semilla lo es (una base de antes de «varios organizadores»
+      // tenía a Ana como MEMBER), pero nunca se degrada a nadie.
       for (const m of g.members) {
         await db.query(
-          `INSERT INTO group_members (group_id, user_id, role)
-           VALUES ($1, $2, CASE WHEN EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND role = 'OWNER') THEN 'MEMBER' ELSE $3 END)
-           ON CONFLICT (group_id, user_id) DO NOTHING`,
+          `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)
+           ON CONFLICT (group_id, user_id) DO UPDATE SET role = 'ORGANIZER' WHERE EXCLUDED.role = 'ORGANIZER'`,
           [group.id, ids[m.user], m.role],
         );
       }

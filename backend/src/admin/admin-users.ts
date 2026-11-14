@@ -91,7 +91,7 @@ export function adminUsers(db: Db) {
       );
       const a = (await db.one<ActivityRow>(
         `SELECT (SELECT COUNT(*) FROM proposals WHERE created_by = $1) AS proposals_created,
-                (SELECT COUNT(*) FROM votes WHERE user_id = $1) AS votes,
+                (SELECT COUNT(DISTINCT proposal_id) FROM votes WHERE user_id = $1) AS votes,
                 (SELECT COUNT(*) FROM incidences WHERE user_id = $1) AS incidences,
                 (SELECT COUNT(*) FROM time_blocks WHERE user_id = $1) AS time_blocks,
                 (SELECT COUNT(*) FROM ai_calls WHERE user_id = $1) AS ai_calls`,
@@ -157,5 +157,7 @@ export async function setRoleByEmail(db: Db, email: string, role: UserRole, now:
   if (!row) throw new ApiError(404, 'USER_NOT_FOUND', `No hay ninguna cuenta con el correo «${email}».`);
   const users = adminUsers(db);
   const changed = await users.setRole({ adminId: null, now }, row.id, role);
+  // Quien la consola nombra administrador entra con su contraseña sin pedir código: su correo queda verificado.
+  if (role === 'ADMIN') await db.query('UPDATE users SET email_verified = true WHERE id = $1', [row.id]);
   return { user: await users.summary(row.id), changed };
 }

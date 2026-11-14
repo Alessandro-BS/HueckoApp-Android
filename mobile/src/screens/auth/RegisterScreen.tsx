@@ -5,15 +5,16 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { errorMessage } from '../../api/client';
-import { ErrorBanner, PrimaryButton, TextField } from '../../components';
+import { ErrorBanner, GoogleButton, PrimaryButton, TextField } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import type { AuthStackParamList } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { showToast } from '../../utils/toast';
+import { googleErrorMessage } from '../../utils/googleError';
 import { validateEmail, validateName, validatePassword } from '../../utils/validation';
 
 export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackParamList, 'Register'>) {
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,11 +23,12 @@ export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackP
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
 
   const submit = async () => {
-    if (loading) return;
+    if (loading || googleLoading) return;
     const nErr = validateName(name);
     const eErr = validateEmail(email);
     const pErr = validatePassword(password);
@@ -37,12 +39,26 @@ export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackP
     setServerError(null);
     setLoading(true);
     try {
-      await register(name.trim(), email.trim(), password);
-      showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
+      const challenge = await register(name.trim(), email.trim(), password);
+      if (challenge) navigation.navigate('VerifyCode', { challenge });
+      else showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
     } catch (e) {
       setServerError(errorMessage(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const google = async () => {
+    if (loading || googleLoading) return;
+    setServerError(null);
+    setGoogleLoading(true);
+    try {
+      if (await loginWithGoogle()) showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
+    } catch (e) {
+      setServerError(googleErrorMessage(e));
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -132,6 +148,7 @@ export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackP
               size="lg"
               onPress={() => void submit()}
             />
+            <GoogleButton loading={googleLoading} disabled={loading} onPress={() => void google()} />
             <View style={styles.switchRow}>
               <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>¿Ya tienes cuenta?</Text>
               <Pressable

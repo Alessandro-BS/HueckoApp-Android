@@ -5,6 +5,7 @@ import { ApiError } from '../../../api/client';
 import * as aiApi from '../../../api/ai';
 import * as proposalsApi from '../../../api/proposals';
 import { makeDraft, makeProposal } from '../../../testing/fixtures';
+import { windowLabel } from '../../../utils/proposals';
 import { showToast } from '../../../utils/toast';
 import { features } from '../../../config';
 import { CreateProposalScreen } from '../CreateProposalScreen';
@@ -74,8 +75,22 @@ it('crea con «las 3 mejores» por defecto, con el título recortado, y vuelve a
     location: { name: 'Google Meet', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 9, 2, 20, 0).toISOString(),
     windows: [],
+    week: '2026-09-28',
+    multipleVotes: true,
   });
   expect(showToast).toHaveBeenCalledWith('Propuesta creada.');
+});
+
+it('el interruptor «Permitir votar varias franjas» está activado y al apagarlo envía multipleVotes: false', async () => {
+  await renderScreen();
+  const toggle = screen.getByLabelText('Permitir votar varias franjas');
+  expect(toggle.props.value).toBe(true);
+  await fireEvent(toggle, 'valueChange', false);
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Repaso');
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalled());
+  expect(mocked.createProposal).toHaveBeenCalledWith('g1', expect.objectContaining({ multipleVotes: false }));
 });
 
 it('«Usar mi ubicación actual» rellena el lugar con coordenadas', async () => {
@@ -178,34 +193,98 @@ it('guarda: con el plazo en el pasado no envía desde el teclado; control positi
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
 });
 
-it('franjas elegidas a mano: valida las horas, no las repite y las envía', async () => {
+const setTimes = async (start: string, end: string) => {
+  await fireEvent.changeText(screen.getByLabelText('Hora de inicio (HH:mm)'), start);
+  await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), end);
+};
+
+it('franjas elegidas a mano: valida las horas, no las repite y las envía con su fecha', async () => {
   await renderScreen();
   await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Estudiar');
-  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await pickDeadline(new Date(2026, 8, 29, 17, 0));
   await fireEvent.press(screen.getByText('Elegir yo las franjas'));
   // Guarda: sin ninguna franja no se envía.
+  expect(screen.getByText('Elige entre 2 y 5 franjas')).toBeTruthy();
   await fireEvent(screen.getByLabelText('Título del plan'), 'submitEditing');
   expect(mocked.createProposal).not.toHaveBeenCalled();
 
-  await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), '08:00');
+  await setTimes('18:00', '08:00');
   expect(screen.getByText('Debe ser posterior')).toBeTruthy();
   await fireEvent(screen.getByLabelText('Hora de fin (HH:mm)'), 'submitEditing');
-  expect(screen.queryByText('Lun · 09:00 - 08:00')).toBeNull();
+  expect(screen.queryByText('Mar 29 sep · 18:00 - 08:00')).toBeNull();
 
-  await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), '11:00');
+  await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), '19:00');
   await fireEvent.press(screen.getByText('Añadir franja'));
-  expect(screen.getByText('Lun · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText('Mar 29 sep · 18:00 - 19:00')).toBeTruthy();
   expect(screen.getByText('Esa franja ya está en la lista.')).toBeTruthy();
   await fireEvent.press(screen.getByText('Vie'));
   await fireEvent.press(screen.getByText('Añadir franja'));
-  expect(screen.getByText('Vie · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText('Vie 2 oct · 18:00 - 19:00')).toBeTruthy();
 
   await fireEvent.press(screen.getByText('Crear propuesta'));
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
   expect(mocked.createProposal.mock.calls[0][1].windows).toEqual([
-    { dayOfWeek: 1, startTime: '09:00', endTime: '11:00' },
-    { dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
+    { date: '2026-09-29', startTime: '18:00', endTime: '19:00' },
+    { date: '2026-10-02', startTime: '18:00', endTime: '19:00' },
   ]);
+  expect(mocked.createProposal.mock.calls[0][1].week).toBeUndefined();
+});
+
+it('crear con 1 franja está desactivado; con 5 no se puede añadir más', async () => {
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Estudiar');
+  await pickDeadline(new Date(2026, 8, 29, 11, 0));
+  await fireEvent.press(screen.getByText('Elegir yo las franjas'));
+  await fireEvent.press(screen.getByText('Vie'));
+
+  await setTimes('12:00', '13:00');
+  await fireEvent.press(screen.getByText('Añadir franja'));
+  expect(screen.getByText('Elige entre 2 y 5 franjas')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Crear propuesta' }).props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  expect(mocked.createProposal).not.toHaveBeenCalled();
+
+  await setTimes('13:00', '14:00');
+  await fireEvent.press(screen.getByText('Añadir franja'));
+  expect(screen.queryByText('Elige entre 2 y 5 franjas')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Crear propuesta' }).props.accessibilityState.disabled).toBeFalsy();
+
+  for (const hour of [14, 15, 16]) {
+    await setTimes(`${hour}:00`, `${hour + 1}:00`);
+    await fireEvent.press(screen.getByText('Añadir franja'));
+  }
+  expect(screen.getByText('Vie 2 oct · 16:00 - 17:00')).toBeTruthy();
+  expect(screen.queryByText('Añadir franja')).toBeNull();
+  expect(screen.getByText('Ya tienes 5 franjas: quita una para añadir otra.')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('Quitar Vie 2 oct · 16:00 - 17:00'));
+  expect(screen.getByText('Añadir franja')).toBeTruthy();
+});
+
+it('«las 3 mejores» envía la semana elegida', async () => {
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Repaso');
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await fireEvent.press(screen.getByText('Próxima semana'));
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
+  expect(mocked.createProposal.mock.calls[0][1]).toMatchObject({ windows: [], week: '2026-10-05' });
+});
+
+it('un plazo que no es anterior a la primera franja se señala y no deja crear', async () => {
+  await renderScreen();
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Estudiar');
+  await pickDeadline(new Date(2026, 8, 29, 17, 0));
+  await fireEvent.press(screen.getByText('Elegir yo las franjas'));
+  await setTimes('18:00', '19:00');
+  await fireEvent.press(screen.getByText('Añadir franja'));
+  await setTimes('19:00', '20:00');
+  await fireEvent.press(screen.getByText('Añadir franja'));
+  expect(screen.queryByText('La votación debe cerrar antes de la primera franja')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Crear propuesta' }).props.accessibilityState.disabled).toBeFalsy();
+
+  await pickDeadline(new Date(2026, 8, 29, 18, 30));
+  expect(screen.getByText('La votación debe cerrar antes de la primera franja')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Crear propuesta' }).props.accessibilityState.disabled).toBe(true);
 });
 
 it('muestra el error del servidor y se queda en la pantalla', async () => {
@@ -222,13 +301,17 @@ const routeWith = (prefill: object) => ({ ...route, params: { ...route.params, p
 
 it('abre rellenada con una idea de la IA y la envía con su franja', async () => {
   const prefill = {
-    title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+    title: 'Partido de fulbito', placeName: 'Losa del campus', window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
+    windows: [
+      { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
+      { date: '2026-11-20', startTime: '08:00', endTime: '20:00' },
+    ],
     votingDeadline: null, category: 'DEPORTE',
   };
   await render(<CreateProposalScreen navigation={navigation} route={routeWith(prefill)} />);
   expect(screen.getByLabelText('Título del plan').props.value).toBe('Partido de fulbito');
   expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Losa del campus');
-  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Jue 19 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Categoría sugerida: Deporte')).toBeTruthy();
 
   await pickDeadline(new Date(2026, 9, 2, 20, 0));
@@ -238,21 +321,50 @@ it('abre rellenada con una idea de la IA y la envía con su franja', async () =>
     title: 'Partido de fulbito',
     location: { name: 'Losa del campus', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 9, 2, 20, 0).toISOString(),
-    windows: [{ dayOfWeek: 4, startTime: '08:00', endTime: '20:00' }],
+    multipleVotes: true,
+    windows: [
+      { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
+      { date: '2026-11-20', startTime: '08:00', endTime: '20:00' },
+    ],
   });
 });
 
-it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franja', async () => {
+it('un borrador de la IA con una sola franja exige añadir otra antes de crear', async () => {
+  const prefill = {
+    title: 'Partido', placeName: null, window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
+    votingDeadline: null, category: 'DEPORTE',
+  };
+  await render(<CreateProposalScreen navigation={navigation} route={routeWith(prefill)} />);
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  expect(screen.getByText('Elige entre 2 y 5 franjas')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Crear propuesta' }).props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  expect(mocked.createProposal).not.toHaveBeenCalled();
+});
+
+it('«Rellenar con IA» pide el borrador de la semana elegida', async () => {
   mockedAi.draftProposal.mockResolvedValue(makeDraft());
+  await renderScreen();
+  await fireEvent.press(screen.getByText('Próxima semana'));
+  await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Estudiar');
+  await fireEvent.press(screen.getByText('Rellenar con IA'));
+  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar', '2026-10-05'));
+});
+
+it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franja', async () => {
+  const otro = { date: '2026-11-18', dayOfWeek: 3, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 3 };
+  const base = makeDraft();
+  mockedAi.draftProposal.mockResolvedValue({ ...base, windows: [...(base.windows ?? []), otro] });
   await renderScreen();
   await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), '  Estudiar el martes en la biblioteca ');
   await fireEvent.press(screen.getByText('Rellenar con IA'));
 
   await waitFor(() => expect(screen.getByLabelText('Título del plan').props.value).toBe('Estudiar para el parcial'));
-  expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes en la biblioteca');
+  // Con la semana elegida en el selector (por defecto, la de hoy: lunes 28/9).
+  expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'Estudiar el martes en la biblioteca', '2026-09-28');
   expect(screen.getByLabelText('Lugar (opcional)').props.value).toBe('Biblioteca central');
   expect(screen.getByText('Mié 30 sep, 10:00')).toBeTruthy();
-  expect(screen.getByText('Mar · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Mar 17 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Categoría sugerida: Estudio')).toBeTruthy();
   expect(showToast).toHaveBeenCalledWith('Borrador listo: revísalo antes de crear la propuesta.');
 
@@ -262,28 +374,32 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
     title: 'Estudiar para el parcial',
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
-    windows: [{ dayOfWeek: 2, startTime: '08:00', endTime: '20:00' }],
+    multipleVotes: true,
+    windows: [
+      { date: '2026-11-17', startTime: '08:00', endTime: '20:00' },
+      { date: '2026-11-18', startTime: '08:00', endTime: '20:00' },
+    ],
   });
 });
 
 it('un borrador con varias opciones las carga todas en «Elegir yo las franjas» y las envía', async () => {
-  const viernes = (startTime: string, endTime: string) => ({ dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
+  const viernes = (startTime: string, endTime: string) => ({ date: '2026-11-20', dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
   mockedAi.draftProposal.mockResolvedValue(
     makeDraft({ window: viernes('15:00', '17:00'), windows: [viernes('15:00', '17:00'), viernes('09:00', '11:00'), viernes('13:00', '15:00')] }),
   );
   await renderScreen();
   await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'Reunión de 2 horas el viernes');
   await fireEvent.press(screen.getByText('Rellenar con IA'));
-  await waitFor(() => expect(screen.getByText('Vie · 15:00 - 17:00')).toBeTruthy());
-  expect(screen.getByText('Vie · 09:00 - 11:00')).toBeTruthy();
-  expect(screen.getByText('Vie · 13:00 - 15:00')).toBeTruthy();
+  await waitFor(() => expect(screen.getByText('Vie 20 nov · 15:00 - 17:00')).toBeTruthy());
+  expect(screen.getByText('Vie 20 nov · 09:00 - 11:00')).toBeTruthy();
+  expect(screen.getByText('Vie 20 nov · 13:00 - 15:00')).toBeTruthy();
 
   await fireEvent.press(screen.getByText('Crear propuesta'));
   await waitFor(() => expect(mocked.createProposal).toHaveBeenCalledTimes(1));
   expect(mocked.createProposal.mock.calls[0][1].windows).toEqual([
-    { dayOfWeek: 5, startTime: '15:00', endTime: '17:00' },
-    { dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
-    { dayOfWeek: 5, startTime: '13:00', endTime: '15:00' },
+    { date: '2026-11-20', startTime: '15:00', endTime: '17:00' },
+    { date: '2026-11-20', startTime: '09:00', endTime: '11:00' },
+    { date: '2026-11-20', startTime: '13:00', endTime: '15:00' },
   ]);
 });
 
@@ -316,7 +432,7 @@ it('guarda: con menos de 3 caracteres no pide borrador; control positivo con 3',
 
   await fireEvent.changeText(screen.getByLabelText('Describe tu plan'), 'abc');
   await fireEvent.press(screen.getByText('Rellenar con IA'));
-  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'abc'));
+  await waitFor(() => expect(mockedAi.draftProposal).toHaveBeenCalledWith('g1', 'abc', '2026-09-28'));
 });
 
 it('un borrador con plazo pasado sigue pasando por la validación del formulario', async () => {
@@ -338,7 +454,7 @@ it('avisa en «Franjas» solo si la IA no encontró hueco (control positivo y ne
   expect(screen.getByText(NO_WINDOW_HINT)).toBeTruthy();
   await unmount();
 
-  const withWindow = { ...base, window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' } };
+  const withWindow = { ...base, window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' } };
   const second = await render(<CreateProposalScreen navigation={navigation} route={routeWith(withWindow)} />);
   expect(screen.queryByText(NO_WINDOW_HINT)).toBeNull();
   await second.unmount();

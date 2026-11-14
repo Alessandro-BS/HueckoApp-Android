@@ -2,11 +2,17 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { DrawerScreenProps } from '@react-navigation/drawer';
 import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { Challenge, TimeBlock } from '@hueckoapp/shared';
 
 import type { OcrImage } from '../api/ai';
 import type { ProposalPrefill } from '../utils/ai';
 
-export type AuthStackParamList = { Login: undefined; Register: undefined };
+export type AuthStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  ForgotPassword: { email?: string };
+  VerifyCode: { challenge: Challenge };
+};
 
 // Barra inferior: las secciones de uso diario.
 export type TabParamList = {
@@ -25,9 +31,11 @@ export type DrawerParamList = {
 // Pantallas que se apilan sobre el drawer (sin menú, con cabecera nativa y botón atrás).
 export type AppStackParamList = {
   Main: NavigatorScreenParams<DrawerParamList>;
-  AddSchedule: { initialDay?: number } | undefined;
+  AddSchedule: { initialDay?: number; block?: TimeBlock } | undefined;
   OcrReview: { image: OcrImage };
   GroupDetail: { groupId: string; name: string };
+  ProximityInvite: { groupId: string; name: string };
+  ProximityJoin: undefined;
   // `prefill`: borrador o idea de Huecko IA que abre el formulario ya rellenado.
   CreateProposal: { groupId: string; groupName: string; prefill?: ProposalPrefill };
   Voting: { proposalId: string };
@@ -35,6 +43,8 @@ export type AppStackParamList = {
   // Administración (solo rol ADMIN): detalles que se abren desde las pestañas Usuarios y Grupos.
   AdminUserDetail: { userId: string; name: string };
   AdminGroupDetail: { groupId: string; name: string };
+  // Código del correo para activar la verificación en dos pasos (se abre desde Perfil).
+  EnableTwoFactor: { challenge: Challenge };
 };
 
 // Pestañas del detalle de grupo.

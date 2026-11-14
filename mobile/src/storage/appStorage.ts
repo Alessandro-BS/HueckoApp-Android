@@ -9,8 +9,8 @@ import type { DashboardData } from '../hooks/useDashboard';
 const LAST_EMAIL_KEY = 'hueckoapp.lastEmail';
 const SESSION_USER_KEY = 'hueckoapp.sessionUser';
 const DASHBOARD_PREFIX = 'hueckoapp.dashboard.';
-// Sube si cambia la forma de DashboardData: una copia de otra versión de la app se ignora en vez de romper Inicio.
-const DASHBOARD_CACHE_VERSION = 1;
+// Sube si cambia la forma de DashboardData (v2: Proposal.myVoteWindowIds reemplaza a myVoteWindowId): una copia de otra versión de la app se ignora en vez de romper Inicio.
+const DASHBOARD_CACHE_VERSION = 2;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -23,12 +23,28 @@ const isDashboardData = (v: unknown): v is DashboardData =>
   Array.isArray(v.dashboard.groups) &&
   Array.isArray(v.dashboard.pendingVotes);
 
-const isCurrentUser = (v: unknown): v is CurrentUser =>
-  isRecord(v) &&
-  typeof v.id === 'string' &&
-  typeof v.name === 'string' &&
-  typeof v.email === 'string' &&
-  (v.role === 'USER' || v.role === 'ADMIN');
+// Los perfiles guardados antes de la verificación en dos pasos no traen los 4 campos nuevos: se completan.
+const toCurrentUser = (v: unknown): CurrentUser | null => {
+  if (
+    !(
+      isRecord(v) &&
+      typeof v.id === 'string' &&
+      typeof v.name === 'string' &&
+      typeof v.email === 'string' &&
+      (v.role === 'USER' || v.role === 'ADMIN')
+    )
+  ) {
+    return null;
+  }
+  const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback);
+  return {
+    ...(v as CurrentUser),
+    emailVerified: flag(v.emailVerified, true),
+    twoFactorEnabled: flag(v.twoFactorEnabled, false),
+    hasPassword: flag(v.hasPassword, true),
+    hasGoogle: flag(v.hasGoogle, false),
+  };
+};
 
 const read = async <T>(key: string): Promise<T | null> => {
   try {
@@ -60,7 +76,7 @@ export const lastEmailStorage = {
 export const sessionUserStorage = {
   get: async () => {
     const saved = await read<unknown>(SESSION_USER_KEY);
-    return isCurrentUser(saved) ? saved : null;
+    return toCurrentUser(saved);
   },
   set: (user: CurrentUser) => write(SESSION_USER_KEY, user),
   clear: async () => {
@@ -87,4 +103,26 @@ export const dashboardCache = {
       // Se vuelve a intentar en el próximo cierre de sesión.
     }
   },
+};
+
+const PUSH_TOKEN_KEY = 'hueckoapp.pushToken';
+const NOTIFICATIONS_PREF_KEY = 'hueckoapp.notificationsEnabled';
+
+/** Token de Expo Push de este celular (no es un secreto de la cuenta). Se borra al cerrar sesión. */
+export const pushTokenStorage = {
+  get: () => read<string>(PUSH_TOKEN_KEY),
+  set: (token: string) => write(PUSH_TOKEN_KEY, token),
+  clear: async () => {
+    try {
+      await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
+    } catch {
+      // Se vuelve a intentar en el próximo cierre de sesión.
+    }
+  },
+};
+
+/** ¿Este celular recibe avisos? Es del celular, no de la cuenta: se conserva al cerrar sesión. Por defecto, sí. */
+export const notificationsPreference = {
+  get: async () => (await read<boolean>(NOTIFICATIONS_PREF_KEY)) !== false,
+  set: (enabled: boolean) => write(NOTIFICATIONS_PREF_KEY, enabled),
 };

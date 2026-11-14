@@ -1,134 +1,136 @@
-import type { ResolveIncidencesInput } from '@hueckoapp/shared';
+import type { ExpressOption, Proposal, ReplanInput } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppDialog, DateTimeField, ErrorBanner } from '../../components';
+import { ErrorBanner, PrimaryButton } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import { colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
 import { showToast } from '../../utils/toast';
-import { confirmCancelPlan } from './confirmCancelPlan';
+import { closesInLabel } from '../../utils/zone';
+import { ReplanSheet } from './ReplanSheet';
 
-type Choice = { state: 'PROPUESTO' | 'CANCELADO' | 'CONFIRMADO'; label: string };
-const REPROGRAM: Choice = { state: 'PROPUESTO', label: 'Reprogramar' };
-const CHOICES: Choice[] = [REPROGRAM, { state: 'CANCELADO', label: 'Cancelar' }, { state: 'CONFIRMADO', label: 'Mantener' }];
+const OPTIONS: { option: ExpressOption; label: string }[] = [
+  { option: 'CANCELAR', label: 'Cancelar' },
+  { option: 'REAGENDAR', label: 'Reagendar' },
+  { option: 'MANTENER', label: 'Mantener' },
+];
+const LABEL: Record<ExpressOption, string> = { CANCELAR: 'Cancelar', REAGENDAR: 'Reagendar', MANTENER: 'Mantener' };
+
+const votesLabel = (n: number) => `${n} ${n === 1 ? 'voto' : 'votos'}`;
 
 type Props = {
-  kind: 'RECOORDINACION' | 'AVISO';
-  who: string;
-  reason: string;
-  planTitle: string;
-  canResolve: boolean;
-  onResolve: (input: ResolveIncidencesInput) => Promise<unknown>;
-  onResolved?: () => void;
+  proposal: Proposal;
+  onVote: (option: ExpressOption) => Promise<unknown>;
+  onReplan: (input: ReplanInput) => Promise<unknown>;
+  /** Si el voto falla (p. ej. 409 VOTING_CLOSED: la votación cerró o el plan se canceló), recarga el plan. */
+  onStale?: () => void;
+  /** Solo para tests: por defecto, el reloj de la app. */
+  now?: Date;
 };
 
-function ReprogramDialog({ loading, error, onConfirm, onDismiss }: {
-  loading: boolean;
-  error: string | null;
-  onConfirm: (deadline: Date) => void;
-  onDismiss: () => void;
-}) {
-  const [now] = useState(today);
-  const [deadline, setDeadline] = useState<Date | null>(null);
-  const future = deadline !== null && deadline.getTime() > now.getTime();
-  return (
-    <AppDialog
-      title="Reprogramar plan"
-      confirmLabel="Abrir nueva votación"
-      onConfirm={() => {
-        if (deadline && future) onConfirm(deadline);
-      }}
-      onDismiss={onDismiss}
-      confirmDisabled={!future}
-      loading={loading}
-    >
-      <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-        Se borrarán los votos y el grupo volverá a votar las franjas hasta la nueva fecha límite.
-      </Text>
-      <View style={{ height: 16 }} />
-      <DateTimeField
-        label="Nueva fecha límite de votación"
-        value={deadline}
-        onChange={setDeadline}
-        minimumDate={now}
-        placeholder="Elige fecha y hora"
-        error={deadline && !future ? 'La fecha límite debe ser futura' : undefined}
-      />
-      {error ? (
-        <View style={{ marginTop: 12 }}>
-          <ErrorBanner message={error} />
-        </View>
-      ) : null}
-    </AppDialog>
-  );
-}
+// Votación exprés del grupo (docs/api.md, «Votación exprés»): una ausencia crítica abre una votación corta con tres
+// opciones; vota cada miembro menos quien avisó y el resultado lo aplica el servidor. Si el grupo decidió reagendar
+// (plan EN_RECOORDINACION), quien gestiona propone franjas nuevas con el mismo ReplanSheet de «Replantear».
+export function ExpressVoteCard({ proposal, onVote, onReplan, onStale, now: nowProp }: Props) {
+  const now = nowProp ?? today();
+  const vote = proposal.expressVote;
+  const [pending, setPending] = useState<ExpressOption | null>(null);
+  const [replanning, setReplanning] = useState(false);
+  const action = useAction(onVote);
 
-// G5: «Votación exprés» si el plan se re-coordina (falta un imprescindible); «Aviso de imprevisto» si sigue confirmado
-// con incidencias abiertas. Solo quien gestiona el plan decide (B20, canManage); reprogramar pide un plazo nuevo (G4).
-export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onResolve, onResolved }: Props) {
-  const [pending, setPending] = useState<Choice['state'] | null>(null);
-  const [reprogramming, setReprogramming] = useState(false);
-  const action = useAction(onResolve);
-
-  const run = async (choice: Choice, input: ResolveIncidencesInput) => {
-    setPending(choice.state);
-    const result = await action.run(input);
+  const choose = async (option: ExpressOption) => {
+    if (!vote?.canVote || action.loading || option === vote.myVote) return;
+    setPending(option);
+    const result = await action.run(option);
     setPending(null);
-    if (!result.ok) return;
-    setReprogramming(false);
-    showToast(`Votación exprés registrada: ${choice.label.toLowerCase()}.`);
-    onResolved?.();
+    if (result.ok) showToast('Tu voto ha sido registrado.');
+    // Si falló, la tarjeta puede estar desfasada (la votación cerró o venció, o el plan se canceló): el mensaje queda
+    // en el banner mientras se recarga el plan y, si la votación ya cerró, la recarga la muestra cerrada.
+    else onStale?.();
   };
 
-  const choose = (choice: Choice) => {
-    if (action.loading) return;
-    if (choice.state === 'PROPUESTO') setReprogramming(true);
-    // Cancelar pide la misma confirmación que «Cancelar plan» del detalle.
-    else if (choice.state === 'CANCELADO') confirmCancelPlan(planTitle, () => void run(choice, { newState: 'CANCELADO' }));
-    else void run(choice, { newState: choice.state });
-  };
-
-  const title = kind === 'RECOORDINACION' ? 'Votación exprés' : 'Aviso de imprevisto';
-  const headline = kind === 'RECOORDINACION' ? `${who} no podrá asistir a «${planTitle}»` : `${who} reportó un imprevisto en «${planTitle}»`;
+  const recoordinating = proposal.state === 'EN_RECOORDINACION';
 
   return (
     <View style={styles.card}>
-      <Text style={[typography.labelMedium, styles.warning]}>{title}</Text>
-      <Text style={[typography.titleMedium, styles.headline]}>{headline}</Text>
-      <Text style={[typography.bodySmall, styles.warning, styles.reason]}>{reason}</Text>
-      {canResolve ? (
-        <View style={styles.buttons}>
-          {CHOICES.map((choice) => {
-            const selected = pending === choice.state;
-            return (
-              <Pressable
-                key={choice.state}
-                accessibilityRole="button"
-                accessibilityState={{ selected, disabled: action.loading }}
-                disabled={action.loading}
-                onPress={() => choose(choice)}
-                style={[styles.choice, selected ? styles.choiceSelected : styles.choiceIdle]}
-              >
-                <Text style={[typography.labelMedium, { color: selected ? colors.onPrimary : colors.onSurface }]}>{choice.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <Text style={[typography.bodySmall, styles.warning, styles.onlyManager]}>{'Solo quien organiza el plan puede decidir qué hacer con él.'}</Text>
-      )}
-      {action.error && !reprogramming ? (
-        <View style={styles.error}>
-          <ErrorBanner message={action.error} />
+      <Text style={[typography.labelMedium, styles.warning]}>{vote ? 'Votación exprés' : 'Plan en recoordinación'}</Text>
+      {vote ? (
+        <>
+          <Text style={[typography.titleMedium, styles.headline]}>{`${vote.reportedBy.name} no podrá asistir`}</Text>
+          <Text style={[typography.bodySmall, styles.warning, styles.gap4]}>{vote.reason}</Text>
+          <Text style={[typography.bodySmall, styles.warning, styles.gap4]}>{`Ausencia crítica: ${vote.criticalReason}`}</Text>
+        </>
+      ) : null}
+
+      {vote?.status === 'ABIERTA' ? (
+        <>
+          <Text style={[typography.titleSmall, styles.headline, styles.gap12]}>¿Qué hacemos con el plan?</Text>
+          <View style={styles.buttons}>
+            {OPTIONS.map(({ option, label }) => {
+              const selected = (pending ?? vote.myVote) === option;
+              const disabled = !vote.canVote || action.loading;
+              const fg = selected ? colors.onPrimary : colors.onSurface;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label}, ${votesLabel(vote.counts[option])}`}
+                  accessibilityState={{ selected, disabled }}
+                  disabled={disabled}
+                  onPress={() => void choose(option)}
+                  style={[styles.choice, selected ? styles.choiceSelected : styles.choiceIdle, disabled && !selected ? styles.choiceDisabled : null]}
+                >
+                  <Text style={[typography.labelMedium, { color: fg }]}>{label}</Text>
+                  <Text style={[typography.bodySmall, { color: fg }]}>{String(vote.counts[option])}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={[typography.bodySmall, styles.warning, styles.gap8]}>{closesInLabel(vote.expiresAt, now)}</Text>
+          {!vote.canVote ? <Text style={[typography.bodySmall, styles.warning, styles.gap4]}>No votas en esta votación.</Text> : null}
+          {vote.recommendation ? (
+            <Text style={[typography.bodySmall, styles.headline, styles.gap8]}>
+              {`Huecko sugiere: ${LABEL[vote.recommendation.option]} — ${vote.recommendation.reason}`}
+            </Text>
+          ) : null}
+          {action.error ? (
+            <View style={styles.gap12}>
+              <ErrorBanner message={action.error} />
+            </View>
+          ) : null}
+        </>
+      ) : null}
+
+      {vote?.status === 'CERRADA' && vote.result ? (
+        <Text style={[typography.titleSmall, styles.headline, styles.gap12]}>
+          {vote.resultByDefault ? 'Sin quórum: el plan se mantiene' : `El grupo decidió: ${LABEL[vote.result]}`}
+        </Text>
+      ) : null}
+
+      {recoordinating ? (
+        <View style={styles.gap12}>
+          <Text style={[typography.bodySmall, styles.warning]}>Hay que buscar una fecha nueva para el plan.</Text>
+          {proposal.canManage ? (
+            <PrimaryButton title="Proponer franjas" icon="edit-calendar" style={styles.gap12} onPress={() => setReplanning(true)} />
+          ) : (
+            <Text style={[typography.bodySmall, styles.warning, styles.gap4]}>Quien organiza el plan propondrá franjas nuevas.</Text>
+          )}
         </View>
       ) : null}
-      {reprogramming ? (
-        <ReprogramDialog
-          loading={action.loading}
-          error={action.error}
-          onConfirm={(deadline) => void run(REPROGRAM, { newState: 'PROPUESTO', votingDeadline: deadline.toISOString() })}
-          onDismiss={() => setReprogramming(false)}
+
+      {replanning ? (
+        <ReplanSheet
+          title="Proponer franjas nuevas"
+          submitLabel="Abrir nueva votación"
+          // Lanza si el servidor rechaza: la hoja muestra el error y se queda abierta.
+          onSubmit={async (input) => {
+            await onReplan(input);
+            setReplanning(false);
+            showToast('Franjas propuestas: el grupo vuelve a votar la fecha.');
+          }}
+          onDismiss={() => setReplanning(false)}
+          now={nowProp}
         />
       ) : null}
     </View>
@@ -145,11 +147,12 @@ const styles = StyleSheet.create({
   },
   warning: { color: colors.onWarningContainer },
   headline: { color: colors.onSurface, marginTop: 8 },
-  reason: { marginTop: 4 },
-  buttons: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  choice: { flex: 1, height: 48, borderRadius: radius.xxl, alignItems: 'center', justifyContent: 'center' },
+  gap4: { marginTop: 4 },
+  gap8: { marginTop: 8 },
+  gap12: { marginTop: 12 },
+  buttons: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  choice: { flex: 1, minHeight: 56, paddingVertical: 6, borderRadius: radius.xxl, alignItems: 'center', justifyContent: 'center' },
   choiceIdle: { backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: colors.outlineVariant },
   choiceSelected: { backgroundColor: colors.primary },
-  onlyManager: { marginTop: 16 },
-  error: { marginTop: 12 },
+  choiceDisabled: { opacity: 0.6 },
 });

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Group, GroupMember, GroupSummary } from '@hueckoapp/shared';
+import type { Group, GroupMember, GroupSummary, UpdateMemberInput } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
 import { generateInviteCode } from './invite-code';
@@ -93,7 +93,7 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
         for (let attempt = 1; !(await insertIfCodeFree(id, generateCode(), input)); attempt++) {
           if (attempt >= MAX_CODE_ATTEMPTS) throw new Error('No se pudo generar un código de invitación único');
         }
-        await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'OWNER')", [id, ownerId]);
+        await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'ORGANIZER')", [id, ownerId]);
       });
       return (await findById(id))!;
     },
@@ -118,11 +118,42 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
       );
     },
 
-    async setEssential(groupId: string, userId: string, isEssential: boolean): Promise<void> {
-      await db.query('UPDATE group_members SET is_essential = $1 WHERE group_id = $2 AND user_id = $3', [isEssential, groupId, userId]);
+    // Cambia «imprescindible» y/o el rol en una sola escritura. Nunca deja el grupo sin organizadores: quitarle el rol
+    // al último → 'LAST_ORGANIZER' sin escribir nada. Con el grupo bloqueado vuelve a comprobar que quien actúa sigue
+    // siendo organizador (otro pudo quitarle el rol entre la comprobación de la ruta y el bloqueo) → 'NOT_ORGANIZER'.
+    updateMember(
+      groupId: string,
+      userId: string,
+      change: UpdateMemberInput,
+      actorId: string,
+    ): Promise<'OK' | 'LAST_ORGANIZER' | 'NOT_ORGANIZER'> {
+      return db.transaction(async () => {
+        // El mismo bloqueo que leave: dos cambios de rol, o un cambio y una salida, a la vez se ponen en fila y el
+        // segundo cuenta los organizadores que dejó el primero.
+        await db.query('SELECT id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
+        const actor = await db.one(
+          `SELECT 1 AS found FROM group_members WHERE group_id = $1 AND user_id = $2 AND role = 'ORGANIZER'`,
+          [groupId, actorId],
+        );
+        if (!actor) return 'NOT_ORGANIZER';
+        if (change.role === 'MEMBER') {
+          const { others, self } = (await db.one<{ others: number; self: number }>(
+            `SELECT COUNT(*) FILTER (WHERE user_id <> $2) AS others, COUNT(*) FILTER (WHERE user_id = $2) AS self
+             FROM group_members WHERE group_id = $1 AND role = 'ORGANIZER'`,
+            [groupId, userId],
+          ))!;
+          if (others === 0 && self > 0) return 'LAST_ORGANIZER';
+        }
+        await db.query(
+          `UPDATE group_members SET is_essential = COALESCE($3::boolean, is_essential), role = COALESCE($4::text, role)
+           WHERE group_id = $1 AND user_id = $2`,
+          [groupId, userId, change.isEssential ?? null, change.role ?? null],
+        );
+        return 'OK';
+      });
     },
 
-    // Salir del grupo. Si no queda nadie, el grupo se borra; si se fue el último OWNER,
+    // Salir del grupo. Si no queda nadie, el grupo se borra; si se fue el último organizador,
     // pasa a serlo quien lleva más tiempo (domain spec C6).
     leave(groupId: string, userId: string): Promise<void> {
       return db.transaction(async () => {
@@ -130,16 +161,16 @@ export function groupsRepository(db: Db, generateCode: () => string = generateIn
         // (si no, las dos podrían verse «acompañadas» y dejar un grupo sin nadie).
         await db.query('SELECT id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
         await db.query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
-        const { remaining, owners } = (await db.one<{ remaining: number; owners: number }>(
-          `SELECT COUNT(*) AS remaining, COUNT(*) FILTER (WHERE role = 'OWNER') AS owners
+        const { remaining, organizers } = (await db.one<{ remaining: number; organizers: number }>(
+          `SELECT COUNT(*) AS remaining, COUNT(*) FILTER (WHERE role = 'ORGANIZER') AS organizers
            FROM group_members WHERE group_id = $1`,
           [groupId],
         ))!;
         if (remaining === 0) {
           await db.query('DELETE FROM groups WHERE id = $1', [groupId]);
-        } else if (owners === 0) {
+        } else if (organizers === 0) {
           await db.query(
-            `UPDATE group_members SET role = 'OWNER'
+            `UPDATE group_members SET role = 'ORGANIZER'
              WHERE group_id = $1 AND user_id = (
                SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY joined_at, seq LIMIT 1
              )`,

@@ -148,4 +148,155 @@ export const migrations: string[] = [
      created_at  TEXT COLLATE "C" NOT NULL
    );
    CREATE INDEX ai_calls_created_idx ON ai_calls (created_at);`,
+
+  // 5 — Tercera entrega: unirse a un grupo acercando el celular. Cada fila es un aviso (una mitad de la pareja).
+  // peer_id no lleva FK: las dos mitades se apuntan entre sí (un ciclo al insertar); lo garantiza el código.
+  // Las fechas son las del reloj del servidor; los vencimientos se calculan al leer (proximity-rules.ts).
+  `CREATE TABLE proximity_requests (
+     id         TEXT COLLATE "C" PRIMARY KEY,
+     user_id    TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     role       TEXT COLLATE "C" NOT NULL CHECK (role IN ('INVITE', 'JOIN')),
+     group_id   TEXT COLLATE "C" REFERENCES groups(id) ON DELETE CASCADE,
+     status     TEXT COLLATE "C" NOT NULL
+                CHECK (status IN ('WAITING', 'MATCHED', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'AMBIGUOUS', 'CANCELLED')),
+     peer_id    TEXT COLLATE "C",
+     created_at TEXT COLLATE "C" NOT NULL,
+     matched_at TEXT COLLATE "C",
+     CHECK ((role = 'INVITE') = (group_id IS NOT NULL))
+   );
+   CREATE INDEX proximity_requests_status_idx ON proximity_requests (status, created_at);`,
+
+  // 6 — El emparejamiento hacia adelante busca parejas MATCHED de los últimos 3 s por matched_at (la tabla no se vacía).
+  `CREATE INDEX proximity_requests_matched_idx ON proximity_requests (status, matched_at);`,
+
+  // 7 — Franjas con fecha: cada franja es un día concreto ("YYYY-MM-DD" en America/Lima), no un día de la semana.
+  // Corre sobre datos reales: no cambia el estado de ninguna propuesta ni toca los votos (apuntan a la franja por id).
+  // - La franja elegida de un plan confirmado toma su scheduled_date.
+  // - Las demás, la próxima vez que ocurre su day_of_week desde el día (en Lima) en que se creó la propuesta, ese mismo
+  //   día incluido: 0 a 6 días después. Una franja del mismo día de la creación que ya había empezado a esa hora
+  //   queda con esa fecha, ya pasada: confirmarla da WINDOW_STARTED y basta con replantear la propuesta.
+  // day_of_week se conserva y desde ahora el código siempre lo deriva de date.
+  // El UNIQUE viejo se declaró sin nombre en la migración 3: su nombre lo generó Postgres (y lo recorta a 63 bytes),
+  // así que se busca en el catálogo por sus columnas. Si no aparece exactamente uno, la migración falla (STRICT).
+  `ALTER TABLE proposal_windows ADD COLUMN date TEXT COLLATE "C";
+   UPDATE proposal_windows w SET date = p.scheduled_date
+   FROM proposals p
+   WHERE p.id = w.proposal_id AND p.chosen_window_id = w.id AND p.scheduled_date IS NOT NULL;
+   UPDATE proposal_windows w
+   SET date = to_char(c.d + ((w.day_of_week - EXTRACT(ISODOW FROM c.d)::int + 7) % 7), 'YYYY-MM-DD')
+   FROM (SELECT id, (created_at::timestamptz AT TIME ZONE 'America/Lima')::date AS d FROM proposals) c
+   WHERE c.id = w.proposal_id AND w.date IS NULL;
+   ALTER TABLE proposal_windows ALTER COLUMN date SET NOT NULL;
+   DO $$
+   DECLARE old_name TEXT;
+   BEGIN
+     SELECT con.conname INTO STRICT old_name
+     FROM pg_constraint con
+     WHERE con.conrelid = 'proposal_windows'::regclass AND con.contype = 'u'
+       AND (SELECT array_agg(a.attname::text ORDER BY a.attname::text) FROM pg_attribute a
+            WHERE a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey))
+           = ARRAY['day_of_week', 'end_time', 'proposal_id', 'start_time'];
+     EXECUTE format('ALTER TABLE proposal_windows DROP CONSTRAINT %I', old_name);
+   END
+   $$;
+   ALTER TABLE proposal_windows ADD CONSTRAINT proposal_windows_proposal_date_time_key UNIQUE (proposal_id, date, start_time, end_time);`,
+
+  // 8 — Votación exprés grupal: una falta crítica en un plan confirmado abre una votación corta.
+  // - Una sola ABIERTA por plan (índice único parcial); las CERRADAS se acumulan como historial.
+  // - express_vote_voters fija quién vota al abrir (una fila por votante; option es su voto, NULL mientras no vote).
+  //   Solo cuentan los que siguen en el grupo: se comprueba al leer, no se borran filas al salir de un grupo.
+  // - incidences.critical_reason: por qué la incidencia fue crítica (NULL si no lo fue).
+  `ALTER TABLE incidences ADD COLUMN critical_reason TEXT COLLATE "C";
+   CREATE TABLE express_votes (
+     id                    TEXT COLLATE "C" PRIMARY KEY,
+     seq                   BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+     proposal_id           TEXT COLLATE "C" NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+     reporter_id           TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     reason                TEXT COLLATE "C" NOT NULL,
+     critical_reason       TEXT COLLATE "C" NOT NULL,
+     status                TEXT COLLATE "C" NOT NULL CHECK (status IN ('ABIERTA', 'CERRADA')),
+     opened_at             TEXT COLLATE "C" NOT NULL,
+     expires_at            TEXT COLLATE "C" NOT NULL,
+     closed_at             TEXT COLLATE "C",
+     result                TEXT COLLATE "C" CHECK (result IN ('CANCELAR', 'REAGENDAR', 'MANTENER')),
+     result_by_default     BOOLEAN,
+     recommendation        TEXT COLLATE "C" CHECK (recommendation IN ('CANCELAR', 'REAGENDAR', 'MANTENER')),
+     recommendation_reason TEXT COLLATE "C"
+   );
+   CREATE UNIQUE INDEX express_votes_one_open ON express_votes (proposal_id) WHERE status = 'ABIERTA';
+   CREATE INDEX express_votes_proposal_idx ON express_votes (proposal_id, opened_at);
+   CREATE TABLE express_vote_voters (
+     vote_id  TEXT COLLATE "C" NOT NULL REFERENCES express_votes(id) ON DELETE CASCADE,
+     user_id  TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     option   TEXT COLLATE "C" CHECK (option IN ('CANCELAR', 'REAGENDAR', 'MANTENER')),
+     voted_at TEXT COLLATE "C",
+     PRIMARY KEY (vote_id, user_id)
+   );`,
+
+  // 9 — La recomendación de la IA en la votación exprés se anota en ai_calls como una tarea más: el CHECK de `task`
+  // (inline en la migración 4, así que Postgres lo llamó ai_calls_task_check) se rehace con la tarea nueva.
+  `ALTER TABLE ai_calls DROP CONSTRAINT ai_calls_task_check;
+   ALTER TABLE ai_calls ADD CONSTRAINT ai_calls_task_check
+     CHECK (task IN ('schedule-ocr', 'proposal-draft', 'plan-suggestions', 'voting-summary', 'express-recommendation'));`,
+
+  // 10 — Varios organizadores por grupo: el rol OWNER pasa a llamarse ORGANIZER. El CHECK de `role` (inline en la
+  // migración 2, así que Postgres lo llamó group_members_role_check) se rehace con el valor nuevo.
+  `ALTER TABLE group_members DROP CONSTRAINT group_members_role_check;
+   UPDATE group_members SET role = 'ORGANIZER' WHERE role = 'OWNER';
+   ALTER TABLE group_members ADD CONSTRAINT group_members_role_check CHECK (role IN ('ORGANIZER', 'MEMBER'));`,
+
+  // 11 — Cierre automático y voto múltiple. La clave de votes (PRIMARY KEY inline de la migración 2, así que Postgres
+  // la llamó votes_pkey) pasa a incluir la franja.
+  `ALTER TABLE proposals ADD COLUMN multiple_votes BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE proposals ADD COLUMN auto_closed BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE votes DROP CONSTRAINT votes_pkey;
+   ALTER TABLE votes ADD PRIMARY KEY (proposal_id, user_id, window_id);`,
+
+  // 12 — Notificaciones push: celulares registrados y bandeja de salida de avisos.
+  `CREATE TABLE push_devices (
+     token        TEXT COLLATE "C" PRIMARY KEY,
+     user_id      TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     created_at   TEXT COLLATE "C" NOT NULL,
+     last_seen_at TEXT COLLATE "C" NOT NULL
+   );
+   CREATE INDEX push_devices_user_idx ON push_devices (user_id);
+   CREATE TABLE notifications (
+     id         TEXT COLLATE "C" PRIMARY KEY,
+     seq        BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+     user_id    TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     kind       TEXT COLLATE "C" NOT NULL CHECK (kind IN ('NEW_PROPOSAL', 'PLAN_CONFIRMED', 'PLAN_CANCELLED',
+                                                          'EXPRESS_OPENED', 'EXPRESS_RESULT', 'REMINDER')),
+     title      TEXT COLLATE "C" NOT NULL,
+     body       TEXT COLLATE "C" NOT NULL,
+     data       TEXT COLLATE "C" NOT NULL,
+     dedupe_key TEXT COLLATE "C" UNIQUE,
+     created_at TEXT COLLATE "C" NOT NULL,
+     sent_at    TEXT COLLATE "C",
+     claimed_at TEXT COLLATE "C",
+     attempts   INTEGER NOT NULL DEFAULT 0,
+     last_error TEXT COLLATE "C"
+   );
+   CREATE INDEX notifications_pending_idx ON notifications (seq) WHERE sent_at IS NULL;`,
+
+  // 13 — Cuentas: correo verificado, Google, 2FA y retos con código.
+  `ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+   ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT false;
+   UPDATE users SET email_verified = true;
+   ALTER TABLE users ADD COLUMN google_sub TEXT COLLATE "C" UNIQUE;
+   ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE auth_challenges (
+     id           TEXT COLLATE "C" PRIMARY KEY,
+     user_id      TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     purpose      TEXT COLLATE "C" NOT NULL CHECK (purpose IN ('VERIFY_EMAIL', 'LOGIN_2FA', 'RESET_PASSWORD', 'ENABLE_2FA')),
+     code_hash    TEXT COLLATE "C" NOT NULL,
+     attempts     INTEGER NOT NULL DEFAULT 0,
+     send_count   INTEGER NOT NULL DEFAULT 0,
+     created_at   TEXT COLLATE "C" NOT NULL,
+     expires_at   TEXT COLLATE "C" NOT NULL,
+     last_sent_at TEXT COLLATE "C",
+     consumed_at  TEXT COLLATE "C"
+   );
+   CREATE UNIQUE INDEX auth_challenges_one_live ON auth_challenges (user_id, purpose) WHERE consumed_at IS NULL;
+   CREATE INDEX auth_challenges_user_created_idx ON auth_challenges (user_id, created_at);`,
 ];

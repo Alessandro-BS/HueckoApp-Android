@@ -1,7 +1,7 @@
 import type { Group, MatchWindow, PlanCategory } from '@hueckoapp/shared';
 import { z } from 'zod';
 
-import { nextOccurrence } from '../proposals/rules';
+import { instant } from '../common/zone';
 import type { JsonSchema } from './ai-client';
 import { userData } from './prompt';
 import { MAX_DRAFT_WINDOWS, numberedWindows, todayLabel } from './plan-context';
@@ -23,6 +23,13 @@ export const proposalDraftInputSchema = z.object({
     .trim()
     .min(3, 'Escribe al menos 3 caracteres')
     .max(500, 'Máximo 500 caracteres'),
+  // Lunes (cualquier día se normaliza) de la semana de los candidatos; la valida parseWeek en la ruta.
+  week: z.string({ error: 'Elige una semana entre esta y las próximas 3' }).optional(),
+});
+
+// Entrada de POST /groups/:id/ai/suggestions (el cuerpo es opcional).
+export const suggestionsInputSchema = z.object({
+  week: z.string({ error: 'Elige una semana entre esta y las próximas 3' }).optional(),
 });
 
 // Piezas comunes. Lo imprescindible (título, motivo) es estricto; lo accesorio se corrige en vez de fallar.
@@ -109,13 +116,14 @@ export function draftPrompt({ text, group, windows, now }: { text: string; group
     `- "deadlineHours": en cuántas horas debería cerrar la votación (entre 1 y 168; si no dice nada, ${DEFAULT_DEADLINE_HOURS}).`,
     '',
     'Cómo leer lo que pide:',
-    '- Las franjas son de una semana tipo y se repiten cada semana. Si nombra un día ("el viernes", "hoy", "mañana" = el día ' +
-      'siguiente a hoy), elige una franja de ESE día de la semana; si ese día no tiene franjas, "windowIndex" null.',
+    '- Cada franja de la lista tiene su fecha (p. ej. "Jue 20 nov 16:00–18:00"). Si nombra un día ("el viernes", "hoy", "mañana" = ' +
+      'el día siguiente a hoy), elige una franja de ESA fecha; si pide un día sin fecha clara, la más cercana a hoy. ' +
+      'Si ese día no tiene franjas, "windowIndex" null.',
     '- Momentos del día: "en la mañana" = 08:00-12:00, "en la tarde" = 12:00-18:00, "en la noche" = desde las 18:00. ' +
       'Si acepta varios ("mañana o tarde"), elige el que tenga franja ese día, el más cercano a ahora.',
     '- Si el plan es pronto (hoy o mañana), que la votación cierre antes de que empiece: "deadlineHours" menor que las horas que faltan.',
     '',
-    'Franjas en las que el grupo está libre (semana tipo):',
+    'Franjas en las que el grupo está libre (con su fecha):',
     numberedWindows(windows),
     '',
     'Nombre del grupo:',
@@ -132,13 +140,11 @@ export function draftPrompt({ text, group, windows, now }: { text: string; group
  */
 export function draftDeadline(now: Date, hours: number, window: MatchWindow | null): string {
   // Hacia arriba a la hora en punto: nunca queda a menos de 1 h de ahora (la creación exige un plazo futuro).
-  const deadline0 = new Date(now.getTime() + hours * HOUR);
-  if (deadline0.getMinutes() + deadline0.getSeconds() + deadline0.getMilliseconds() > 0) {
-    deadline0.setHours(deadline0.getHours() + 1, 0, 0, 0);
-  }
+  // Lima está en un desfase de horas enteras (UTC-5), así que redondear el instante es redondear la hora de Lima.
+  const deadline0 = new Date(Math.ceil((now.getTime() + hours * HOUR) / HOUR) * HOUR);
   let deadline = new Date(Math.max(deadline0.getTime(), now.getTime() + HOUR));
   if (window) {
-    const cutoff = new Date(nextOccurrence(window.dayOfWeek, window.startTime, now).getTime() - HOUR);
+    const cutoff = new Date(instant(window.date, window.startTime).getTime() - HOUR);
     if (cutoff.getTime() >= now.getTime() + HOUR && cutoff.getTime() < deadline.getTime()) deadline = cutoff;
   }
   return deadline.toISOString();
@@ -205,7 +211,7 @@ export function suggestionsPrompt({
     '- "reason": una frase que explique por qué encaja (máx. 200 caracteres).',
     'No repitas planes que el grupo ya propuso.',
     '',
-    'Franjas en las que el grupo está libre (semana tipo):',
+    'Franjas en las que el grupo está libre (con su fecha):',
     numberedWindows(windows),
     '',
     'Datos del grupo:',
