@@ -64,6 +64,11 @@ export function challengesRepository(db: Db) {
     },
 
     /** Bloquea la fila hasta el final de la transacción: los intentos simultáneos hacen cola en vez de contar por separado. */
+    /** De quién es el reto, sin candado: para bloquear la cuenta antes que el reto. */
+    async ownerOf(id: string): Promise<string | undefined> {
+      return (await db.one<{ user_id: string }>('SELECT user_id FROM auth_challenges WHERE id = $1', [id]))?.user_id;
+    },
+
     async findForUpdate(id: string): Promise<ChallengeRow | undefined> {
       const r = await db.one<DbRow>(`${SELECT} WHERE c.id = $1 FOR UPDATE OF c`, [id]);
       return r && toRow(r);

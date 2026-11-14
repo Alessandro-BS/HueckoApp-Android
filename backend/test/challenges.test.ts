@@ -283,7 +283,7 @@ describe('verifyChallenge', () => {
     expect(seen).toEqual({ userId: 'u1', purpose: 'ENABLE_2FA' });
   });
 
-  it('Review Focus 2: el candado FOR UPDATE es lo primero de la transacción y dos códigos malos con attempts = 4 dejan solo 410 y el reto consumido', async () => {
+  it('Review Focus 2: la cuenta y después el reto se bloquean antes de escribir, y dos códigos malos con attempts = 4 dejan solo 410 y el reto consumido', async () => {
     const view = await issueChallenge(deps, USER, 'LOGIN_2FA');
     const code = email.lastCodeTo(USER.email);
     await db.query('UPDATE auth_challenges SET attempts = 4 WHERE id = $1', [view.id]);
@@ -294,9 +294,15 @@ describe('verifyChallenge', () => {
     ]);
     expect(results.map((r) => (r as { status: number }).status)).toEqual([410, 410]);
     expect(await row(view.id)).toMatchObject({ attempts: 5, consumed_at: START.toISOString() });
+    // Cada intento, en su transacción: id de la cuenta (sin candado), candado de la cuenta, candado del reto y recién
+    // entonces escribe (el contador de intentos se actualiza con el reto bloqueado). Siempre la cuenta antes que el
+    // reto, el mismo orden que issueChallenge: así no se interbloquean.
     const inTx = calls.filter((c) => c.inTransaction);
-    expect(inTx[0].sql).toMatch(/FOR UPDATE/);
-    expect(calls.filter((c) => /FOR UPDATE/.test(c.sql))).toHaveLength(2);
+    expect(inTx[0].sql).toMatch(/SELECT user_id FROM auth_challenges WHERE id = \$1$/);
+    expect(inTx[1].sql).toMatch(/FROM users WHERE id = \$1 FOR UPDATE/);
+    expect(inTx[2].sql).toMatch(/FROM auth_challenges c .*FOR UPDATE OF c/);
+    expect(inTx[3].sql).toMatch(/^UPDATE auth_challenges SET attempts/);
+    expect(calls.filter((c) => /FOR UPDATE/.test(c.sql))).toHaveLength(4);
     await expectApiError(verifyChallenge(deps, view.id, code), 410, 'CHALLENGE_EXPIRED');
   });
 });

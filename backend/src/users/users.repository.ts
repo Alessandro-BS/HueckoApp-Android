@@ -78,11 +78,12 @@ export function usersRepository(db: Db) {
      * Registro sobre un correo que nadie confirmó: cambia nombre y contraseña y anula todos sus códigos pendientes (el
      * código que ya recibió la dueña del correo no debe confirmar la cuenta con la contraseña nueva). Solo si sigue sin
      * verificar y sin Google: lo comprueba al escribir (si otra petición lo verificó o lo vinculó justo antes, 409
-     * EMAIL_TAKEN). Primero los retos y después la fila del usuario, el mismo orden de candados que la verificación del
-     * código: si hay una en curso, esta espera a que termine y ve la cuenta ya verificada.
+     * EMAIL_TAKEN). Bloquea primero la cuenta y después los retos, el mismo orden que la verificación del código y
+     * issueChallenge: si hay una verificación en curso, esta espera a que termine y ve la cuenta ya verificada.
      */
     async replaceUnverified(id: string, input: { name: string; passwordHash: string; now: string }): Promise<Account> {
       return db.transaction(async () => {
+        await db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [id]);
         await db.query('UPDATE auth_challenges SET consumed_at = $2 WHERE user_id = $1 AND consumed_at IS NULL', [id, input.now]);
         const { rowCount } = await db.query(
           'UPDATE users SET name = $2, password_hash = $3 WHERE id = $1 AND email_verified = false AND google_sub IS NULL',

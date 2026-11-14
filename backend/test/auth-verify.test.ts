@@ -36,16 +36,18 @@ describe('POST /api/auth/challenges/:id/verify (VERIFY_EMAIL)', () => {
     expect(me.body).toEqual(res.body.user);
   });
 
-  it('verificar el correo va en la misma transacción que el código, tras bloquear el reto', async () => {
+  it('verificar el correo va en la misma transacción que el código, tras bloquear la cuenta y después el reto', async () => {
     const { app, db, emails } = await makeTestApp();
     const { challenge, email } = await registerUnverified(app);
     const calls = recordQueries(db);
     expect((await verify(app, challenge.id, { code: emails.lastCodeTo(email) })).status).toBe(200);
-    const lock = calls.findIndex((c) => /FOR UPDATE/.test(c.sql));
+    const userLock = calls.findIndex((c) => /FROM users WHERE id = \$1 FOR UPDATE/.test(c.sql));
+    const lock = calls.findIndex((c) => /FOR UPDATE OF c/.test(c.sql));
     const mark = calls.findIndex((c) => /UPDATE users SET email_verified = true/.test(c.sql));
-    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(userLock).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeGreaterThan(userLock);
     expect(mark).toBeGreaterThan(lock);
-    expect(calls.slice(lock, mark + 1).every((c) => c.inTransaction)).toBe(true);
+    expect(calls.slice(userLock, mark + 1).every((c) => c.inTransaction)).toBe(true);
   });
 
   it('el código acepta espacios alrededor', async () => {

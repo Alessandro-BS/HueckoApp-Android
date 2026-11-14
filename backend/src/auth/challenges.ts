@@ -124,7 +124,9 @@ type VerifyOutcome = { ok: true; userId: string; purpose: ChallengePurpose } | {
 
 /**
  * Comprueba el código dentro de una transacción con `findForUpdate`: los intentos simultáneos hacen cola, así nunca se
- * cuentan más de 5. 410 si no existe, venció o se consumió. Código malo: 400 CODE_INVALID { attemptsLeft }, o 410 si era
+ * cuentan más de 5. Antes que el reto se bloquea la cuenta (`lockUser`): siempre cuenta → reto, el mismo orden que
+ * issueChallenge y el registro que reemplaza la contraseña, para que no se interbloqueen con `onSuccess`, que escribe
+ * en la cuenta. 410 si no existe, venció o se consumió. Código malo: 400 CODE_INVALID { attemptsLeft }, o 410 si era
  * el quinto (y consume el reto). Bueno: consume y devuelve el usuario y el propósito.
  * `purposeCheck` corre dentro de la misma transacción, tras el candado y ANTES de mirar el código: si lanza, no se gasta
  * intento (las rutas lo usan para rechazar propósitos que no aceptan y, en ENABLE_2FA, el JWT de otra persona).
@@ -144,6 +146,10 @@ export async function verifyChallenge(
   // El resultado sale de la transacción y recién entonces se lanza: lanzar dentro desharía el conteo del intento fallido.
   const outcome = await deps.db.transaction(async (): Promise<VerifyOutcome> => {
     const nowIso = deps.now().toISOString();
+    const owner = await repo.ownerOf(id);
+    if (!owner) throw expired();
+    await repo.lockUser(owner);
+    // Con la cuenta bloqueada, el reto: se vuelve a mirar si sigue vivo (pudo consumirse mientras esperaba).
     const challenge = await repo.findForUpdate(id);
     if (!challenge || isDead(challenge, nowIso)) throw expired();
     opts.purposeCheck?.({ userId: challenge.userId, purpose: challenge.purpose });

@@ -77,16 +77,20 @@ describe('POST /api/auth/register', () => {
     expect(Object.keys(attacker.body)).toEqual(['challenge']);
   });
 
-  it('el reemplazo anula los retos y cambia la contraseña en una transacción, retos primero (orden de candados de verify)', async () => {
+  it('el reemplazo bloquea la cuenta, anula los retos y cambia la contraseña en una transacción (cuenta antes que retos)', async () => {
     const { app: target, db } = await makeTestApp();
     await registerUnverified(target, { email: 'ana@correo.com' });
     const calls = recordQueries(db);
     expect((await register(target, { name: 'Ana', email: 'ana@correo.com', password: 'contrasena-nueva' })).status).toBe(201);
+    const lock = calls.findIndex((c) => /FROM users WHERE id = \$1 FOR UPDATE/.test(c.sql));
     const consume = calls.findIndex((c) => /UPDATE auth_challenges SET consumed_at/.test(c.sql));
     const replace = calls.findIndex((c) => /UPDATE users SET name/.test(c.sql));
-    expect(consume).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(consume).toBeGreaterThan(lock);
     expect(replace).toBeGreaterThan(consume);
-    expect(calls[consume]!.inTransaction && calls[replace]!.inTransaction).toBe(true);
+    // El candado es lo primero de su transacción.
+    expect(calls[lock - 1]?.inTransaction ?? false).toBe(false);
+    expect([lock, consume, replace].every((i) => calls[i]!.inTransaction)).toBe(true);
   });
 
   it('un correo sin verificar pero vinculado a Google → 409 EMAIL_TAKEN', async () => {

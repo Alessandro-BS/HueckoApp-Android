@@ -101,8 +101,8 @@ export function authRouter({
       purposeCheck: ({ purpose }) => {
         if (!VERIFIABLE_PURPOSES.has(purpose)) throw challengeExpired();
       },
-      // VERIFY_EMAIL: el código prueba que lee ese correo. En la misma transacción que el código: un registro que
-      // reemplaza la contraseña a la vez espera a que termine y entonces ve la cuenta verificada (409).
+      // VERIFY_EMAIL: el código prueba que lee ese correo. En la misma transacción que el código, con la cuenta
+      // bloqueada: un registro que reemplaza la contraseña a la vez espera a que termine y ve la cuenta verificada (409).
       onSuccess: ({ userId: id }) => users.markEmailVerified(id),
     });
     const account = await users.findById(userId);
