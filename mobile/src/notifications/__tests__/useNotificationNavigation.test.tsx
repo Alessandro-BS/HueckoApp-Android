@@ -132,6 +132,26 @@ describe('useNotificationNavigation', () => {
     }
   });
 
+  it('un destino pendiente al cerrar sesión no se abre con la cuenta que entre después', async () => {
+    mockedRef.isReady.mockReturnValue(false);
+    jest.useFakeTimers();
+    try {
+      const { hook } = await setup();
+      await act(async () => responseListener(response(data())));
+      mockStatus = 'signedOut';
+      await hook.rerender({});
+      mockStatus = 'signedIn';
+      mockedRef.isReady.mockReturnValue(true);
+      await hook.rerender({});
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(mockedRef.navigate).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('recibir con la app abierta invalida Inicio y los grupos', async () => {
     const { invalidate } = await setup();
     await act(async () => receivedListener({ request: { content: { data: data() } } } as never));

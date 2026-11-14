@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import Constants from 'expo-constants';
-import { Linking } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { AppState, Linking } from 'react-native';
 
 import { notificationsPreference } from '../../../storage/appStorage';
 import * as registration from '../../../notifications/registration';
@@ -24,6 +25,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   constants.executionEnvironment = 'standalone';
   await AsyncStorage.clear();
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({ status: 'granted', granted: true } as never);
 });
 
 it('encender el interruptor guarda la preferencia y registra el celular', async () => {
@@ -65,4 +67,32 @@ it('en Expo Go el interruptor está deshabilitado y lo explica', async () => {
   await render(<ProfileScreen />);
   expect(await screen.findByText('Disponible en la app instalada (APK)')).toBeTruthy();
   expect(screen.getByLabelText('Notificaciones en este celular').props.disabled).toBe(true);
+});
+
+it('si el permiso del teléfono no está concedido, el interruptor sale apagado aunque la preferencia sea true', async () => {
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({ status: 'denied', granted: false } as never);
+  await render(<ProfileScreen />);
+  expect(await screen.findByText('Activa las notificaciones de HueckoApp en los ajustes del teléfono')).toBeTruthy();
+  expect(screen.getByLabelText('Notificaciones en este celular').props.value).toBe(false);
+  expect(screen.getByText('Abrir ajustes')).toBeTruthy();
+});
+
+it('al volver a primer plano revisa de nuevo el permiso (p. ej. tras activarlo en los ajustes)', async () => {
+  let onChange: (state: string) => void = () => undefined;
+  jest.spyOn(AppState, 'addEventListener').mockImplementation(((_: string, l: (s: string) => void) => {
+    onChange = l;
+    return { remove: jest.fn() };
+  }) as never);
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({ status: 'denied', granted: false } as never);
+  await render(<ProfileScreen />);
+  expect(await screen.findByText('Abrir ajustes')).toBeTruthy();
+  jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue({ status: 'granted', granted: true } as never);
+  await act(async () => {
+    onChange('background');
+  });
+  await act(async () => {
+    onChange('active');
+  });
+  await waitFor(() => expect(screen.queryByText('Abrir ajustes')).toBeNull());
+  expect(screen.getByLabelText('Notificaciones en este celular').props.value).toBe(true);
 });

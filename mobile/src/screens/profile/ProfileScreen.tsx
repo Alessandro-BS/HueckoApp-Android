@@ -1,8 +1,10 @@
+import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Avatar, HueckoCard, SecondaryButton } from '../../components';
 import { useAuth } from '../../context/AuthContext';
+import { useAppActive } from '../../hooks/useAppActive';
 import { isExpoGo, registerDevice, unregisterDevice } from '../../notifications/registration';
 import { notificationsPreference } from '../../storage/appStorage';
 import { categoryColor, colors, typography } from '../../theme';
@@ -13,15 +15,23 @@ export function ProfileScreen() {
   const [enabled, setEnabled] = useState(false);
   const [denied, setDenied] = useState(false);
 
+  const active = useAppActive();
+
+  // Al abrir y al volver a primer plano (p. ej. de los ajustes del teléfono): el interruptor refleja la preferencia
+  // guardada y el permiso real de Android; sin permiso sale apagado y con el aviso de «Abrir ajustes».
   useEffect(() => {
+    if (expoGo || !active) return;
     let cancelled = false;
-    void notificationsPreference.get().then((value) => {
-      if (!cancelled) setEnabled(value);
-    });
+    void (async () => {
+      const [preference, permission] = await Promise.all([notificationsPreference.get(), Notifications.getPermissionsAsync()]);
+      if (cancelled) return;
+      setEnabled(preference && permission.granted);
+      setDenied(!permission.granted);
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [active, expoGo]);
 
   const toggleNotifications = async (value: boolean) => {
     setDenied(false);

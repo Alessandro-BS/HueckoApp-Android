@@ -41,6 +41,13 @@ export function useNotificationNavigation() {
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;
 
+  // Un destino que quedó pendiente sin sesión no debe abrirse para la cuenta que entre después.
+  const wasSignedIn = useRef(signedIn);
+  useEffect(() => {
+    if (wasSignedIn.current && !signedIn) pending.current = null;
+    wasSignedIn.current = signedIn;
+  }, [signedIn]);
+
   const flush = useRef(() => {
     const destination = pending.current;
     if (!destination || !signedInRef.current || !navigationRef.isReady()) return;
