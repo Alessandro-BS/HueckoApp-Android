@@ -8,10 +8,35 @@ export type UserRole = 'USER' | 'ADMIN';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 
 // Quien inició sesión: solo lo devuelve /auth. Los demás usuarios (miembros, creadores…) siguen siendo `User`:
-// el rol de otras personas no se publica.
-export type CurrentUser = User & { role: UserRole };
+// el rol y los datos de la cuenta de otras personas no se publican.
+// hasPassword: puede entrar con contraseña (una cuenta creada con Google no tiene); hasGoogle: está vinculada a Google.
+export type CurrentUser = User & {
+  role: UserRole;
+  emailVerified: boolean;
+  twoFactorEnabled: boolean;
+  hasPassword: boolean;
+  hasGoogle: boolean;
+};
 
 export type AuthResponse = { token: string; user: CurrentUser };
+
+// Para qué es un código enviado por correo (docs/api.md, «Códigos por correo»).
+export type ChallengePurpose = 'VERIFY_EMAIL' | 'LOGIN_2FA' | 'RESET_PASSWORD' | 'ENABLE_2FA';
+
+// Un reto con código: se confirma con POST /auth/challenges/:id/verify. emailHint: «a***@gmail.com»;
+// resendAvailableAt: desde cuándo se puede pedir otro código (ISO).
+export type Challenge = { id: string; purpose: ChallengePurpose; emailHint: string; resendAvailableAt: string };
+
+// Respuesta de register/login: la sesión, o un reto que hay que confirmar con el código del correo antes.
+export type AuthResult = AuthResponse | { challenge: Challenge };
+
+export type ForgotPasswordInput = { email: string };
+export type GoogleLoginInput = { idToken: string };
+
+// Activar/desactivar la verificación en dos pasos: pide la contraseña actual.
+export type PasswordInput = { password: string };
+
+export type VerifyChallengeInput = { code: string; newPassword?: string };
 
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';
 

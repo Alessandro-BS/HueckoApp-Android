@@ -8,9 +8,11 @@ import { AI_RATE_LIMIT_DEFAULT, aiRateLimiter } from './ai/ai-limiter';
 import { aiRouter, groupAiRouter, proposalAiRouter } from './ai/ai.routes';
 import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
+import type { GoogleVerifier } from './auth/google-verifier';
 import { requireAdmin, requireAuth } from './auth/require-auth';
 import type { TrustProxy } from './config/trust-proxy';
 import type { Db } from './db/db';
+import { createConsoleEmailClient, type EmailClient } from './email/email-client';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
@@ -49,11 +51,21 @@ export type AppDeps = {
   push?: PushClient;
   // Secreto del despertador (CRON_SECRET). Con él se monta POST /api/internal/tick; sin él, esa ruta no existe.
   cronSecret?: string;
+  // Cliente de correo (códigos de verificación). Si se omite, el de consola (el código sale en el log); los tests inyectan uno falso.
+  email?: EmailClient;
+  // Intentos por IP cada 15 min en verify/resend/forgot (CODE_RATE_LIMIT; 30 si se omite); las pruebas lo suben.
+  codeRateLimit?: number;
+  // Intentos por cuenta cada 15 min entre activar y desactivar el 2FA (5 si se omite): frena adivinar la contraseña con un token robado.
+  twoFactorRateLimit?: number;
+  // Verificador de idTokens de Google. Sin él (no hay GOOGLE_WEB_CLIENT_ID), POST /auth/google responde 503.
+  google?: GoogleVerifier;
+  // Correos con código en 24 h entre todas las cuentas (BREVO_DAILY_LIMIT; 280 si se omite); las pruebas lo bajan.
+  brevoDailyLimit?: number;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
 export const systemClock = (): Date => new Date();
-export type ResolvedDeps = AppDeps & { now: () => Date; ai: AiClient; aiLimiter: RequestHandler; expressVoteMinutes: number };
+export type ResolvedDeps = AppDeps & { now: () => Date; ai: AiClient; aiLimiter: RequestHandler; expressVoteMinutes: number; email: EmailClient };
 
 // La app se crea aparte de index.ts para poder probarla sin abrir un puerto
 // y con una base de datos en memoria.
@@ -65,6 +77,7 @@ export function createApp(appDeps: AppDeps) {
     // Una sola instancia: todas las rutas de IA cuentan contra el mismo límite.
     aiLimiter: aiRateLimiter(appDeps.aiRateLimit ?? AI_RATE_LIMIT_DEFAULT),
     expressVoteMinutes: appDeps.expressVoteMinutes ?? EXPRESS_VOTE_MINUTES_DEFAULT,
+    email: appDeps.email ?? createConsoleEmailClient(),
   };
   const app = express();
   // Con un proxy delante, req.ip (y por tanto los límites por IP) sale de X-Forwarded-For solo si se confía en él.

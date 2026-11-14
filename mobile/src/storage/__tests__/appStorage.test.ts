@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeDashboard } from '../../testing/fixtures';
 import { dashboardCache, sessionUserStorage } from '../appStorage';
 
-const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const };
+const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false };
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -38,4 +38,10 @@ it('el perfil de la sesión solo vale con id, nombre, correo y un rol conocido',
   expect(await sessionUserStorage.get()).toBeNull();
   await AsyncStorage.setItem('hueckoapp.sessionUser', JSON.stringify({ name: 'Ana' }));
   expect(await sessionUserStorage.get()).toBeNull();
+});
+
+it('un perfil guardado antes de la verificación se carga completado con los valores por defecto', async () => {
+  const { emailVerified, twoFactorEnabled, hasPassword, hasGoogle, ...old } = ana;
+  await AsyncStorage.setItem('hueckoapp.sessionUser', JSON.stringify(old));
+  expect(await sessionUserStorage.get()).toEqual({ ...old, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false });
 });

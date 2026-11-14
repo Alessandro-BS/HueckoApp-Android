@@ -20,7 +20,8 @@ describe('migrate', () => {
     expect(await versions(db)).toEqual(ALL_VERSIONS);
     const dates = await db.many<{ applied_at: string }>('SELECT applied_at FROM schema_migrations');
     for (const { applied_at } of dates) expect(applied_at).toMatch(ISO_MS);
-  });
+    // Aplica las 13 migraciones en un PGlite nuevo: con la suite completa en paralelo roza los 20 s por defecto.
+  }, 60_000);
 
   it('lo primero, dentro de su transacción, es el candado de migraciones (dos servidores a la vez no migran dos veces)', async () => {
     // PGlite tiene una sola conexión y no puede reproducir la carrera: este test impide que un cambio quite el candado.
@@ -165,6 +166,13 @@ describe('esquema: usuarios', () => {
     await expect(insert('2', 'ana@correo.com')).rejects.toMatchObject({ code: '23505', constraint: 'users_email_key' });
     await failsWith(db.query("INSERT INTO time_blocks (id, user_id, label, type, start_time, end_time, is_recurring, day_of_week) VALUES ('b', 'nadie', 'x', 'CLASE', '08:00', '09:00', TRUE, 1)"), '23503');
     expect((await db.one<{ created_at: string }>("SELECT created_at FROM users WHERE id = '1'"))!.created_at).toMatch(ISO_MS);
+  });
+
+  it('google_sub único: la restricción se llama users_google_sub_key (la captura /auth/google)', async () => {
+    const db = await openTestDatabase();
+    const insert = (id: string) => db.query('INSERT INTO users (id, name, email, password_hash, google_sub) VALUES ($1, $1, $2, NULL, $3)', [id, id + '@correo.com', 'sub-1']);
+    await insert('1');
+    await expect(insert('2')).rejects.toMatchObject({ code: '23505', constraint: 'users_google_sub_key' });
   });
 
   it('seq sigue el orden de inserción y el texto se ordena byte a byte (COLLATE "C", como SQLite)', async () => {
@@ -497,5 +505,51 @@ describe('migración 12: notificaciones push', () => {
     await db.query("DELETE FROM users WHERE id = 'u1'");
     expect(await count(db, 'push_devices')).toBe(0);
     expect(await count(db, 'notifications')).toBe(0);
+  });
+});
+
+describe('migración 13: cuentas (correo verificado, Google, 2FA y retos)', () => {
+  const NOW_ISO = '2026-11-13T10:00:00.000Z';
+  const EXPIRES_ISO = '2026-11-13T10:15:00.000Z';
+  const insertChallenge = (db: Db, id: string, purpose = 'VERIFY_EMAIL', consumedAt: string | null = null, userId = 'u1') =>
+    db.query('INSERT INTO auth_challenges (id, user_id, purpose, code_hash, created_at, expires_at, consumed_at) VALUES ($1, $2, $3, $4, $5, $6, $7)', [
+      id, userId, purpose, 'hash', NOW_ISO, EXPIRES_ISO, consumedAt,
+    ]);
+
+  it('desde la versión 12: los usuarios existentes quedan verificados, sin 2FA y con session_version 0; los nuevos nacen sin verificar', async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 12));
+    await db.exec("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x')");
+    await failsWith(db.query('SELECT email_verified FROM users'), '42703'); // control: antes de la 13 no existe
+    await migrate(db);
+    expect(await versions(db)).toEqual(ALL_VERSIONS);
+    expect(await db.one('SELECT email_verified, session_version, two_factor_enabled, google_sub FROM users WHERE id = $1', ['u1'])).toEqual({
+      email_verified: true, session_version: 0, two_factor_enabled: false, google_sub: null,
+    });
+    await db.exec("INSERT INTO users (id, name, email, password_hash) VALUES ('u2', 'Luis', 'luis@correo.com', 'x')");
+    expect(await db.one('SELECT email_verified FROM users WHERE id = $1', ['u2'])).toEqual({ email_verified: false });
+  });
+
+  it('password_hash admite NULL y google_sub es único', async () => {
+    const db = await openTestDatabase();
+    await db.exec(`INSERT INTO users (id, name, email, password_hash, google_sub) VALUES ('u1', 'Ana', 'ana@correo.com', NULL, 'g1')`);
+    await db.exec(`INSERT INTO users (id, name, email, password_hash) VALUES ('u2', 'Luis', 'luis@correo.com', NULL)`); // google_sub NULL repetido vale
+    await failsWith(db.exec(`INSERT INTO users (id, name, email, google_sub) VALUES ('u3', 'Eva', 'eva@correo.com', 'g1')`), '23505');
+  });
+
+  it('un solo reto vivo por usuario y propósito; uno consumido no cuenta; CHECK de propósito; borrar al usuario borra sus retos', async () => {
+    const db = await openTestDatabase();
+    await db.exec("INSERT INTO users (id, name, email) VALUES ('u1', 'Ana', 'ana@correo.com')");
+    await insertChallenge(db, 'c1');
+    await failsWith(insertChallenge(db, 'c2'), '23505');
+    await insertChallenge(db, 'c3', 'LOGIN_2FA'); // otro propósito vale
+    await insertChallenge(db, 'c4', 'VERIFY_EMAIL', NOW_ISO); // consumido: no cuenta
+    await insertChallenge(db, 'c5', 'VERIFY_EMAIL', NOW_ISO);
+    await failsWith(insertChallenge(db, 'c6', 'OTRO'), '23514');
+    expect(await db.one('SELECT attempts, send_count, last_sent_at FROM auth_challenges WHERE id = $1', ['c1'])).toEqual({
+      attempts: 0, send_count: 0, last_sent_at: null,
+    });
+    await db.query("DELETE FROM users WHERE id = 'u1'");
+    expect(await count(db, 'auth_challenges')).toBe(0);
   });
 });

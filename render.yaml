@@ -38,3 +38,16 @@ services:
       # Opcional: token de acceso de la Expo Push API (solo si activaste «Enhanced Security» en Expo).
       - key: EXPO_ACCESS_TOKEN
         sync: false
+      # Correos con el código (registro, 2FA, recuperar contraseña) por Brevo. Sin estas dos el servidor no arranca.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: HueckoApp
+      # Correos con código cada 24 h entre todas las cuentas: por debajo de los 300/día del plan gratis de Brevo.
+      - key: BREVO_DAILY_LIMIT
+        value: "280"
+      # ID de cliente Web de Google (no es secreto; el mismo de mobile/app.json). Vacío = sin «Continuar con Google».
+      - key: GOOGLE_WEB_CLIENT_ID
+        sync: false

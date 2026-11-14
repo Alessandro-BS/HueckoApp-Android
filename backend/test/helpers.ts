@@ -1,13 +1,15 @@
-import type { CurrentUser, Group, Proposal, ProposalInput, TimeWindowInput, User } from '@hueckoapp/shared';
+import type { AuthResponse, Challenge, Group, Proposal, ProposalInput, TimeWindowInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 import { vi } from 'vitest';
 
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
+import type { GoogleIdentity, GoogleVerifier } from '../src/auth/google-verifier';
 import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
 import { addDays } from '../src/common/zone';
 import type { Db, SqlParam } from '../src/db/db';
+import { type EmailClient, type EmailMessage, EmailSendError } from '../src/email/email-client';
 import { type PushClient, type PushMessage, type PushTicket, PushTransportError } from '../src/notifications/push-client';
 import { openTestDatabase } from './db';
 
@@ -31,7 +33,12 @@ export const win = (dayOfWeek: number, startTime: string, endTime: string): Time
 // Base PGlite nueva y migrada para un test (se cierra sola al terminar: test/setup.ts).
 export const makeTestDb = (): Promise<Db> => openTestDatabase();
 
+// El correo falso de cada app de makeTestApp: registerUser saca de ahí el código para verificar la cuenta.
+const emailsOf = new WeakMap<Express, FakeEmail>();
+
 export async function makeTestApp(options?: {
+  /** Una base ya preparada (p. ej. con la semilla); sin ella, una nueva. */
+  db?: Db;
   loginRateLimit?: number;
   registerRateLimit?: number;
   trustProxy?: TrustProxy;
@@ -42,8 +49,14 @@ export async function makeTestApp(options?: {
   onBackgroundTask?: (task: Promise<void>) => void;
   push?: PushClient;
   cronSecret?: string;
-}): Promise<{ app: Express; db: Db }> {
-  const db = await makeTestDb();
+  email?: EmailClient;
+  codeRateLimit?: number;
+  twoFactorRateLimit?: number;
+  google?: GoogleVerifier;
+  brevoDailyLimit?: number;
+}): Promise<{ app: Express; db: Db; emails: FakeEmail }> {
+  const db = options?.db ?? (await makeTestDb());
+  const emails = fakeEmail();
   const app = createApp({
     db,
     jwtSecret: TEST_SECRET,
@@ -60,8 +73,16 @@ export async function makeTestApp(options?: {
     // Sin `push` no se envía nada en segundo plano (la mayoría de los tests).
     push: options?.push,
     cronSecret: options?.cronSecret,
+    // Sin `email`, el correo falso de `emails` (nunca se llama a Brevo).
+    email: options?.email ?? emails,
+    codeRateLimit: options?.codeRateLimit ?? 10_000,
+    twoFactorRateLimit: options?.twoFactorRateLimit,
+    google: options?.google,
+    brevoDailyLimit: options?.brevoDailyLimit,
   });
-  return { app, db };
+  const client = options?.email ?? emails;
+  if ('lastCodeTo' in client) emailsOf.set(app, client as FakeEmail);
+  return { app, db, emails };
 }
 
 /**
@@ -165,6 +186,42 @@ export function fakePush(behaviour: FakePushBehaviour = 'ok'): FakePush {
   };
 }
 
+export type FakeEmail = EmailClient & { sent: EmailMessage[]; attempted: EmailMessage[]; fail(next: boolean): void; lastCodeTo(email: string): string };
+
+/**
+ * Correo falso, sin red: guarda cada mensaje en `sent`; con `fail(true)` los envíos lanzan EmailSendError (Brevo caído)
+ * hasta `fail(false)`. `attempted` guarda todos los intentos, también los que fallaron (con el código que nunca llegó).
+ * `lastCodeTo` saca el código de 6 dígitos del asunto del último correo enviado a ese destinatario.
+ */
+export function fakeEmail(): FakeEmail {
+  const sent: EmailMessage[] = [];
+  const attempted: EmailMessage[] = [];
+  let failing = false;
+  return {
+    sent,
+    attempted,
+    fail(next) {
+      failing = next;
+    },
+    async send(message) {
+      attempted.push(message);
+      if (failing) throw new EmailSendError('Brevo respondió 503');
+      sent.push(message);
+    },
+    lastCodeTo(email) {
+      const last = [...sent].reverse().find((m) => m.to === email);
+      const code = last?.subject.match(/\b(\d{6})\b/)?.[1];
+      if (!code) throw new Error(`no hay un correo con código para ${email}`);
+      return code;
+    },
+  };
+}
+
+// Google falso, sin red: el idToken es la clave de `identities`; uno desconocido es inválido (null).
+export const fakeGoogle = (identities: Record<string, GoogleIdentity>): GoogleVerifier => ({
+  verify: async (idToken) => identities[idToken] ?? null,
+});
+
 // Reloj que el test mueve a mano: makeTestApp({ now: clock.now }) y después clock.set(...).
 export function makeClock(start: Date) {
   let current = start;
@@ -177,10 +234,12 @@ export function makeClock(start: Date) {
 }
 
 let counter = 0;
-export async function registerUser(
+
+/** Registra una cuenta por la API y la deja sin verificar: devuelve el reto VERIFY_EMAIL y los datos usados. */
+export async function registerUnverified(
   app: Express,
   overrides: Partial<{ name: string; email: string; password: string }> = {},
-): Promise<{ token: string; user: User }> {
+): Promise<{ challenge: Challenge; email: string; password: string }> {
   counter += 1;
   const body = {
     name: `Usuario ${counter}`,
@@ -190,9 +249,26 @@ export async function registerUser(
   };
   const res = await request(app).post('/api/auth/register').send(body);
   if (res.status !== 201) throw new Error(`registro falló: ${res.status} ${JSON.stringify(res.body)}`);
-  // Como `User` (sin `role`), que es como aparece en miembros y propuestas: así los tests comparan con toEqual.
-  const { role: _role, ...user } = res.body.user as CurrentUser;
-  return { token: res.body.token, user };
+  // El correo como lo guarda el servidor (trim y minúsculas): es a donde llega el código.
+  return { challenge: res.body.challenge, email: body.email.trim().toLowerCase(), password: body.password };
+}
+
+/**
+ * Registra una cuenta y la verifica con el código del correo falso (como haría la app): devuelve su sesión. El `user`
+ * queda como `User` (sin `role` ni los datos de la cuenta), que es como aparece en miembros y propuestas: así los tests
+ * comparan con toEqual.
+ */
+export async function registerUser(
+  app: Express,
+  overrides: Partial<{ name: string; email: string; password: string }> = {},
+): Promise<{ token: string; user: User }> {
+  const emails = emailsOf.get(app);
+  if (!emails) throw new Error('registerUser necesita una app de makeTestApp con el correo falso');
+  const { challenge, email } = await registerUnverified(app, overrides);
+  const res = await request(app).post(`/api/auth/challenges/${challenge.id}/verify`).send({ code: emails.lastCodeTo(email) });
+  if (res.status !== 200) throw new Error(`verificar el correo falló: ${res.status} ${JSON.stringify(res.body)}`);
+  const { token, user: current } = res.body as AuthResponse;
+  return { token, user: { id: current.id, name: current.name, email: current.email } };
 }
 
 export async function createGroup(

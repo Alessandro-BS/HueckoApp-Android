@@ -4,22 +4,24 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { errorMessage } from '../../api/client';
-import { ErrorBanner, PrimaryButton, TextField } from '../../components';
+import { ErrorBanner, GoogleButton, PrimaryButton, TextField } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import type { AuthStackParamList } from '../../navigation/types';
 import { lastEmailStorage } from '../../storage/appStorage';
 import { colors, radius, typography } from '../../theme';
 import { showToast } from '../../utils/toast';
+import { googleErrorMessage } from '../../utils/googleError';
 import { validateEmail, validatePassword } from '../../utils/validation';
 
 export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackParamList, 'Login'>) {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
   // Rellena el correo de la última sesión (AsyncStorage), salvo que ya se haya empezado a escribir otro.
@@ -34,7 +36,7 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
   }, []);
 
   const submit = async () => {
-    if (loading) return;
+    if (loading || googleLoading) return;
     const eErr = validateEmail(email);
     const pErr = validatePassword(password);
     setEmailError(eErr);
@@ -43,12 +45,26 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
     setServerError(null);
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
+      const challenge = await login(email.trim(), password);
+      if (challenge) navigation.navigate('VerifyCode', { challenge });
+      else showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
     } catch (e) {
       setServerError(errorMessage(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const google = async () => {
+    if (loading || googleLoading) return;
+    setServerError(null);
+    setGoogleLoading(true);
+    try {
+      if (await loginWithGoogle()) showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
+    } catch (e) {
+      setServerError(googleErrorMessage(e));
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -111,6 +127,15 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
               onSubmitEditing={() => void submit()}
               inputRef={passwordRef}
             />
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              hitSlop={8}
+              onPress={() => navigation.navigate('ForgotPassword', { email: email.trim() })}
+              style={[styles.linkButton, styles.forgot]}
+            >
+              <Text style={[typography.bodyMedium, styles.link]}>¿Olvidaste tu contraseña?</Text>
+            </Pressable>
             {serverError ? (
               <View style={{ marginTop: 16 }}>
                 <ErrorBanner message={serverError} />
@@ -124,6 +149,7 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
               size="lg"
               onPress={() => void submit()}
             />
+            <GoogleButton loading={googleLoading} disabled={loading} onPress={() => void google()} />
             <View style={styles.switchRow}>
               <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>¿No tienes cuenta?</Text>
               <Pressable
@@ -158,6 +184,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceContainerLowest,
   },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8, gap: 4 },
+  forgot: { alignSelf: 'flex-end', marginTop: 4 },
   linkButton: { paddingVertical: 8, paddingHorizontal: 4 },
   link: { fontWeight: '700', color: colors.primary },
 });

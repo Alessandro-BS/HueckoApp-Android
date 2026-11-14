@@ -203,6 +203,25 @@ Ojo: si un bloque ya se cruzaba con otro antes de esta versión, guardarlo da el
 
 ---
 
+## 🔐 Cuentas: código por correo, 2FA y Google (fase 6)
+
+> Con el backend local y **sin** `BREVO_API_KEY`, el código **no llega por correo: sale en el log del backend** (`npm run backend`). Con la clave de Brevo llega a la bandeja. «Continuar con Google» solo existe en el APK o un *development build* con `extra.googleWebClientId` lleno (no en Expo Go). La lista completa para el APK está en [puesta en marcha](puesta-en-marcha.md).
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | **Regístrate** con un correo nuevo | Pantalla **«Escribe el código»** con «Te enviamos un código a a***@…» y **Reenviar en N s** | Sin código no hay sesión: el servidor no da token hasta confirmar el correo |
+| 2 | Escribe un código equivocado | Error con los intentos que quedan; al quinto fallo, «Pide un código nuevo.» | 5 intentos por código; vale 15 minutos |
+| 3 | Espera 60 s y toca **Reenviar código** | Llega otro y el anterior deja de valer | Reenvío cada 60 s, 5 envíos por código |
+| 4 | Escribe el código correcto | Entras a la app | El correo queda verificado |
+| 5 | **Perfil → Verificación en dos pasos** (te pide la contraseña y luego un código) | El interruptor queda encendido | Se confirma con un código al correo |
+| 6 | Cierra sesión y entra de nuevo | Tras la contraseña pide **otro código** | Con 2FA el login no da token sin código |
+| 7 | Apaga la verificación en dos pasos (pide la contraseña) | El siguiente login entra directo | — |
+| 8 | En el login toca **¿Olvidaste tu contraseña?**, escribe el correo, el código y una contraseña nueva | Entras con la contraseña nueva; las sesiones abiertas en otros celulares se cierran | Cambia la versión de sesión (los tokens viejos dan 401) |
+| 9 | Pide recuperar la contraseña con un correo que **no** tiene cuenta | Misma pantalla del código, sin delatar nada | El servidor responde igual exista o no la cuenta |
+| 10 | (APK) **Continuar con Google** | Entras sin contraseña ni código | Google ya autenticó; con una cuenta de Google no se puede activar 2FA hasta crear una contraseña con «¿Olvidaste tu contraseña?» |
+
+---
+
 ## 🐞 Si algo falla
 
 Anota **la cuenta**, **el paso**, **qué esperabas** y **qué viste** (con captura). Mensajes útiles:
@@ -213,3 +232,5 @@ Anota **la cuenta**, **el paso**, **qué esperabas** y **qué viste** (con captu
 | Error de red al iniciar sesión | La app no llega al backend: revisa `EXPO_PUBLIC_API_URL` y que estén en la misma Wi-Fi |
 | `429` / «demasiadas solicitudes» | Se pasó el límite de la IA (20 cada 15 min por cuenta) |
 | «La base local … está abierta por otro proceso» | Detén el servidor antes de `seed` o `make-admin` |
+| «No pudimos enviar el correo» (`503 EMAIL_SEND_FAILED`) | Brevo rechazó el envío: revisa `BREVO_API_KEY` y el remitente verificado; en local, sin clave, mira el código en el log |
+| «Ya te enviamos muchos códigos hoy» (`429 EMAIL_DAILY_LIMIT`) | 10 correos por cuenta cada 24 h |

@@ -157,5 +157,7 @@ export async function setRoleByEmail(db: Db, email: string, role: UserRole, now:
   if (!row) throw new ApiError(404, 'USER_NOT_FOUND', `No hay ninguna cuenta con el correo «${email}».`);
   const users = adminUsers(db);
   const changed = await users.setRole({ adminId: null, now }, row.id, role);
+  // Quien la consola nombra administrador entra con su contraseña sin pedir código: su correo queda verificado.
+  if (role === 'ADMIN') await db.query('UPDATE users SET email_verified = true WHERE id = $1', [row.id]);
   return { user: await users.summary(row.id), changed };
 }

@@ -443,17 +443,18 @@ describe('envío inmediato tras cada petición', () => {
   it('GET /api/health no pide envío; cualquier otra petición, también un GET, sí', async () => {
     const tasks: Promise<void>[] = [];
     ({ app, db } = await makeTestApp({ now: () => NOW, push: fakePush(), onBackgroundTask: (t) => tasks.push(t) }));
+    // registerUser hace dos peticiones (registro y verificación del correo): una por cada una.
     const yo = await registerUser(app, { name: 'Yo' });
-    await vi.waitFor(() => expect(tasks).toHaveLength(1));
+    await vi.waitFor(() => expect(tasks).toHaveLength(2));
     await Promise.all(tasks);
 
     await request(app).get('/api/health').expect(200);
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(tasks).toHaveLength(1);
+    expect(tasks).toHaveLength(2);
 
     // Las lecturas también cierran votaciones vencidas (y encolan sus avisos): piden envío.
     await request(app).get('/api/me/dashboard').set(bearer(yo.token)).expect(200);
-    await vi.waitFor(() => expect(tasks).toHaveLength(2));
+    await vi.waitFor(() => expect(tasks).toHaveLength(3));
     await Promise.all(tasks);
   });
 
