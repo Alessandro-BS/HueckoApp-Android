@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Política de privacidad · HueckoApp</title>
+  <meta name="description" content="Qué datos guarda HueckoApp, para qué los usa, con quién los comparte y cómo pedir que se borren.">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<main>
+  <header class="marca">
+    <span class="logo" aria-hidden="true">H</span>
+    <h1>Política de privacidad</h1>
+  </header>
+  <p class="suave">Última actualización: 14 de noviembre de 2026 · <a href="index.html">Volver a HueckoApp</a></p>
+
+  <div class="tarjeta">
+    <p><strong>En resumen:</strong> HueckoApp guarda solo lo que necesita para que tu grupo encuentre huecos libres y organice planes.
+      No muestra publicidad, no vende tus datos y no los usa para nada más. Puedes pedir que borremos tu cuenta cuando quieras.</p>
+  </div>
+
+  <h2>1. Quién es el responsable</h2>
+  <p>
+    HueckoApp es un proyecto académico desarrollado por Aless Bustamante. Para cualquier consulta sobre tus datos escribe a
+    <a href="mailto:fabrizio.bs9012@gmail.com">fabrizio.bs9012@gmail.com</a>.
+  </p>
+
+  <h2>2. Qué datos guardamos</h2>
+
+  <h3>Tu cuenta</h3>
+  <ul>
+    <li>Nombre y correo electrónico.</li>
+    <li>Tu contraseña, guardada solo como <em>hash</em> (bcrypt): nadie, ni siquiera nosotros, puede leerla.</li>
+    <li>Si verificaste tu correo y si activaste la verificación en dos pasos.</li>
+    <li>Los códigos de 6 dígitos que te enviamos por correo, guardados también como <em>hash</em>. Caducan a los pocos minutos y solo sirven una vez.</li>
+  </ul>
+
+  <h3>Si entras con Google</h3>
+  <p>
+    Google nos da tu nombre, tu correo y un identificador de tu cuenta de Google, que usamos para reconocerte la próxima vez.
+    <strong>No</strong> recibimos tu contraseña de Google, tus contactos, tus archivos ni ningún otro dato de tu cuenta.
+  </p>
+
+  <h3>Lo que haces en la app</h3>
+  <ul>
+    <li><strong>Horario:</strong> los bloques que registras (nombre, tipo, días y horas).</li>
+    <li><strong>Grupos:</strong> los grupos que creas o a los que te unes, tu rol y si eres imprescindible para los planes.</li>
+    <li><strong>Planes:</strong> las propuestas que creas, tus votos, tu asistencia y los imprevistos que reportas, con el motivo que escribes.</li>
+  </ul>
+
+  <h3>Ubicación</h3>
+  <p>
+    Solo si tú lo pides al proponer el lugar de un plan, la app lee la ubicación de tu celular para sugerir una dirección.
+    Se guarda el lugar del plan (nombre y coordenadas), <strong>no</strong> tu posición: no seguimos dónde estás ni guardamos tu ubicación en segundo plano.
+    Para convertir coordenadas en direcciones la app usa el servicio de ubicación del propio teléfono (en Android, el de Google).
+  </p>
+
+  <h3>Fotos y cámara</h3>
+  <p>
+    Solo si eliges «leer tu horario con IA», la foto que tomas o eliges se envía a nuestro servidor y de ahí a Google Gemini para extraer los bloques.
+    La foto <strong>no se guarda</strong>: se procesa en memoria y se descarta. Tú revisas los bloques antes de guardarlos.
+  </p>
+
+  <h3>Notificaciones</h3>
+  <p>
+    Si las activas, guardamos el identificador de notificaciones de tu celular (un <em>token</em>) para enviarte avisos de tus grupos.
+    Puedes apagarlas en Perfil; al cerrar sesión con conexión a internet el token se borra del servidor.
+  </p>
+
+  <h3>Sensores (proximidad y giroscopio)</h3>
+  <p>
+    Para unirte a un grupo acercando tu celular al de otra persona, la app usa el sensor de proximidad y el giroscopio
+    <strong>solo dentro del teléfono</strong>. No enviamos sus lecturas: el servidor guarda únicamente la solicitud de unión (quién, a qué grupo y a qué hora).
+  </p>
+
+  <h3>Registros técnicos</h3>
+  <ul>
+    <li>Cuándo se usó la inteligencia artificial, para qué tarea, si funcionó y cuánto tardó (sin el contenido).</li>
+    <li>Las acciones de los administradores (suspender una cuenta, borrar un grupo, etc.).</li>
+    <li>Tu dirección IP se usa momentáneamente para limitar intentos repetidos de inicio de sesión y códigos; no la guardamos en la base de datos,
+      aunque el proveedor del servidor puede registrarla en sus registros técnicos.</li>
+  </ul>
+
+  <h2>3. Para qué los usamos</h2>
+  <ul>
+    <li>Crear y proteger tu cuenta (verificar tu correo, la verificación en dos pasos y recuperar tu contraseña).</li>
+    <li>Calcular los huecos libres en común de tu grupo, organizar planes y votaciones.</li>
+    <li>Enviarte los avisos y los correos con códigos que pides.</li>
+    <li>Las funciones de inteligencia artificial que tú usas: leer tu horario, sugerir planes y resumir votaciones.</li>
+    <li>Moderar la app y evitar abusos.</li>
+  </ul>
+  <p>No usamos tus datos para publicidad, no hacemos perfiles comerciales y no los vendemos.</p>
+
+  <h2>4. Quién más los ve</h2>
+  <ul>
+    <li><strong>Los miembros de tus grupos</strong> ven tu nombre, tu correo, tu rol y lo que publicas en el grupo (propuestas, votos, asistencia e imprevistos).
+      <strong>Tu horario no se muestra a nadie:</strong> solo se usa para calcular cuántas personas están libres en cada franja.</li>
+    <li><strong>Los administradores</strong> de HueckoApp pueden ver las cuentas y los grupos para moderar (por ejemplo, suspender una cuenta que abusa).</li>
+  </ul>
+
+  <h2>5. Servicios que usamos</h2>
+  <p>Para funcionar, HueckoApp se apoya en estos proveedores, que tratan los datos solo para darnos su servicio:</p>
+  <div class="tabla">
+    <table>
+      <thead><tr><th>Proveedor</th><th>Para qué</th><th>Qué recibe</th></tr></thead>
+      <tbody>
+        <tr><td>Render</td><td>Servidor de la app (EE. UU.)</td><td>Todas las peticiones de la app</td></tr>
+        <tr><td>Neon</td><td>Base de datos (EE. UU.)</td><td>Los datos descritos en el punto 2</td></tr>
+        <tr><td>Google (Gemini)</td><td>Inteligencia artificial</td><td>La foto de tu horario si la envías; y, al usar sugerencias o resúmenes, el nombre del grupo, las franjas, los títulos y lugares de los planes, y los nombres y motivos de quienes reportaron un imprevisto</td></tr>
+        <tr><td>Google (Inicio de sesión)</td><td>«Continuar con Google»</td><td>Solo si eliges entrar con Google</td></tr>
+        <tr><td>Expo y Google Firebase Cloud Messaging</td><td>Enviar notificaciones</td><td>El token de tu celular y el texto del aviso</td></tr>
+        <tr><td>Brevo</td><td>Enviar los correos con códigos</td><td>Tu correo y el código</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="suave">
+    Según las condiciones del nivel gratuito de la API de Gemini, Google puede usar el contenido que recibe para mejorar sus servicios.
+    No envíes fotos ni escribas motivos con información que no quieras compartir.
+  </p>
+
+  <h2>6. Datos de usuario de Google</h2>
+  <p>
+    El uso que HueckoApp hace de la información recibida de las APIs de Google se ajusta a la
+    <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de Datos de Usuario de los Servicios de las APIs de Google</a>,
+    incluidos los requisitos de uso limitado. Solo usamos tu nombre, tu correo y tu identificador de Google para crear tu cuenta e iniciar sesión,
+    y no los transferimos a terceros salvo a los proveedores indicados arriba para dar el servicio.
+  </p>
+
+  <h2>7. Seguridad</h2>
+  <ul>
+    <li>Toda la comunicación entre la app y el servidor va cifrada (HTTPS).</li>
+    <li>Las contraseñas y los códigos se guardan solo como <em>hash</em>.</li>
+    <li>Tu sesión se guarda en el almacenamiento seguro del celular.</li>
+    <li>Las claves de los servicios (IA, correo, base de datos) están solo en el servidor, nunca dentro de la app.</li>
+  </ul>
+
+  <h2>8. Cuánto tiempo los guardamos y cómo borrarlos</h2>
+  <p>
+    Guardamos tus datos mientras tengas una cuenta. Los códigos por correo caducan en minutos.
+    Para borrar tu cuenta escribe desde el correo de tu cuenta a <a href="mailto:fabrizio.bs9012@gmail.com">fabrizio.bs9012@gmail.com</a>:
+    la borraremos en un plazo máximo de 30 días, junto con tu horario, tus votos, tus imprevistos y tus tokens de notificaciones.
+    Los grupos y planes que creaste para otras personas pueden mantenerse sin tus datos personales.
+    También puedes escribirnos para pedir una copia de tus datos o corregirlos.
+  </p>
+  <p>
+    Si entraste con Google, puedes quitar el acceso de HueckoApp en cualquier momento desde
+    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
+  </p>
+
+  <h2>9. Menores de edad</h2>
+  <p>HueckoApp está pensada para estudiantes y no está dirigida a menores de 14 años.</p>
+
+  <h2>10. Cambios</h2>
+  <p>Si cambiamos esta política, actualizaremos la fecha de arriba y, si el cambio es importante, lo avisaremos en la app.</p>
+
+  <footer>
+    <a href="index.html">HueckoApp</a> · Contacto: <a href="mailto:fabrizio.bs9012@gmail.com">fabrizio.bs9012@gmail.com</a>
+  </footer>
+</main>
+</body>
+</html>
