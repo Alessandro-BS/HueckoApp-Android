@@ -43,8 +43,9 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
     setServerError(null);
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
+      const challenge = await login(email.trim(), password);
+      if (challenge) navigation.navigate('VerifyCode', { challenge });
+      else showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
     } catch (e) {
       setServerError(errorMessage(e));
     } finally {
@@ -111,6 +112,15 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
               onSubmitEditing={() => void submit()}
               inputRef={passwordRef}
             />
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              hitSlop={8}
+              onPress={() => navigation.navigate('ForgotPassword', { email: email.trim() })}
+              style={[styles.linkButton, styles.forgot]}
+            >
+              <Text style={[typography.bodyMedium, styles.link]}>¿Olvidaste tu contraseña?</Text>
+            </Pressable>
             {serverError ? (
               <View style={{ marginTop: 16 }}>
                 <ErrorBanner message={serverError} />
@@ -158,6 +168,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceContainerLowest,
   },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8, gap: 4 },
+  forgot: { alignSelf: 'flex-end', marginTop: 4 },
   linkButton: { paddingVertical: 8, paddingHorizontal: 4 },
   link: { fontWeight: '700', color: colors.primary },
 });

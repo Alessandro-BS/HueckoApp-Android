@@ -39,3 +39,9 @@ it('el perfil de la sesión solo vale con id, nombre, correo y un rol conocido',
   await AsyncStorage.setItem('hueckoapp.sessionUser', JSON.stringify({ name: 'Ana' }));
   expect(await sessionUserStorage.get()).toBeNull();
 });
+
+it('un perfil guardado antes de la verificación se carga completado con los valores por defecto', async () => {
+  const { emailVerified, twoFactorEnabled, hasPassword, hasGoogle, ...old } = ana;
+  await AsyncStorage.setItem('hueckoapp.sessionUser', JSON.stringify(old));
+  expect(await sessionUserStorage.get()).toEqual({ ...old, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false });
+});

@@ -4,7 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { AdminGroupDetailScreen } from '../screens/admin/AdminGroupDetailScreen';
 import { AdminUserDetailScreen } from '../screens/admin/AdminUserDetailScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
+import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { VerifyCodeScreen } from '../screens/auth/VerifyCodeScreen';
 import { GroupDetailScreen } from '../screens/groups/GroupDetailScreen';
 import { ProximityInviteScreen } from '../screens/groups/ProximityInviteScreen';
 import { ProximityJoinScreen } from '../screens/groups/ProximityJoinScreen';
@@ -32,6 +34,8 @@ export function RootNavigator() {
       <AuthStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
         <AuthStack.Screen name="Login" component={LoginScreen} />
         <AuthStack.Screen name="Register" component={RegisterScreen} />
+        <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        <AuthStack.Screen name="VerifyCode" component={VerifyCodeScreen} />
       </AuthStack.Navigator>
     );
   }

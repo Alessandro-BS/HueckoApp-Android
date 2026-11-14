@@ -23,12 +23,28 @@ const isDashboardData = (v: unknown): v is DashboardData =>
   Array.isArray(v.dashboard.groups) &&
   Array.isArray(v.dashboard.pendingVotes);
 
-const isCurrentUser = (v: unknown): v is CurrentUser =>
-  isRecord(v) &&
-  typeof v.id === 'string' &&
-  typeof v.name === 'string' &&
-  typeof v.email === 'string' &&
-  (v.role === 'USER' || v.role === 'ADMIN');
+// Los perfiles guardados antes de la verificación en dos pasos no traen los 4 campos nuevos: se completan.
+const toCurrentUser = (v: unknown): CurrentUser | null => {
+  if (
+    !(
+      isRecord(v) &&
+      typeof v.id === 'string' &&
+      typeof v.name === 'string' &&
+      typeof v.email === 'string' &&
+      (v.role === 'USER' || v.role === 'ADMIN')
+    )
+  ) {
+    return null;
+  }
+  const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback);
+  return {
+    ...(v as CurrentUser),
+    emailVerified: flag(v.emailVerified, true),
+    twoFactorEnabled: flag(v.twoFactorEnabled, false),
+    hasPassword: flag(v.hasPassword, true),
+    hasGoogle: flag(v.hasGoogle, false),
+  };
+};
 
 const read = async <T>(key: string): Promise<T | null> => {
   try {
@@ -60,7 +76,7 @@ export const lastEmailStorage = {
 export const sessionUserStorage = {
   get: async () => {
     const saved = await read<unknown>(SESSION_USER_KEY);
-    return isCurrentUser(saved) ? saved : null;
+    return toCurrentUser(saved);
   },
   set: (user: CurrentUser) => write(SESSION_USER_KEY, user),
   clear: async () => {

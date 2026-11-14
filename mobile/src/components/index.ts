@@ -22,3 +22,4 @@ export { VoteWindowRow } from './VoteWindowRow';
 export { AiDemoHint } from './AiDemoHint';
 export { ChartCard, type ChartPoint } from './ChartCard';
 export { StatTile } from './StatTile';
+export { CodeInput } from './CodeInput';

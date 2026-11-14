@@ -310,3 +310,49 @@ describe('notificaciones push', () => {
     expect(result.current.status).toBe('signedOut');
   });
 });
+
+const challenge = { id: 'c1', purpose: 'LOGIN_2FA' as const, emailHint: 'a***@correo.com', resendAvailableAt: '2026-01-01T00:01:00.000Z' };
+
+it('login con reto devuelve el reto y no inicia sesión ni guarda token', async () => {
+  mocked.loginRequest.mockResolvedValue({ challenge });
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  let returned: unknown;
+  await act(async () => {
+    returned = await result.current.login('ana@correo.com', 'contrasena-segura');
+  });
+  expect(returned).toEqual(challenge);
+  expect(result.current.status).toBe('signedOut');
+  expect(await SecureStore.getItemAsync('hueckoapp.token')).toBeNull();
+});
+
+it('login con sesión devuelve null', async () => {
+  mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  let returned: unknown = 'x';
+  await act(async () => {
+    returned = await result.current.login('ana@correo.com', 'contrasena-segura');
+  });
+  expect(returned).toBeNull();
+});
+
+it('register con reto devuelve el reto sin sesión', async () => {
+  mocked.registerRequest.mockResolvedValue({ challenge: { ...challenge, purpose: 'VERIFY_EMAIL' } });
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  await act(async () => {
+    expect(await result.current.register('Ana', 'ana@correo.com', 'contrasena-segura')).toMatchObject({ id: 'c1' });
+  });
+  expect(result.current.status).toBe('signedOut');
+});
+
+it('completeChallenge guarda el token e inicia sesión', async () => {
+  mocked.verifyChallengeRequest.mockResolvedValue({ token: 'tok-codigo', user: ana });
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  await act(() => result.current.completeChallenge('c1', '123456'));
+  expect(mocked.verifyChallengeRequest).toHaveBeenCalledWith('c1', '123456', undefined);
+  expect(result.current.status).toBe('signedIn');
+  expect(await SecureStore.getItemAsync('hueckoapp.token')).toBe('tok-codigo');
+});

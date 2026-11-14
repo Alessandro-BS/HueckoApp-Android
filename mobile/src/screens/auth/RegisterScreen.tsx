@@ -37,8 +37,9 @@ export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackP
     setServerError(null);
     setLoading(true);
     try {
-      await register(name.trim(), email.trim(), password);
-      showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
+      const challenge = await register(name.trim(), email.trim(), password);
+      if (challenge) navigation.navigate('VerifyCode', { challenge });
+      else showToast('¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
     } catch (e) {
       setServerError(errorMessage(e));
     } finally {
