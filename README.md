@@ -7,17 +7,18 @@
 *Cruza los horarios del grupo, propone planes con IA, vota, confirma y resuelve imprevistos, todo desde el celular.*
 
 [![CI](https://github.com/Alessandro-BS/HueckoApp-Android/actions/workflows/ci.yml/badge.svg)](https://github.com/Alessandro-BS/HueckoApp-Android/actions/workflows/ci.yml)
-![Versión](https://img.shields.io/badge/versión-2.0.0-6750A4)
+![Versión](https://img.shields.io/badge/versión-3.0.0-6750A4)
 ![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo&logoColor=white)
 ![React Native](https://img.shields.io/badge/React%20Native-0.86-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1836%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1848%20%E2%9C%94-2EA44F)
 
-[🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
-[🚀 Instalación](#-instalación-paso-a-paso) ·
+[📲 Probar la v3.0.0](#-probar-la-v300-paso-a-paso) ·
+[🎓 Requisitos del curso](#-requisitos-del-curso) ·
+[🚀 Instalación desde el código](#-instalación-paso-a-paso) ·
 [🧭 Cómo se usa](#-cómo-se-usa) ·
 [🤖 Huecko IA](#-huecko-ia) ·
 [🧰 Puesta en marcha](docs/puesta-en-marcha.md) ·
@@ -49,32 +50,60 @@ flowchart LR
 | 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, **voto múltiple** (puedes votar todas las franjas que te sirvan, o un voto por persona si quien propone lo prefiere), **cierre automático** al vencer el plazo (se confirma la franja más votada, o se cancela si nadie votó y quien gestiona puede **replantear** esa propuesta) y **replantear** la propuesta en votación (franjas y plazo nuevos) |
 | ⚠️ | **Imprevistos** | Si alguien no puede ir, **decide el grupo** con una **votación exprés** (cancelar, reagendar o mantener) que cierra sola; si gana reagendar, quien gestiona el plan propone franjas nuevas y una fecha límite nueva |
 | 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
-| 🔔 | **Avisos push** | Notificaciones al celular (nueva propuesta, plan confirmado o cancelado, votación exprés y recordatorios); al tocarlas se abre Votar o el detalle del plan. Se activan en Perfil y requieren la app instalada (no Expo Go) con Firebase configurado: ver [despliegue](docs/despliegue.md) |
+| 🔔 | **Avisos push** | Notificaciones al celular (nueva propuesta, plan confirmado o cancelado, votación exprés y recordatorios); al tocarlas se abre Votar o el detalle del plan. Funcionan en el APK (no en Expo Go) y se apagan por celular en Perfil |
 | 🔐 | **Cuentas seguras** | Registro con **código de 6 dígitos por correo** (Brevo), **verificación en dos pasos** opcional (se activa en Perfil), **recuperar la contraseña** desde el login y **Continuar con Google** (en el APK, no en Expo Go). Sin código no hay sesión. Configuración en la [guía de puesta en marcha](docs/puesta-en-marcha.md) |
+| 📡 | **Unirse acercando el celular** | Quien invita y quien se une juntan los celulares pantalla con pantalla: el sensor de proximidad de los dos detecta el contacto, el giroscopio confirma que están quietos y el servidor los empareja por la hora |
 | 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
 | 🛡️ | **Administración** | Estadísticas, gráficos, informes PDF/CSV, usuarios, grupos y registro de acciones |
 
 ---
 
-## 🎓 Requisitos de la segunda entrega
+## 🎓 Requisitos del curso
 
-Los cuatro requisitos del curso, dónde están en el código y **cómo mostrarlos en vivo**:
+Cada requisito, para qué lo usa la app, dónde está en el código y **cómo mostrarlo en vivo**. Las demostraciones de la tercera entrega se hacen con el **APK** (ver [📲 Probar la v3.0.0](#-probar-la-v300-paso-a-paso)).
+
+### 🎓 Tercera entrega (v3.0.0)
+
+| Requisito | ¿Para qué lo usa la app? | Dónde está | 🎬 Cómo mostrarlo |
+|---|---|---|---|
+| 🌐 **Retrofit** (equivalente en React Native) | Hablar con la API REST con un cliente tipado | **axios**: instancia con URL base e interceptores (token y errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit | Mostrar `client.ts` y, por ejemplo, [`groups.ts`](mobile/src/api/groups.ts): cada función es un endpoint |
+| 🌐 **Volley** (equivalente en React Native) | Cola de peticiones, caché y **reintentos** cuando el servidor tarda en despertar | **TanStack Query** (`@tanstack/react-query`) en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio, Grupos, Planes y Disponibilidad. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s) | Abrir la app con Render dormido (más de 15 min sin uso): Inicio muestra «cargando» unos segundos y luego los datos, **sin error**, porque reintenta solo. Al volver a un grupo, se pinta al instante desde la caché |
+| 📷 **Cámara del dispositivo** | Fotografiar el horario para leerlo con Huecko IA | `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso en [`app.json`](mobile/app.json)) | **Horario → Escanear → Cámara**, fotografiar un horario y revisar los bloques que leyó la IA |
+| 📡 **Sensor de proximidad** | **Unirse a un grupo acercando el celular** (ver abajo) | `expo-sensors` no lo trae: **módulo nativo propio en Kotlin** (Expo Modules + `SensorManager`) en [`mobile/modules/proximity/`](mobile/modules/proximity/), usado por [`useProximity`](mobile/src/hooks/useProximity.ts) | Con dos celulares: uno en **Grupo → Agregar personas → Acercar para invitar**, el otro en **Grupos → Unirse acercando**; juntarlos pantalla con pantalla |
+| 🌀 **Giroscopio** | Evitar falsos positivos: solo se une si los dos celulares están **quietos** al juntarse | `expo-sensors` (`Gyroscope`) en [`useStillness`](mobile/src/hooks/useStillness.ts) | Repetir la prueba anterior **moviendo** el celular: no dispara. Al dejarlo quieto, une |
+| 🔔 **Notificaciones push** | Avisar de lo que pasa en el grupo aunque la app esté cerrada | `expo-notifications` + Firebase Cloud Messaging (registro en [`registration.ts`](mobile/src/notifications/registration.ts)); el servidor las envía por la Expo Push API ([`backend/src/notifications/`](backend/src/notifications/)) | Cerrar la app en un celular y crear una propuesta desde el otro: llega el aviso; al tocarlo se abre la votación |
+| 📦 **APK instalable** | Instalar la app sin Expo Go, con el backend en internet | **EAS Build** ([`eas.json`](mobile/eas.json)) y backend en **Render** + **Neon** ([despliegue](docs/despliegue.md)) | Instalar el APK de [Releases](https://github.com/Alessandro-BS/HueckoApp-Android/releases/latest) en un celular con datos móviles (sin la PC) |
+| 🧭 Magnetómetro (opcional) | — | ❌ No incluido | — |
+| 💡 Sensor de luz (opcional) | — | ❌ No incluido | — |
+
+**📡 Cómo funciona «unirse acercando el celular»**
+
+El sensor de proximidad detecta que hay algo a ~5 cm de la pantalla, pero no **qué** celular es. Por eso los **dos** celulares lo usan y el servidor los empareja por la hora:
+
+1. Quien invita abre **Agregar personas → Acercar para invitar**; quien se une abre **Unirse acercando**.
+2. Juntan los celulares **pantalla con pantalla** (el sensor está arriba, junto al auricular).
+3. Cada celular avisa al servidor del momento en que detectó algo cerca, solo si el giroscopio dice que está quieto.
+4. Si llegan dos avisos casi a la vez (una invitación y una unión), el servidor une a esa persona al grupo y los dos vibran. Si hay coincidencias dudosas, no une a nadie y pide repetir o usar el código.
+
+### 🎓 Segunda entrega (v2.0.0)
 
 | Requisito | ¿Para qué lo usa la app? | Dónde está | 🎬 Cómo mostrarlo |
 |---|---|---|---|
 | 📍 **Geolocalización** | Poner el lugar del plan con tu ubicación actual, convertida en dirección | `expo-location` en [`useCurrentLocation.ts`](mobile/src/hooks/useCurrentLocation.ts) y [`usePlaceLookup.ts`](mobile/src/hooks/usePlaceLookup.ts); permiso en el plugin de [`app.json`](mobile/app.json) | **Crear propuesta → Usar mi ubicación actual**: rechaza el permiso (mensaje claro) y luego acéptalo (sale tu dirección y «Con coordenadas») |
-| 🪝 **React Native (hooks)** | Toda la lógica de las pantallas vive en hooks reutilizables | 25 hooks propios en [`mobile/src/hooks/`](mobile/src/hooks/) más `AuthContext` en [`mobile/src/context/`](mobile/src/context/) | Mostrar en el código `useResource` (cargar, refrescar y descartar respuestas tardías) y `useDashboard` |
-| 🌐 **API REST** | La app habla con el backend Express por HTTP + JSON con token JWT | Cliente `axios` en [`mobile/src/api/`](mobile/src/api/); contrato completo en [`docs/api.md`](docs/api.md) | Crear un bloque o un grupo y ver la petición en la terminal del backend; abrir `http://localhost:3000/api/health` |
+| 🪝 **React Native (hooks)** | Toda la lógica de las pantallas vive en hooks reutilizables | 33 hooks propios en [`mobile/src/hooks/`](mobile/src/hooks/) más `AuthContext` en [`mobile/src/context/`](mobile/src/context/) | Mostrar en el código `useApiQuery` (leer con caché y reintentos), `useDashboard` y `useStillness` (giroscopio) |
+| 🌐 **API REST** | La app habla con el backend Express por HTTP + JSON con token JWT | Cliente `axios` en [`mobile/src/api/`](mobile/src/api/); contrato completo en [`docs/api.md`](docs/api.md) | Abrir <https://hueckoapp-api.onrender.com/api/health> (o `http://localhost:3000/api/health` en local); en local, crear un bloque y ver la petición en la terminal del backend |
 | 💾 **Async Storage** | Recordar el último correo, el perfil de la sesión y una copia de Inicio para abrir la app **sin red** | `@react-native-async-storage/async-storage` en [`appStorage.ts`](mobile/src/storage/appStorage.ts), usado por [`AuthContext.tsx`](mobile/src/context/AuthContext.tsx), [`LoginScreen.tsx`](mobile/src/screens/auth/LoginScreen.tsx) y [`useDashboard.ts`](mobile/src/hooks/useDashboard.ts) | 1) Cerrar sesión: el login trae el correo. 2) Apagar el backend y recargar la app: entra igual y Inicio muestra ☁️ «Sin conexión: estos son los últimos datos guardados.» |
 
 <details>
-<summary><b>🪝 Los 25 hooks propios, por tipo</b></summary>
+<summary><b>🪝 Los 33 hooks propios, por tipo</b></summary>
 
 | Tipo | Hooks |
 |---|---|
-| ♻️ Genéricos | `useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList` |
+| ♻️ Genéricos | `useApiQuery`, `useResource`, `useAction`, `useVoteToggle`, `useRefreshOnFocus`, `useRefreshErrorToast`, `usePagedList`, `useAppActive` |
+| 🔐 Cuentas | `useChallengeCode`, `useResendCountdown` |
 | 📅 Horario y grupos | `useSchedule`, `useGroups`, `useGroup`, `useAvailability`, `useDashboard` |
 | 🗳️ Planes | `useProposals`, `useProposal` |
+| 📡 Sensores | `useProximity`, `useProximityTrigger`, `useProximitySession`, `useStillness` |
 | 📍 Ubicación | `useCurrentLocation`, `usePlaceLookup` |
 | 🤖 IA | `useScheduleOcr`, `useProposalDraft`, `useAiSuggestions`, `useVotingSummary`, `useAiStatus` |
 | 🛡️ Administración | `useAdminStats`, `useAdminReport`, `useAdminUser`, `useAdminGroup`, `useAdminLists` (usuarios, grupos y registro) |
@@ -90,6 +119,8 @@ Los cuatro requisitos del curso, dónde están en el código y **cómo mostrarlo
 | 📧 Último correo usado | AsyncStorage | No (no es secreto) | Se conserva, para rellenar el login |
 | 👤 Perfil de la sesión (nombre, correo y rol) | AsyncStorage | No | Al cerrar sesión |
 | 🏠 Copia de Inicio (por usuario) | AsyncStorage | No | Al cerrar sesión |
+| 🔔 Token de notificaciones de este celular | AsyncStorage | No (identifica el celular, no da acceso a la cuenta) | Al cerrar sesión |
+| 🔔 Preferencia «Notificaciones en este celular» | AsyncStorage | No | Se conserva: es del celular, no de la cuenta |
 
 - El token **nunca** pasa por AsyncStorage: un test lo comprueba.
 - Una copia de otra versión de la app o con otra forma se ignora en vez de romper Inicio.
@@ -97,21 +128,123 @@ Los cuatro requisitos del curso, dónde están en el código y **cómo mostrarlo
 
 </details>
 
-> 🎓 Además se aplican otros temas del curso: **seguridad** (JWT, bcrypt, permisos en tiempo de ejecución, roles), **navegación** (`native-stack`, `bottom-tabs`, `drawer`, `material-top-tabs`), **cámara y galería** (`expo-image-picker`), **base de datos** (PostgreSQL) y **gráficos e informes** (`react-native-gifted-charts`, `expo-print`). Ver [Arquitectura](#️-arquitectura).
+> 🎓 Además se aplican otros temas del curso: **seguridad** (JWT, bcrypt, códigos por correo, verificación en dos pasos, OAuth con Google, permisos en tiempo de ejecución, roles), **navegación** (`native-stack`, `bottom-tabs`, `drawer`, `material-top-tabs`), **cámara y galería** (`expo-image-picker`), **base de datos** (PostgreSQL) y **gráficos e informes** (`react-native-gifted-charts`, `expo-print`). Ver [Arquitectura](#️-arquitectura).
 
 ---
 
-## 🆕 Novedades de la v2.0.0
+## 🆕 Novedades de la v3.0.0
 
 | | Cambio |
 |---|---|
-| 📱 | App nueva en **Expo + React Native**, con backend propio en Express y PostgreSQL (la v1.0.0 nativa en Kotlin queda en [`legacy-android/`](legacy-android/)) |
-| 💾 | **Async Storage**: correo recordado, sesión y copia de Inicio para abrir **sin red** |
-| 🤖 | El borrador con IA respeta la **duración y el momento** pedidos y propone **hasta 3 franjas** para votar |
-| 🛡️ | La cuenta administradora **solo administra**: abre en Administración, sin Inicio, Horario ni Grupos |
-| 🗺️ | Mapa de **OpenStreetMap** listo para «Elegir en el mapa» (el botón queda *en curso*) |
+| 📦 | **APK instalable** con EAS Build, y backend en internet (**Render** + base de datos **Neon**): ya no hace falta la PC ni la misma Wi-Fi |
+| 🌐 | **TanStack Query** (equivalente de Volley): caché y reintentos automáticos cuando el servidor tarda en despertar |
+| 📡 | **Unirse a un grupo acercando el celular**, con un módulo nativo propio (sensor de proximidad) y el **giroscopio** |
+| 🔔 | **Notificaciones push** con la app cerrada, y recordatorio 1 h antes del plan |
+| 🔐 | **Cuentas**: verificación del correo con un código, recuperar la contraseña, verificación en dos pasos y **Continuar con Google** |
+| 📆 | **Franjas con fecha**, **voto múltiple**, **cierre automático** de la votación y **varios organizadores** por grupo |
+| ⚠️ | **Votación exprés**: si falta alguien imprescindible, el grupo decide si cancelar, reagendar o mantener |
+| 🌍 | [Página web y política de privacidad](https://alessandro-bs.github.io/HueckoApp-Android/) públicas |
 
 Todos los cambios, en el [📝 CHANGELOG](CHANGELOG.md).
+
+---
+
+## 📲 Probar la v3.0.0 paso a paso
+
+Hay tres formas de probar HueckoApp. **Para revisar la entrega, usa la A**: es la app real, con todas las funciones y sin instalar nada en la PC.
+
+| | Forma | Qué necesitas | ¿Funciona todo? |
+|---|---|---|---|
+| 🅰️ | **[Instalar el APK](#️-a-instalar-el-apk-recomendado)** (recomendado) | Un celular Android con internet (dos para la proximidad) | ✅ Sí: Google, notificaciones, proximidad, IA y correos reales |
+| 🅱️ | **[Expo Go con el backend en tu PC](#️-b-expo-go-con-el-backend-en-tu-pc)** | PC con Node 22 y el celular en la misma Wi-Fi | ⚠️ Sin Google, sin notificaciones y sin proximidad (Expo Go no trae ese código nativo) |
+| 🆎 | **[Development build](#-c-development-build-funciones-nativas-con-tu-código)** | Lo de la B y una cuenta de Expo | ✅ Sí, cargando **tu** código: para desarrollar o depurar las funciones nativas |
+
+### 🅰️ A. Instalar el APK (recomendado)
+
+**¿Qué necesitas?**
+
+| | Necesitas | Para qué |
+|---|---|---|
+| 📱 | Un celular **Android** con internet (Wi-Fi o datos) | La app habla con el servidor en internet, no con tu PC |
+| 📱📱 | Un **segundo** celular Android (opcional) | Solo para probar **unirse acercando el celular**, que necesita dos teléfonos juntos |
+| 📧 | Un **correo real** al que tengas acceso | Al registrarte llega un código de 6 dígitos que hay que escribir |
+| 🟦 | Una cuenta de **Google** (opcional) | Para probar **Continuar con Google** |
+
+**1️⃣ Descargar el APK**
+
+En el celular, abre [**Releases → v3.0.0**](https://github.com/Alessandro-BS/HueckoApp-Android/releases/latest) y descarga el archivo `.apk` de la sección *Assets*.
+
+> 💡 El APK no viene de Play Store porque es un proyecto de curso: se distribuye directo, como archivo.
+
+**2️⃣ Instalarlo**
+
+1. Abre el archivo descargado (desde la notificación de descarga o la app *Archivos*).
+2. Android pedirá permitir **«Instalar apps desconocidas»** para el navegador o la app de archivos: actívalo. Es el permiso que Android exige para cualquier app que no venga de Play Store.
+3. Si **Play Protect** muestra «App no verificada», toca **Más detalles → Instalar de todas formas**. Lo avisa porque la app no está publicada en la tienda, no porque haya encontrado un problema.
+4. Si ya tenías una versión anterior de HueckoApp, **desinstálala primero**: la v3.0.0 cambió la forma de iniciar sesión y la anterior ya no sirve con el servidor nuevo.
+
+**3️⃣ Primer arranque: el servidor despierta**
+
+El backend está en el plan gratis de Render, que **duerme tras 15 minutos sin uso** y tarda **cerca de 1 minuto** en despertar. La primera vez que abras la app puede quedarse cargando unos segundos: **no es un error**, la app reintenta sola (eso es TanStack Query, el equivalente de Volley). Si quieres despertarlo antes, abre <https://hueckoapp-api.onrender.com/api/health> en el navegador hasta que diga `{"status":"ok"}`.
+
+**4️⃣ Crear tu cuenta**
+
+- **Con correo:** toca **Regístrate**, escribe nombre, correo y contraseña. Te llega un correo de **HueckoApp** con un código de 6 dígitos: escríbelo y entras.
+  - 📬 Si no llega en un minuto, **revisa la carpeta Spam o Promociones**: el remitente es una cuenta de Gmail y algunos proveedores lo filtran.
+  - ⏱️ El código vence en **15 minutos** y admite **5 intentos**. **Reenviar código** se activa tras 60 segundos.
+- **Con Google:** toca **Continuar con Google** y elige tu cuenta. Entras sin contraseña ni código, porque Google ya verificó tu correo. Si el correo ya tenía una cuenta en HueckoApp, se vincula a ella.
+
+> 🔐 ¿Por qué un código? Para que nadie pueda registrarse con un correo ajeno. **Sin código no hay sesión.**
+
+**5️⃣ Permitir las notificaciones**
+
+Al iniciar sesión, Android pide permiso para mostrar notificaciones: acéptalo. Puedes revisarlo en **☰ → Perfil → Notificaciones en este celular**.
+
+**6️⃣ Recorrido de pruebas**
+
+Con dos cuentas (en dos celulares, o cerrando sesión y entrando con la otra), recorre esta lista. La columna *¿Qué demuestra?* dice qué requisito o función se está probando.
+
+| ☐ | Prueba | Qué hacer | Qué debería pasar | ¿Qué demuestra? |
+|---|---|---|---|---|
+| ☐ | 📷 Horario con la cámara | **Horario → Escanear → Cámara**, fotografía un horario | La IA lee los bloques; los revisas y tocas **Añadir a mi horario** | Cámara + Huecko IA |
+| ☐ | 👥 Grupo con código | **Grupos → Crear grupo**; la otra cuenta usa **Unirme** con el código | Los dos aparecen en **Miembros** | API REST |
+| ☐ | 📡 Unirse acercando | Celular A: **Grupo → Agregar personas → Acercar para invitar**. Celular B: **Grupos → Unirse acercando**. Junta las pantallas | B entra al grupo y **los dos vibran** | Sensor de proximidad (módulo nativo) |
+| ☐ | 🌀 Giroscopio | Repite la prueba anterior **moviendo** un celular | No une mientras se mueve; al quedarse quietos, sí | Giroscopio |
+| ☐ | 🔍 Huecos en común | Grupo → pestaña **Huecos**, cambia de semana | Franjas libres con el % del grupo disponible | Cruce de horarios en el servidor |
+| ☐ | ✨ Propuesta con IA | **Planes → Crear propuesta**, escribe *«reunión de 2 horas el viernes en la tarde»* → **Rellenar con IA**; **Usar mi ubicación actual** | Franjas con fecha y el lugar con tu dirección | IA + geolocalización |
+| ☐ | 🔔 Aviso con la app cerrada | Cierra la app en el celular B; crea la propuesta desde A | En B llega **«Nueva propuesta»**; al tocarla se abre **Votar** | Notificaciones push |
+| ☐ | 🗳️ Voto múltiple y cierre | Vota varias franjas; deja que venza el plazo | Al vencer, se confirma sola la franja más votada (o se cancela si nadie votó) | Votación |
+| ☐ | ⚠️ Votación exprés | Marca a alguien **imprescindible** en **Miembros**; esa persona reporta **Falta** en el plan | El grupo vota cancelar, reagendar o mantener, con la recomendación de la IA | Imprevistos |
+| ☐ | 👑 Organizadores | **Miembros**: nombra organizador a otro e intenta quitárselo al último | Los dos pueden gestionar; al último no se le puede quitar | Roles |
+| ☐ | 🔐 Verificación en dos pasos | **Perfil → Verificación en dos pasos** (pide tu contraseña y un código); cierra sesión y entra | Tras la contraseña pide un código nuevo del correo | Seguridad |
+| ☐ | 🔑 Recuperar contraseña | En el login, **¿Olvidaste tu contraseña?** | Código por correo, contraseña nueva y entras; en el otro celular esa sesión se cierra | Seguridad |
+| ☐ | 💾 Sin conexión | Activa el modo avión y abre la app | Entra con tu sesión e Inicio muestra ☁️ «Sin conexión» con la última copia | Async Storage |
+
+> 🧪 El recorrido detallado, cuenta por cuenta, está en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md).
+
+### 🅱️ B. Expo Go con el backend en tu PC
+
+Para ver el código funcionando en vivo sin compilar nada: el backend corre en tu PC (con su propia base local) y la app en **Expo Go**. Sigue la [🚀 Instalación desde el código](#-instalación-paso-a-paso).
+
+Diferencias con el APK:
+
+- ❌ **Continuar con Google**, las **notificaciones** y **unirse acercando** no aparecen: necesitan código nativo que Expo Go no trae (en su lugar, la app muestra «Usar el código»).
+- 📧 Sin `BREVO_API_KEY` en `backend/.env`, los códigos de verificación **no se envían por correo**: salen en la **terminal del backend** (líneas `[correo] Asunto: Tu código de HueckoApp: 123456`). Las cuentas de ejemplo de la semilla ya están verificadas.
+- 🔄 Usa su **propia base de datos** (PGlite en tu PC): las cuentas del APK no existen aquí, y al revés.
+
+### 🆎 C. Development build: funciones nativas con tu código
+
+Un *development build* es un APK que trae el código nativo (Google, notificaciones, proximidad) pero carga el JavaScript desde **Metro en tu PC**: cambias el código y lo ves al instante en el celular. Sirve para desarrollar o depurar esas funciones.
+
+1. Ten lista la [instalación desde el código](#-instalación-paso-a-paso) (Node 22, `npm install`).
+2. Inicia sesión en Expo (una vez por PC): desde `mobile/`, `npx eas-cli@latest login`.
+3. Genera e instala el build: `npx eas-cli@latest build --profile development --platform android`. Al terminar, abre el enlace o QR de EAS en **cada** celular e instala el `.apk`.
+4. Elige a qué backend se conecta, en `mobile/.env`:
+   - **Render** (lo más simple, ya tiene todas las rutas): `EXPO_PUBLIC_API_URL=https://hueckoapp-api.onrender.com/api`
+   - **Tu PC**: `EXPO_PUBLIC_API_URL=http://<IP-de-tu-PC>:3000/api`, con `npm run backend` encendido y los celulares en la misma Wi-Fi. Comprueba desde el navegador de cada celular que `http://<IP-de-tu-PC>:3000/api/health` dice `ok`.
+5. En `mobile/`: `npx expo start --dev-client --clear` y abre la app instalada (no Expo Go) en cada celular.
+
+> ⚠️ El APK de desarrollo está firmado con el mismo keystore de EAS que el de la entrega, así que Google y las notificaciones funcionan. Si compilas en local con `npx expo run:android` (firma de depuración), **no**: Google Cloud solo acepta la huella SHA-1 del keystore de EAS.
 
 ---
 
@@ -119,10 +252,14 @@ Todos los cambios, en el [📝 CHANGELOG](CHANGELOG.md).
 
 ```mermaid
 flowchart LR
-    A["📱 App móvil<br/>Expo · React Native<br/>TypeScript"] -- "REST + JWT<br/>(axios)" --> B["⚙️ API REST<br/>Express 5 · TypeScript<br/>zod"]
+    A["📱 App móvil (APK)<br/>Expo · React Native<br/>TanStack Query + axios"] -- "REST + JWT" --> B["⚙️ API REST en Render<br/>Express 5 · TypeScript<br/>zod"]
     A -. "sin red:<br/>AsyncStorage" .-> L[("💾 Teléfono<br/>SecureStore +<br/>AsyncStorage")]
-    B -- "SQL parametrizado" --> C[("🐘 PostgreSQL<br/>PGlite (dev/tests)<br/>Neon (producción)")]
+    A -- "token de Google" --> G["🟦 Google Sign-In"]
+    B -- "SQL parametrizado" --> C[("🐘 PostgreSQL<br/>Neon (producción)<br/>PGlite (dev/tests)")]
     B -- "clave solo en el servidor" --> D["🤖 Google Gemini"]
+    B -- "códigos por correo" --> E["📧 Brevo"]
+    B -- "avisos" --> P["🔔 Expo Push +<br/>Firebase (FCM)"] --> A
+    W["⏰ GitHub Actions<br/>(cada ~10 min)"] -- "/api/internal/tick" --> B
     S["📦 shared/<br/>tipos del contrato"] -. "import type" .-> A
     S -. "import type" .-> B
 ```
@@ -131,10 +268,14 @@ flowchart LR
 |---|---|---|
 | 📱 App | Expo SDK · React Native · React · TypeScript | 57 · 0.86.3 · 19.2.3 · 6.0 |
 | 🧭 Navegación | React Navigation (`native-stack`, `bottom-tabs`, `drawer`, `material-top-tabs`) | 7 |
-| 🌐 Cliente HTTP | axios | 1.20 |
+| 🌐 Cliente HTTP | axios (≈ Retrofit) · TanStack Query (≈ Volley) | 1.20 · 5.105 |
+| 📡 Sensores | Módulo nativo propio en Kotlin (proximidad) · `expo-sensors` (giroscopio) | — · 57 |
+| 🔔 Notificaciones | `expo-notifications` + Firebase Cloud Messaging V1 | 57 |
+| 🔐 Cuentas | `@react-native-google-signin/google-signin` (app) · `google-auth-library` (servidor) · Brevo (correo) | 17 · 11.3 · API v3 |
 | ⚙️ API | Node.js · Express · zod · JWT · bcrypt | 22 · 5.2 · 4.6 |
 | 🐘 Base de datos | PGlite (desarrollo y tests) · `pg` para Neon (producción) | 0.5 · 8.23 |
 | 🤖 IA | Google Gemini con `@google/genai` | 2.24 |
+| ☁️ Despliegue | EAS Build (APK) · Render (API) · Neon (PostgreSQL) · GitHub Pages (web) | — |
 | 🧪 Tests | Vitest + Supertest (backend) · Jest + Testing Library (app) | — |
 
 ### 📁 Estructura del monorepo
@@ -142,19 +283,24 @@ flowchart LR
 ```text
 HueckoApp-Android/
 ├── 📱 mobile/            App Expo
+│   ├── modules/proximity/ Módulo nativo en Kotlin: sensor de proximidad
+│   ├── google-services.json  Firebase (identifica la app; no es secreto)
 │   └── src/
-│       ├── api/          Cliente axios, una función por endpoint
-│       ├── components/   UI reutilizable (botones, tarjetas, mapa OSM…)
+│       ├── api/          Cliente axios (una función por endpoint) y TanStack Query
+│       ├── auth/         Token en SecureStore y Google Sign-In
+│       ├── components/   UI reutilizable (botones, tarjetas, campo de código, mapa OSM…)
 │       ├── context/      AuthContext: sesión, token y perfil
-│       ├── hooks/        25 hooks propios
+│       ├── hooks/        33 hooks propios
 │       ├── navigation/   Stack, drawer, barra inferior y pestañas
-│       ├── screens/      Pantallas por área (auth, dashboard, schedule, groups, proposals, admin)
+│       ├── notifications/ Registro del celular y navegación al tocar un aviso
+│       ├── screens/      Pantallas por área (auth, dashboard, schedule, groups, proposals, profile, admin)
 │       └── storage/      AsyncStorage (datos no secretos)
 ├── ⚙️ backend/           API REST Express
-│   ├── src/              ai/ · auth/ · availability/ · groups/ · proposals/ · schedule/ · admin/ · db/
+│   ├── src/              ai/ · auth/ · email/ · notifications/ · proximity/ · groups/ · proposals/ · schedule/ · admin/ · db/ …
 │   └── test/             Tests con Vitest y Supertest
 ├── 📦 shared/            Tipos del contrato (@hueckoapp/shared)
-├── 📜 docs/              Contrato de la API, guía de pruebas y despliegue
+├── 📜 docs/              API, guía de pruebas, despliegue y puesta en marcha
+├── ⏰ .github/workflows/ CI y despertador del servidor
 └── 🗃️ legacy-android/    v1.0.0 nativa en Kotlin (congelada)
 ```
 
@@ -163,6 +309,8 @@ HueckoApp-Android/
 ---
 
 ## ✅ Antes de empezar
+
+> 💡 Esta sección y la siguiente son para **ejecutar el proyecto desde el código** (formas B y C). Para usar la app basta con el [APK](#️-a-instalar-el-apk-recomendado).
 
 | | Necesitas | Nota |
 |---|---|---|
@@ -236,6 +384,8 @@ Abre `backend/.env` y completa:
 | `GEMINI_API_KEY` | Tu clave de <https://aistudio.google.com/apikey> | Recomendada (sin ella, «Modo demostración») |
 
 > 🔒 `backend/.env` **nunca se sube al repositorio**. La clave de Gemini **nunca llega a la app**: solo la usa el servidor.
+>
+> 📧 En local no hace falta Brevo: sin `BREVO_API_KEY`, los códigos de verificación se escriben en la terminal del backend en vez de enviarse por correo.
 
 ### 3️⃣ Cargar datos de ejemplo (opcional)
 
@@ -243,7 +393,7 @@ Abre `backend/.env` y completa:
 npm run seed -w backend   # con el servidor detenido
 ```
 
-Crea usuarios, grupos, horarios y dos planes con fechas relativas a hoy. Se puede repetir sin duplicar nada.
+Crea usuarios, grupos, horarios y dos planes con fechas relativas a hoy. Se puede repetir sin duplicar nada. Las cuentas de ejemplo ya tienen el **correo verificado**, así que entran sin código. La semilla crea cuentas con contraseña conocida (una de ellas administradora), por eso **se niega a correr contra una base remota** como la de producción, salvo que se pida a propósito con `-- --allow-remote`.
 
 | 👤 Correo | 🔑 Contraseña | Qué tiene |
 |---|---|---|
@@ -391,8 +541,13 @@ npm run make-admin -w backend -- correo@ejemplo.com --revoke   # ➖ quitarlo
 | `LOGIN_RATE_LIMIT` / `REGISTER_RATE_LIMIT` | `20` / `10` | Intentos por IP cada 15 min |
 | `CODE_RATE_LIMIT` | `30` | Intentos por IP cada 15 min al verificar, reenviar código y «¿Olvidaste tu contraseña?» |
 | `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | — / — / `HueckoApp` | Correos con el código. Sin clave, en desarrollo los códigos salen en el log del backend; en producción son obligatorias las dos primeras |
-| `GOOGLE_WEB_CLIENT_ID` | vacía | ID de cliente Web de Google (no es secreto). Vacío = sin «Continuar con Google» |
+| `BREVO_DAILY_LIMIT` | `280` | Tope de correos cada 24 h entre todas las cuentas, por debajo de los 300/día del plan gratis de Brevo |
+| `GOOGLE_WEB_CLIENT_ID` | vacía | ID de cliente Web de Google (no es secreto; el mismo de `extra.googleWebClientId` en [`app.json`](mobile/app.json)). Vacío = sin «Continuar con Google» |
+| `CRON_SECRET` | vacía | Clave del despertador (`POST /api/internal/tick`, mínimo 32 caracteres). Vacía = esa ruta no existe |
+| `EXPO_ACCESS_TOKEN` | vacía | Solo si activas «Enhanced Security» para los avisos en Expo |
 | `TRUST_PROXY` | `false` | Proxies delante del servidor (solo en producción) |
+
+> ☁️ En **producción** estas variables no están en un archivo: viven en el panel de **Render** ([`render.yaml`](render.yaml) solo declara sus nombres). Ver la [🧰 puesta en marcha](docs/puesta-en-marcha.md).
 
 ### `mobile/.env` (copia de [`mobile/.env.example`](mobile/.env.example))
 
@@ -410,7 +565,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 - ⚠️ **PGlite admite un solo proceso:** detén el servidor antes de `seed` o `make-admin`.
 - 🔄 **Empezar de cero:** detén el servidor y borra `backend/data/pglite`.
-- ☁️ **Producción** con Neon y Render: [📜 docs/despliegue.md](docs/despliegue.md) (fuera del alcance de esta versión).
+- ☁️ **Producción:** PostgreSQL en **Neon**, usado por el backend en **Render**. Al arrancar, el servidor aplica solo las migraciones pendientes. Detalles en [📜 despliegue](docs/despliegue.md) y en la [🧰 puesta en marcha](docs/puesta-en-marcha.md).
 
 ---
 
@@ -459,6 +614,13 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | «Demasiadas solicitudes» (`429`) | Límite de la IA: 20 llamadas cada 15 min por cuenta | Espera unos minutos |
 | «La base local … está abierta por otro proceso» | `seed` o `make-admin` con el servidor encendido | Detén el servidor primero |
 | «Esa franja ya empezó» al confirmar | La franja elegida ya empezó (las franjas tienen fecha) | Toca **Replantear** en la propuesta y elige franjas nuevas, o confirma una franja que aún no empiece |
+| 📲 El APK se queda cargando al abrirlo | El servidor de Render estaba dormido (tarda ~1 min en despertar) | Espera: la app reintenta sola. O abre <https://hueckoapp-api.onrender.com/api/health> hasta que diga `ok` |
+| 📬 No llega el código por correo | Filtro de spam, o se alcanzó un límite | Revisa **Spam / Promociones**; toca **Reenviar código** (tras 60 s). Hay un tope de 10 códigos por cuenta al día y de 280 en total al día («Hoy no podemos enviar más códigos») |
+| 🟦 No aparece «Continuar con Google» | Estás en Expo Go, o el APK no trae el ID de cliente Web | Usa el APK o un development build (forma A o C) |
+| 🟦 Error de Google al elegir la cuenta | El APK no está firmado con el keystore de EAS (su SHA-1 no está registrado en Google Cloud) | Instala el APK de Releases o un build de EAS, no uno compilado en local |
+| 🔔 No llegan las notificaciones | Permiso denegado, Expo Go, o el interruptor de Perfil apagado | Usa el APK; en **Perfil** activa **Notificaciones en este celular** y revisa el permiso en los ajustes de Android |
+| 📡 «Unirse acercando» no une | Los celulares se movían, no se juntaron a la vez, o hay varias parejas cerca | Junta las pantallas (el sensor está arriba, junto al auricular) y quédense quietos 1–2 s; si sigue fallando, usa el código |
+| ❌ El APK anterior no puede registrar cuentas | La v3.0.0 cambió el registro (ahora pide un código) | Desinstala la versión anterior e instala la v3.0.0 |
 
 ---
 
@@ -467,43 +629,15 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | Versión | Estado | Qué incluye |
 |---|---|---|
 | 🏷️ **v1.0.0** | ✅ Publicada | App nativa en Kotlin + Jetpack Compose ([`legacy-android/`](legacy-android/)) |
-| 🏷️ **v2.0.0** | ✅ Esta versión | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
-| 📦 **v3.0.0** | 🚧 En curso | **APK** instalable con EAS Build y backend en Render + Neon ([despliegue](docs/despliegue.md)), push, cuentas con código por correo y Google. Pasos que faltan: [🧰 puesta en marcha](docs/puesta-en-marcha.md) |
-
-### 🎓 Requisitos de la tercera entrega (v3.0.0)
-
-| Requisito | Estado | Cómo se cumple |
-|---|---|---|
-| 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
-| 🌐 **Volley** (equivalente en React Native) | ✅ Integrado (PR #43) | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio, Grupos y las pestañas Planes y Disponibilidad. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
-| 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
-| 📡 **Sensor de proximidad** | ✅ Integrado (PR #44); 🚧 falta probarlo en dos celulares | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go; el módulo Kotlin aún no se ha compilado en un build |
-| 🌀 **Giroscopio** | ✅ Integrado (PR #44); 🚧 falta probarlo en dos celulares | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
-| 🧭 Magnetómetro (opcional) | ❌ Falta | `expo-sensors` (`Magnetometer`) |
-| 💡 Sensor de luz (opcional) | ❌ Falta | `expo-sensors` (`LightSensor`, solo Android) |
-
-**📡 Unirse a un grupo acercando el celular**
-
-El sensor de proximidad detecta que hay algo a ~5 cm de la pantalla, pero no qué celular es. Por eso los **dos** celulares lo usan y el servidor los empareja por la hora:
-
-1. Quien invita abre «Agregar personas» → **Acercar para invitar**; quien se une abre **Unirse acercando**.
-2. Juntan los celulares **pantalla con pantalla** (el sensor está arriba, junto al auricular).
-3. Cada celular avisa al servidor del momento en que detectó algo cerca.
-4. Si llegan dos avisos casi a la vez (una invitación y una unión), el servidor une a esa persona al grupo y los dos vibran. Si hay coincidencias dudosas, no une a nadie y pide repetir o usar el código.
-
-**🛠️ Probarlo: development build y backend local**
-
-El módulo nativo no está en Expo Go (allí las pantallas muestran «Usar el código»), así que hace falta un *development build*. Ese APK solo trae el código nativo: el JavaScript lo carga de Metro en tu PC y la URL del backend sale de **tu** `mobile/.env` (el `EXPO_PUBLIC_API_URL` del perfil `development` en [`eas.json`](mobile/eas.json) no se usa en ese caso). Y mientras esta función no esté desplegada, Render no tiene las rutas `/proximity`: se prueba con el backend local.
-
-1. Desde `mobile/`: `npx eas-cli@latest build --profile development --platform android`. Al terminar, abre el enlace o QR de EAS en **cada** celular, descarga el `.apk` e instálalo.
-2. En tu PC, levanta el backend local: `npm run backend` (desde la raíz).
-3. Conecta los **dos** celulares a la **misma Wi-Fi** que tu PC y pon la IP de tu PC en `mobile/.env`: `EXPO_PUBLIC_API_URL=http://<IP-de-tu-PC>:3000/api` (sin `.env`, la app usa `10.0.2.2`, que solo funciona en el emulador). Comprueba en el navegador de cada celular que `http://<IP-de-tu-PC>:3000/api/health` dice `ok`.
-4. En `mobile/`: `npx expo start --dev-client --clear` y abre en cada celular la app instalada (no Expo Go) para cargar el código desde Metro.
-5. Entra con una cuenta distinta en cada celular (p. ej. `test@test.com` invita a «Proyecto Integrador» y `carlos@test.com` se une).
-
-Para probarlo contra Render, primero tiene que estar desplegada esta rama (o apuntar el servicio a ella un rato): entonces basta con `EXPO_PUBLIC_API_URL=https://hueckoapp-api.onrender.com/api` en `mobile/.env`.
+| 🏷️ **v2.0.0** | ✅ Publicada | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
+| 🏷️ **v3.0.0** | ✅ Esta versión | **APK** con EAS Build, backend en Render + Neon, TanStack Query, unirse acercando el celular (proximidad + giroscopio), notificaciones push, cuentas con código por correo, 2FA y Google, franjas con fecha, votación exprés y varios organizadores. Configuración fuera del código: [🧰 puesta en marcha](docs/puesta-en-marcha.md) |
+| 💡 Ideas | 🔜 Después | Gestión del grupo (expulsar, regenerar el código, QR), editar el perfil con foto, «Llegué» el día del plan, álbum del plan, reportes revisados por un administrador y actualización en tiempo real |
 
 **🔜 Pendientes conocidos**
+
+- 🧪 **Prueba completa en dos celulares** con el APK de la v3.0.0 (proximidad, notificaciones y Google), siguiendo el [recorrido de pruebas](#-probar-la-v300-paso-a-paso).
+- 📧 Los correos salen desde una cuenta de Gmail (sin dominio propio), así que algunos proveedores los mandan a **Spam**. Con un dominio propio autenticado en Brevo (DKIM/DMARC) dejaría de pasar.
+- ⏰ El despertador de GitHub Actions se desactiva solo tras **60 días** sin actividad en el repositorio: si pasa, actívalo de nuevo en **Actions → Despertador**.
 
 - 🗺️ **«Elegir en el mapa» (en curso):** el mapa de OpenStreetMap ya funciona ([`OsmMap.tsx`](mobile/src/components/OsmMap.tsx)), pero el botón está desactivado (`features.mapPicker` en [`config.ts`](mobile/src/config.ts)) hasta tener un buscador con sugerencias mientras se escribe. El mapa de Google no se usa porque en Expo Go sale negro: Google rechaza la clave que trae Expo Go.
 - 📆 La agenda de huecos va de **08:00 a 20:00**; un plan fuera de ese rango se agrega como franja a mano.

@@ -2,6 +2,41 @@
 
 Todos los cambios importantes de HueckoApp. Las versiones siguen [SemVer](https://semver.org/lang/es/) y cada una tiene su tag en `main`.
 
+## 🏷️ [3.0.0] — 2026-11-14
+
+Tercera entrega: **APK instalable** con el backend en Render + Neon, los requisitos del curso (Volley, sensores, notificaciones) y paridad de funciones con la otra versión del proyecto.
+
+### ✨ Nuevo
+
+- 📦 **APK con EAS Build** y backend publicado en **Render** con base de datos en **Neon** (#42).
+- 🌐 **TanStack Query** (equivalente de Volley): caché por consulta y reintentos automáticos sin red o con Render dormido, en Inicio, Grupos, Planes y Disponibilidad (#43, #51).
+- 📡 **Unirse a un grupo acercando el celular**: módulo nativo con el sensor de proximidad y el **giroscopio** para no disparar mientras se mueve (#44).
+- 📆 **Franjas con fecha** en las propuestas: cada franja es un día concreto, sin días pasados (#45).
+- ⚠️ **Votación exprés** ante una ausencia crítica: el grupo vota cancelar, reagendar o mantener, con recomendación de la IA (#46).
+- 👥 **Varios organizadores** por grupo; el último no se puede quitar (#47).
+- 🗳️ **Cierre automático** de la votación de franjas, **voto múltiple** y bloques de horario sin solapes (#48).
+- 🔔 **Notificaciones push** (Firebase Cloud Messaging): nueva propuesta, plan confirmado o cancelado, votación exprés abierta y su resultado, y recordatorio 1 h antes; interruptor por celular en Perfil (#49).
+- 🔐 **Cuentas**: «Continuar con Google», verificación del correo obligatoria con un código, recuperar la contraseña y verificación en dos pasos opcional; correos por **Brevo** (#50).
+- 🌍 **Página web y política de privacidad** en GitHub Pages, para la pantalla de consentimiento de Google (#52).
+
+### 🐛 Corregido
+
+- 🤖 El borrador con IA para «hoy» ya no se agenda la semana siguiente (#40).
+- 🚫 Un imprevisto no se guarda en un plan que se acaba de cancelar (#41).
+- 👥 Crear o unirse a un grupo antes de que cargue «Mis grupos» ya no deja solo el grupo nuevo, y al salir de un grupo Inicio deja de mostrarlo (#51).
+
+### ⚠️ Cambios que rompen compatibilidad
+
+- 📱 El registro ya no devuelve el token sino un reto con código: **los APK anteriores no pueden registrar cuentas contra este backend**. Despliega el backend y reparte el APK nuevo a la vez.
+- 🔑 El servidor no arranca en producción sin `BREVO_API_KEY` y `BREVO_SENDER_EMAIL`.
+
+### 🧰 Interno
+
+- 🗃️ Migraciones 7 a 13 (franjas con fecha, votación exprés, organizadores, voto múltiple, notificaciones y cuentas). Las cuentas existentes quedan verificadas.
+- ⏰ Barrido cada minuto en el servidor y **despertador** de GitHub Actions que llama a `/api/internal/tick` cada ~10 min.
+- 🧪 1848 tests (1068 del backend y 780 de la app).
+- 📜 [Guía de puesta en marcha](docs/puesta-en-marcha.md) con todo lo que se configura fuera del código.
+
 ## 🏷️ [2.0.0] — 2026-10-16
 
 Segunda entrega: la app se rehace en **Expo + React Native** con backend propio. La versión nativa en Kotlin queda congelada en [`legacy-android/`](legacy-android/).
@@ -37,5 +72,6 @@ Segunda entrega: la app se rehace en **Expo + React Native** con backend propio.
 
 Primera entrega: app **nativa en Kotlin + Jetpack Compose** (ahora en [`legacy-android/`](legacy-android/)), con horarios, grupos, votación de planes y OCR de horarios simulado.
 
+[3.0.0]: https://github.com/Alessandro-BS/HueckoApp-Android/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/Alessandro-BS/HueckoApp-Android/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/Alessandro-BS/HueckoApp-Android/releases/tag/v1.0.0
