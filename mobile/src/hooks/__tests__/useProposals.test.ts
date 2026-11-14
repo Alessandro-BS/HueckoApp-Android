@@ -31,7 +31,7 @@ describe('useProposal', () => {
   };
 
   it('toggleVote sobre otra franja vota con PUT y devuelve «voted»', async () => {
-    const votada = makeProposal({ myVoteWindowId: 'w_22', windows: [makeWindow({ voteCount: 1 }), makeWindow({ id: 'w_22', dayOfWeek: 4, voteCount: 1 })] });
+    const votada = makeProposal({ myVoteWindowIds: ['w_22'], windows: [makeWindow({ voteCount: 1 }), makeWindow({ id: 'w_22', dayOfWeek: 4, voteCount: 1 })] });
     mocked.voteWindow.mockResolvedValue(votada);
     const { result } = await load();
     let outcome;
@@ -45,7 +45,7 @@ describe('useProposal', () => {
 
   it('toggleVote sobre mi franja retira el voto con DELETE y devuelve «unvoted» (G1)', async () => {
     mocked.removeVote.mockResolvedValue(makeProposal());
-    const { result } = await load(makeProposal({ myVoteWindowId: 'w_21' }));
+    const { result } = await load(makeProposal({ myVoteWindowIds: ['w_21'] }));
     let outcome;
     await act(async () => {
       outcome = await result.current.toggleVote('w_21');
@@ -53,7 +53,15 @@ describe('useProposal', () => {
     expect(outcome).toEqual({ ok: true, value: 'unvoted' });
     expect(mocked.removeVote).toHaveBeenCalledWith('prop_2');
     expect(mocked.voteWindow).not.toHaveBeenCalled();
-    expect(result.current.proposal?.myVoteWindowId).toBeNull();
+    expect(result.current.proposal?.myVoteWindowIds).toEqual([]);
+  });
+
+  it('con voto múltiple, toggleVote sobre una franja mía retira solo esa (DELETE ?windowId)', async () => {
+    mocked.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+    const { result } = await load(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }));
+    await act(async () => void (await result.current.toggleVote('w_21')));
+    expect(mocked.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+    expect(result.current.proposal?.myVoteWindowIds).toEqual(['w_22']);
   });
 
   it('confirm, cancel, addWindow, reportIncidence y voteExpress reemplazan la propuesta con la respuesta', async () => {

@@ -6,6 +6,7 @@ import { getUserId } from '../auth/require-auth';
 import { groupWeekWindows, parseWeek } from '../availability/group-availability';
 import { isForeignKeyViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
+import { closeDueBeforeMembershipChange } from '../proposals/voting-close';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 import { loadGroupForMember } from './group-access';
 import { groupsRepository } from './groups.repository';
@@ -43,6 +44,7 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
     const groupId = await groups.findIdByInviteCode(inviteCode);
     const invalidCode = () => new ApiError(404, 'INVALID_INVITE_CODE', 'Código de invitación inválido.');
     if (!groupId) throw invalidCode();
+    await closeDueBeforeMembershipChange(db, groupId, now());
     // addMember no inserta si ya era miembro (también si llegan dos peticiones a la vez). Si el grupo se borró justo
     // ahora (se fue su último miembro), su clave foránea falla: el código ya no vale.
     const added = await groups.addMember(groupId, userId).catch((error: unknown) => {
@@ -84,6 +86,7 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
   router.delete('/:id/members/me', async (req, res) => {
     const userId = getUserId(res);
     const { group } = await loadForMember(req.params.id, userId);
+    await closeDueBeforeMembershipChange(db, group.id, now());
     await groups.leave(group.id, userId);
     res.status(204).end();
   });

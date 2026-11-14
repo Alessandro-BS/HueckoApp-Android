@@ -49,7 +49,7 @@ describe('votos de quien sale del grupo (D5)', () => {
     await joinGroup(app, carlos.token, group.inviteCode);
     const back = await getProposal(p.id, carlos.token);
     expect(back.windows.map((w) => w.voteCount)).toEqual([1, 2]);
-    expect(back.myVoteWindowId).toBe(windowOf(p, 4).id);
+    expect(back.myVoteWindowIds).toEqual([windowOf(p, 4).id]);
   });
 
   it('«la más votada» al confirmar solo cuenta a los miembros actuales', async () => {

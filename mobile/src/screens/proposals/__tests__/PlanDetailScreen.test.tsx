@@ -249,3 +249,41 @@ it('los botones de gestión siguen a canManage, no a quién creó el plan (D1)',
   expect(screen.queryByText('Confirmar plan')).toBeNull();
   expect(screen.queryByText('Cancelar plan')).toBeNull();
 });
+
+it('plan confirmado al cerrar la votación: lo dice', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ autoClosed: true }));
+  await renderScreen();
+  expect(await screen.findByText('Confirmado al cerrar la votación')).toBeTruthy();
+});
+
+it('sin autoClosed no muestra el aviso de cierre automático', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed());
+  await renderScreen();
+  expect(await screen.findByText('Reunión de avance del proyecto')).toBeTruthy();
+  expect(screen.queryByText('Confirmado al cerrar la votación')).toBeNull();
+});
+
+it('cancelado porque nadie votó: quien gestiona ve «Replantear» y abre la hoja de replanteo', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ createdBy: TEST_USER, state: 'CANCELADO', autoClosed: true }));
+  mocked.replanProposal.mockResolvedValue(makeProposal({ createdBy: TEST_USER }));
+  await renderScreen('prop_2');
+  expect(await screen.findByText('Cancelado: nadie votó antes del plazo')).toBeTruthy();
+  expect(screen.queryByText('Cancelar plan')).toBeNull();
+  await fireEvent.press(screen.getByText('Replantear'));
+  expect(await screen.findByText('Replantear votación')).toBeTruthy();
+});
+
+it('cancelado automáticamente: quien no gestiona no ve «Replantear»', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ state: 'CANCELADO', autoClosed: true }));
+  await renderScreen('prop_2');
+  expect(await screen.findByText('Cancelado: nadie votó antes del plazo')).toBeTruthy();
+  expect(screen.queryByText('Replantear')).toBeNull();
+});
+
+it('cancelado a mano: sin aviso de cierre automático ni «Replantear»', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ createdBy: TEST_USER, state: 'CANCELADO' }));
+  await renderScreen('prop_2');
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Cancelado: nadie votó antes del plazo')).toBeNull();
+  expect(screen.queryByText('Replantear')).toBeNull();
+});

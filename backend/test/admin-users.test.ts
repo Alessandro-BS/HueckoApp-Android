@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { adminUsers } from '../src/admin/admin-users';
 import type { Db } from '../src/db/db';
 import { insertUser, registerAdmin } from './admin-fixtures';
-import { bearer, createGroup, makeTestApp, NOW, recordQueries, registerUser } from './helpers';
+import { bearer, createGroup, createProposal, DEADLINE, makeTestApp, NOW, recordQueries, registerUser, voteFor, win } from './helpers';
 
 type AuditRow = { action: string; admin_id: string | null; target_id: string; details: string };
 const auditRows = (db: Db) => db.many<AuditRow>('SELECT action, admin_id, target_id, details FROM admin_audit_log ORDER BY seq');
@@ -111,6 +111,18 @@ describe('GET /api/admin/users/:id', () => {
     const res = await request(app).get('/api/admin/users/no-existe').set(bearer(admin.token));
     expect(res.status).toBe(404);
     expect(res.body.error).toMatchObject({ code: 'USER_NOT_FOUND', message: 'Usuario no encontrado.' });
+  });
+});
+
+describe('GET /api/admin/users/:id: votos', () => {
+  it('dos votos en la misma propuesta cuentan como un voto', async () => {
+    const { app, admin, ana } = await setup();
+    const group = await createGroup(app, ana.token, { name: 'Estudio' });
+    const p = await createProposal(app, ana.token, group.id, { votingDeadline: DEADLINE, windows: [win(2, '16:00', '18:00'), win(4, '10:00', '12:00')] });
+    await voteFor(app, p.id, p.windows[0].id, ana.token);
+    await voteFor(app, p.id, p.windows[1].id, ana.token);
+    const res = await request(app).get(`/api/admin/users/${ana.user.id}`).set(bearer(admin.token));
+    expect(res.body.activity.votes).toBe(1);
   });
 });
 

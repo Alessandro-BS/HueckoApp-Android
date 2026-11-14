@@ -6,6 +6,7 @@ import { buildDashboard, upcomingPlans } from '../dashboard/dashboard';
 import { groupsRepository } from '../groups/groups.repository';
 import { expressVotesRepository } from '../proposals/express-votes.repository';
 import { proposalsRepository } from '../proposals/proposals.repository';
+import { closeDueProposals } from '../proposals/voting-close';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 
 // Montado en /api/me detrás de requireAuth (/me/time-blocks tiene su propio router).
@@ -18,14 +19,18 @@ export function meRouter({ db, now }: ResolvedDeps) {
 
   router.get('/upcoming-plans', async (_req, res) => {
     const userId = getUserId(res);
-    // Cierre perezoso: las votaciones exprés vencidas de mis grupos se cierran antes de leer (nunca lanza).
-    await expressVotes.closeDueInScope({ userId }, now());
-    res.json(upcomingPlans(await proposals.listForUser(userId), now()));
+    // Cierre perezoso (nunca lanza): antes de leer se cierran las votaciones de franjas vencidas de mis grupos y después
+    // las votaciones exprés vencidas.
+    const at = now();
+    await closeDueProposals(db, { userId }, at);
+    await expressVotes.closeDueInScope({ userId }, at);
+    res.json(upcomingPlans(await proposals.listForUser(userId), at));
   });
 
   router.get('/dashboard', async (_req, res) => {
     const userId = getUserId(res);
     const at = now();
+    await closeDueProposals(db, { userId }, at);
     await expressVotes.closeDueInScope({ userId }, at);
     const myGroups = await groups.listForUser(userId);
     const myProposals = await proposals.listForUser(userId);

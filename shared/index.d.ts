@@ -121,7 +121,9 @@ export type Proposal = {
   votingDeadline: string;          // ISO 8601 (UTC); solo se vota antes de esta hora
   state: ProposalState;
   windows: TimeWindow[];           // ordenadas por fecha y hora
-  myVoteWindowId: string | null;   // ventana que votó el usuario actual
+  multipleVotes: boolean;          // true: se pueden votar varias franjas; false: un voto por persona (votar otra lo mueve)
+  autoClosed: boolean;             // true si la votación se cerró sola al vencer el plazo (CONFIRMADO, o CANCELADO si nadie votó)
+  myVoteWindowIds: string[];       // franjas que votó el usuario actual, en el orden de `windows`
   canManage: boolean;              // true si el usuario actual puede confirmar, cancelar o replantear (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
   scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
@@ -143,6 +145,7 @@ export type ProposalInput = {
   location?: Location | null;
   votingDeadline: string;          // ISO 8601 futura y anterior al inicio de la primera franja
   windows?: TimeWindowInput[];     // de 2 a 5; vacío u omitido: el servidor propone las 3 mejores franjas de `week`
+  multipleVotes?: boolean;         // por defecto true
   week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); solo se usa sin `windows`; por defecto, esta semana
 };
 
@@ -151,7 +154,8 @@ export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes
 // Voto en la votación exprés (PUT /proposals/:id/express-vote); se puede cambiar mientras siga abierta.
 export type ExpressVoteInput = { option: ExpressOption };
 
-// Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; se borran los votos.
+// Replantear una propuesta en votación, en recoordinación o cancelada sola porque nadie votó: franjas (2 a 5) y plazo
+// nuevos; se borran los votos.
 export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };
 
 // Propuesta con el nombre de su grupo (Inicio y /me/upcoming-plans).
@@ -308,6 +312,7 @@ export type AdminProposalSummary = {
   scheduledDate: string | null;
   voteCount: number;               // solo votos de quienes siguen en el grupo
   incidenceCount: number;
+  autoClosed: boolean;             // la votación se cerró sola al vencer el plazo (CANCELADO + autoClosed: se puede moderar)
 };
 
 export type AdminGroupDetail = AdminGroupSummary & {

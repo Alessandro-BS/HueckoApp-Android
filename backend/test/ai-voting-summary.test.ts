@@ -42,6 +42,7 @@ describe('summaryData', () => {
       lugar: null,
       integrantes: 2,
       votacionAbierta: true,
+      votoMultiple: true,
       votosEmitidos: 1,
       franjas: [
         // Ordenadas por fecha (martes 6, jueves 8 y sábado 10 de octubre).

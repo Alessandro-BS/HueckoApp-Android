@@ -12,6 +12,7 @@ import { useVoteToggle } from './useVoteToggle';
 export type DashboardData = { dashboard: Dashboard; blocks: TimeBlock[] };
 
 const NO_BLOCKS: TimeBlock[] = [];
+const NO_VOTES: readonly string[] = [];
 
 // El resumen del servidor y mis bloques (el «horario de hoy» depende de la zona horaria del teléfono)
 // en una sola carga: se recargan juntos y un error de cualquiera de los dos es el error de Inicio.
@@ -60,9 +61,11 @@ export function useDashboard(userId?: string) {
 
   // Votar desde «Votaciones en curso»: misma alternancia que en Votar (useVoteToggle). No lanza.
   const { toggle: toggleVote, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
-    currentVote: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowId,
+    votesOf: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.myVoteWindowIds ?? NO_VOTES,
+    isMultiple: (proposalId) => data?.dashboard.pendingVotes.find((p) => p.id === proposalId)?.multipleVotes ?? false,
     vote: async (id, windowId) => replacePending(await voteWindow(id, windowId)),
-    unvote: async (id) => replacePending(await removeVote(id)),
+    // Sin windowId se llama con un solo argumento: DELETE sin ?windowId= quita todos mis votos (voto único).
+    unvote: async (id, windowId) => replacePending(windowId ? await removeVote(id, windowId) : await removeVote(id)),
   });
 
   // Con la copia en pantalla no se vota: sus votaciones pueden estar desactualizadas (y votar sobre ellas pisaría la carga en curso).

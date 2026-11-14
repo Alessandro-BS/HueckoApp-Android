@@ -98,6 +98,7 @@ export const createProposalSchema = (now: Date) =>
       votingDeadline: futureDeadline(now),
       windows: z.preprocess((v) => (Array.isArray(v) && v.length === 0 ? undefined : v), windowsSchema(now, WINDOW_LIMITS).optional()),
       week: z.unknown().optional(),
+      multipleVotes: z.boolean({ error: 'multipleVotes debe ser verdadero o falso' }).default(true),
     })
     // `week` solo cuenta (y solo se valida) cuando el servidor elige las franjas.
     .transform(({ week, ...body }, ctx) => {
@@ -113,6 +114,9 @@ export const createProposalSchema = (now: Date) =>
 export const voteSchema = z.object({
   windowId: z.string({ error: 'Elige una franja' }).min(1, 'Elige una franja'),
 });
+
+// Sin windowId se quitan todos mis votos de la propuesta.
+export const unvoteQuerySchema = z.object({ windowId: z.string().min(1).optional() });
 
 export const INCIDENCE_TYPES = ['FALTA', 'TARDANZA', 'IMPREVISTO'] as const;
 

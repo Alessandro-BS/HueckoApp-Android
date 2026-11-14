@@ -9,6 +9,7 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import type { AppStackScreen } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { today } from '../../utils/clock';
+import { formatDateTime } from '../../utils/days';
 import { isVotingOpen } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
 import { AddWindowSheet } from './AddWindowSheet';
@@ -16,6 +17,9 @@ import { ProposalHeader } from './ProposalHeader';
 import { ReplanSheet } from './ReplanSheet';
 
 const MAX_WINDOWS = 5;
+
+// Misma fecha y hora que «Cierra: …» (formatDateTime).
+const closeNotice = (iso: string) => `La votación cierra el ${formatDateTime(new Date(iso))}. Si nadie vota, el plan se cancela.`;
 
 export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
   const { proposalId } = route.params;
@@ -38,7 +42,7 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
   const now = today();
   const open = isVotingOpen(proposal, now);
 
-  // Un voto por persona: tocar otra franja lo mueve; tocar la mía lo retira (G1).
+  // Con voto único, tocar otra franja mueve el voto; con voto múltiple se suma. Tocar una mía la retira (G1).
   const vote = async (windowId: string) => {
     const result = await toggleVote(windowId);
     if (result.ok) showToast(result.value === 'voted' ? 'Tu voto ha sido registrado.' : 'Tu voto se ha retirado.');
@@ -52,11 +56,21 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void reload()} colors={[colors.primary]} />}
       >
         <ProposalHeader proposal={proposal} now={now} />
-        <SectionHeader title="Elige una franja horaria" subtitle="Selecciona la opción que más te convenga. Un voto por persona." />
+        <SectionHeader
+          title="Elige una franja horaria"
+          subtitle={
+            proposal.multipleVotes
+              ? 'Puedes votar todas las franjas que te sirvan'
+              : 'Selecciona la opción que más te convenga. Un voto por persona.'
+          }
+        />
         {!open ? (
           <HueckoCard containerColor={colors.surfaceContainer} borderColor={colors.surfaceContainer} padding={16}>
             <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>La votación está cerrada.</Text>
           </HueckoCard>
+        ) : null}
+        {open ? (
+          <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>{closeNotice(proposal.votingDeadline)}</Text>
         ) : null}
         {voteError ? <ErrorBanner message={voteError} /> : null}
         {proposal.windows.length === 0 ? (
@@ -69,7 +83,7 @@ export function VotingScreen({ route }: AppStackScreen<'Voting'>) {
               <VoteWindowRow
                 key={w.id}
                 window={w}
-                voted={proposal.myVoteWindowId === w.id}
+                voted={proposal.myVoteWindowIds.includes(w.id)}
                 chosen={proposal.chosenWindowId === w.id}
                 onPress={open ? () => void vote(w.id) : undefined}
                 disabled={voting}

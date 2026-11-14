@@ -23,7 +23,7 @@ export const makeUserDetail = (over: Partial<AdminUserDetail> = {}): AdminUserDe
 
 export const makeAdminProposal = (over: Partial<AdminProposalSummary> = {}): AdminProposalSummary => ({
   id: 'prop_2', title: 'Repaso antes de la entrega', state: 'PROPUESTO', createdBy: ANA, createdAt: '2026-09-29T14:00:00.000Z',
-  votingDeadline: '2026-09-30T01:00:00.000Z', scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0, ...over,
+  votingDeadline: '2026-09-30T01:00:00.000Z', scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0, autoClosed: false, ...over,
 });
 
 export const makeGroupSummary = (over: Partial<AdminGroupSummary> = {}): AdminGroupSummary => ({

@@ -62,7 +62,7 @@ describe('GET /api/groups/:id/availability', () => {
     const fuera = await registerUser(app);
     const group = await createGroup(app, yo.token);
     await joinGroup(app, ana.token, group.inviteCode);
-    await addBlock(ana.token, { type: 'LIBRE', dayOfWeek: 2, startTime: '08:00', endTime: '20:00' });
+    await addBlock(ana.token, { type: 'LIBRE', dayOfWeek: 3, startTime: '08:00', endTime: '20:00' });
     await addBlock(ana.token, {
       type: 'PUNTUAL', isRecurring: false, dayOfWeek: null, date: '2026-10-06', startTime: '08:00', endTime: '20:00',
     });

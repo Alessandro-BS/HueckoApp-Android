@@ -39,6 +39,7 @@ const incidenceInput = { type: 'TARDANZA' as const, reason: 'Tráfico', delayMin
 it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['GET', '/me/time-blocks', () => schedule.listTimeBlocks(), undefined],
   ['POST', '/me/time-blocks', () => schedule.createTimeBlock(block), block],
+  ['PUT', '/me/time-blocks/b%201', () => schedule.updateTimeBlock('b 1', block), block],
   ['DELETE', '/me/time-blocks/b%201', () => schedule.deleteTimeBlock('b 1'), undefined],
   ['GET', '/groups', () => groups.listGroups(), undefined],
   ['GET', '/groups/g1', () => groups.getGroup('g1'), undefined],
@@ -80,6 +81,13 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   expect(calls[0].method?.toUpperCase()).toBe(method);
   expect(calls[0].url).toBe(url);
   if (body !== undefined) expect(JSON.parse(calls[0].data)).toEqual(body);
+});
+
+it('DELETE /proposals/p1/vote con windowId manda ?windowId= solo esa franja', async () => {
+  await proposals.removeVote('p1', 'w1');
+  expect(calls[0].method?.toUpperCase()).toBe('DELETE');
+  expect(calls[0].url).toBe('/proposals/p1/vote');
+  expect(calls[0].params).toEqual({ windowId: 'w1' });
 });
 
 it('las llamadas que usan la IA esperan hasta 45 s; el resto, lo normal', async () => {

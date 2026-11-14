@@ -52,6 +52,20 @@ it('lista las propuestas no canceladas con su estado, su plazo o su fecha, y nav
   expect(mockNavigate).toHaveBeenCalledWith('CreateProposal', { groupId: 'g1', groupName: 'Proyecto Integrador' });
 });
 
+it('una propuesta que se canceló sola (nadie votó) sigue en la lista con «Cancelado»; una cancelada a mano no', async () => {
+  mocked.listGroupProposals.mockResolvedValue([
+    makeProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: true, votingDeadline: '2026-09-28T20:00:00.000Z' }),
+    makeProposal({ id: 'mano', title: 'Cancelada a mano', state: 'CANCELADO', autoClosed: false }),
+  ]);
+  await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);
+  expect(await screen.findByText('Sin votos')).toBeTruthy();
+  expect(screen.getByText('Cancelado')).toBeTruthy();
+  expect(screen.queryByText('Cancelada a mano')).toBeNull();
+  expect(screen.queryByText('Votar')).toBeNull();
+  await fireEvent.press(screen.getByText('Ver detalles'));
+  expect(mockNavigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'auto' });
+});
+
 it('sin propuestas muestra el texto vacío (con tildes)', async () => {
   mocked.listGroupProposals.mockResolvedValue([]);
   await render(<PlansTab groupId="g1" groupName="Proyecto Integrador" />);

@@ -9,8 +9,8 @@ import type { DashboardData } from '../hooks/useDashboard';
 const LAST_EMAIL_KEY = 'hueckoapp.lastEmail';
 const SESSION_USER_KEY = 'hueckoapp.sessionUser';
 const DASHBOARD_PREFIX = 'hueckoapp.dashboard.';
-// Sube si cambia la forma de DashboardData: una copia de otra versión de la app se ignora en vez de romper Inicio.
-const DASHBOARD_CACHE_VERSION = 1;
+// Sube si cambia la forma de DashboardData (v2: Proposal.myVoteWindowIds reemplaza a myVoteWindowId): una copia de otra versión de la app se ignora en vez de romper Inicio.
+const DASHBOARD_CACHE_VERSION = 2;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 

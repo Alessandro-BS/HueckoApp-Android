@@ -115,7 +115,7 @@ it('sin datos muestra los estados vacíos', async () => {
 });
 
 it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)', async () => {
-  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowId: 'w_22' }));
+  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowIds: ['w_22'] }));
   await renderScreen();
   await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
@@ -125,7 +125,7 @@ it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)'
 
 it('tocar la franja que ya voté retira el voto y avisa (B8)', async () => {
   dashboard.getDashboard.mockResolvedValue(
-    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowId: 'w_21' }), groupName: 'Proyecto Integrador' }] }),
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
   );
   proposals.removeVote.mockResolvedValue(makeProposal());
   await renderScreen();
@@ -259,4 +259,27 @@ it('Inicio muestra la fecha de la próxima franja de cada grupo', async () => {
   await renderScreen();
   expect(await screen.findByText('2 miembros · Vie 20 nov · 16:00 - 18:00')).toBeTruthy();
   expect(screen.getByText('80%')).toBeTruthy();
+});
+
+it('con voto múltiple dice cuántas franjas votaste y la ayuda; con 1, «Votaste 1 franja»', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  proposals.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+  await renderScreen();
+  expect(await screen.findByText('Votaste 2 franjas')).toBeTruthy();
+  expect(screen.getByText('Puedes votar todas las franjas que te sirvan')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Mar 29 sep · 16:00 - 18:00'));
+  expect(await screen.findByText('Votaste 1 franja')).toBeTruthy();
+  expect(proposals.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+});
+
+it('sin voto múltiple no muestra «Votaste» ni la ayuda', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Mar 29 sep · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.queryByText(/Votaste/)).toBeNull();
+  expect(screen.queryByText('Puedes votar todas las franjas que te sirvan')).toBeNull();
 });

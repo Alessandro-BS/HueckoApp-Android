@@ -34,6 +34,7 @@ type ProposalRow = {
   creator_email: string;
   vote_count: number;
   incidence_count: number;
+  auto_closed: boolean;
 };
 
 const GROUP_SELECT = `
@@ -44,7 +45,7 @@ const GROUP_SELECT = `
 
 // voteCount solo cuenta a quienes siguen en el grupo, igual que GET /proposals/:id.
 const PROPOSAL_SELECT = `
-  SELECT p.id, p.group_id, p.title, p.state, p.created_at, p.voting_deadline, p.scheduled_at, p.scheduled_date,
+  SELECT p.id, p.group_id, p.title, p.state, p.created_at, p.voting_deadline, p.scheduled_at, p.scheduled_date, p.auto_closed,
          u.id AS creator_id, u.name AS creator_name, u.email AS creator_email,
          (SELECT COUNT(*) FROM votes v JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
           WHERE v.proposal_id = p.id) AS vote_count,
@@ -72,6 +73,7 @@ const toProposal = (r: ProposalRow): AdminProposalSummary => ({
   scheduledDate: r.scheduled_date,
   voteCount: r.vote_count,
   incidenceCount: r.incidence_count,
+  autoClosed: r.auto_closed,
 });
 
 const groupNotFound = () => new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
@@ -150,15 +152,18 @@ export function adminGroups(db: Db) {
       });
     },
 
-    // Moderación (D7): cualquier propuesta que no esté cancelada, sea de quien sea y sin ser miembro.
+    // Moderación (D7): cualquier propuesta que no esté cancelada, sea de quien sea y sin ser miembro. Una CANCELADO que
+    // se canceló sola (auto_closed) también: queda como cancelada a mano (auto_closed en false) y ya no se replantea.
     cancelProposal(actor: AdminActor, id: string, reason: string): Promise<AdminProposalSummary> {
       return db.transaction(async () => {
         const row = await findProposal(id);
         if (!row) throw proposalNotFound();
         const alreadyCancelled = () => new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.');
-        if (!canCancel(row.state)) throw alreadyCancelled();
-        // Condicionado: si quien organiza la canceló justo ahora, no se cancela ni se anota dos veces.
-        if (!(await proposals.cancel(id))) throw alreadyCancelled();
+        const autoCancelled = row.state === 'CANCELADO' && row.auto_closed;
+        if (!canCancel(row.state) && !autoCancelled) throw alreadyCancelled();
+        // Condicionado: si quien organiza la canceló (o la replanteó) justo ahora, no se cancela ni se anota dos veces.
+        const done = autoCancelled ? await proposals.clearAutoCancelled(id) : await proposals.cancel(id);
+        if (!done) throw alreadyCancelled();
         await audit.record({
           adminId: actor.adminId,
           action: 'PROPOSAL_CANCELLED',

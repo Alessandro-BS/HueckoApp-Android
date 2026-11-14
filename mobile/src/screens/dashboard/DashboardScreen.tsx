@@ -109,17 +109,24 @@ function PendingVoteCard({ proposal, now, disabled, onVote }: {
   onVote: (windowId: string) => void;
 }) {
   const open = isVotingOpen(proposal, now);
+  const votes = proposal.myVoteWindowIds.length;
   return (
     <HueckoCard>
       <Text style={[typography.labelMedium, { color: colors.primary }]}>{proposal.groupName || 'Grupo'}</Text>
       <Text style={[typography.titleLarge, styles.pendingTitle]}>{proposal.title}</Text>
       <Text style={[typography.bodySmall, styles.caption]}>{deadlineLabel(proposal.votingDeadline, now)}</Text>
+      {proposal.multipleVotes ? (
+        <Text style={[typography.bodySmall, styles.caption]}>Puedes votar todas las franjas que te sirvan</Text>
+      ) : null}
+      {proposal.multipleVotes && votes > 0 ? (
+        <Text style={[typography.labelMedium, { color: colors.primary }]}>{votes === 1 ? 'Votaste 1 franja' : `Votaste ${votes} franjas`}</Text>
+      ) : null}
       <View style={styles.pendingWindows}>
         {proposal.windows.map((w) => (
           <VoteWindowRow
             key={w.id}
             window={w}
-            voted={proposal.myVoteWindowId === w.id}
+            voted={proposal.myVoteWindowIds.includes(w.id)}
             countStyle="plain"
             onPress={open ? () => onVote(w.id) : undefined}
             disabled={disabled}

@@ -91,7 +91,7 @@ export function adminUsers(db: Db) {
       );
       const a = (await db.one<ActivityRow>(
         `SELECT (SELECT COUNT(*) FROM proposals WHERE created_by = $1) AS proposals_created,
-                (SELECT COUNT(*) FROM votes WHERE user_id = $1) AS votes,
+                (SELECT COUNT(DISTINCT proposal_id) FROM votes WHERE user_id = $1) AS votes,
                 (SELECT COUNT(*) FROM incidences WHERE user_id = $1) AS incidences,
                 (SELECT COUNT(*) FROM time_blocks WHERE user_id = $1) AS time_blocks,
                 (SELECT COUNT(*) FROM ai_calls WHERE user_id = $1) AS ai_calls`,

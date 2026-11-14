@@ -14,7 +14,7 @@
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1424%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1530%20%E2%9C%94-2EA44F)
 
 [🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
 [🚀 Instalación](#-instalación-paso-a-paso) ·
@@ -42,10 +42,10 @@ flowchart LR
 
 | | Función | Detalle |
 |---|---|---|
-| 📅 | **Horario semanal** | Bloques recurrentes o **puntuales** (un día concreto, que cuenta solo en su fecha) escritos a mano (reloj nativo de Android) o leídos de una foto con IA |
+| 📅 | **Horario semanal** | Bloques recurrentes o **puntuales** (un día concreto, que cuenta solo en su fecha) escritos a mano (reloj nativo de Android) o leídos de una foto con IA; se pueden **editar** y la app avisa si dos bloques se **solapan** |
 | 👥 | **Grupos** | Código de invitación y roles: **varios organizadores** (nombran y quitan a otros organizadores), miembros y miembros **imprescindibles** |
 | 🔍 | **Huecos en común** | El servidor cruza las agendas de 08:00 a 20:00 de la semana que elijas (hora de Lima) y muestra el % del grupo libre |
-| 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, un voto por persona y **replantear** la propuesta en votación (franjas y plazo nuevos) |
+| 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, **voto múltiple** (puedes votar todas las franjas que te sirvan, o un voto por persona si quien propone lo prefiere), **cierre automático** al vencer el plazo (se confirma la franja más votada, o se cancela si nadie votó y quien gestiona puede **replantear** esa propuesta) y **replantear** la propuesta en votación (franjas y plazo nuevos) |
 | ⚠️ | **Imprevistos** | Si alguien no puede ir, **decide el grupo** con una **votación exprés** (cancelar, reagendar o mantener) que cierra sola; si gana reagendar, quien gestiona el plan propone franjas nuevas y una fecha límite nueva |
 | 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
 | 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
@@ -412,7 +412,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 | | Qué | Cómo |
 |---|---|---|
-| ✅ | **1424 tests** | 782 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 642 de la app (Jest + Testing Library) |
+| ✅ | **1530 tests** | 863 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 667 de la app (Jest + Testing Library) |
 | 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
 | 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
 | 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |

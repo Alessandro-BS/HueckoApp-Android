@@ -224,7 +224,7 @@ describe('PUT /api/proposals/:id/express-vote', () => {
     const p = await planWithVote();
     await expressVote(p, ana.token, 'REAGENDAR').expect(200);
     const res = await expressVote(p, carlos.token, 'REAGENDAR');
-    expect(res.body).toMatchObject({ state: 'EN_RECOORDINACION', chosenWindowId: null, scheduledAt: null, scheduledDate: null, myVoteWindowId: null });
+    expect(res.body).toMatchObject({ state: 'EN_RECOORDINACION', chosenWindowId: null, scheduledAt: null, scheduledDate: null, myVoteWindowIds: [] });
     expect(res.body.expressVote).toMatchObject({ status: 'CERRADA', result: 'REAGENDAR' });
     expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 0 });
     const again = await report(p, ana.token, { type: 'FALTA', reason: 'x' });

@@ -103,7 +103,7 @@ describe('GET /api/admin/groups/:id', () => {
     expect(res.body.proposals).toEqual([
       {
         id: plan.id, title: 'Repaso', state: 'PROPUESTO', createdBy: yo.user, createdAt: NOW.toISOString(), votingDeadline: DEADLINE,
-        scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0,
+        scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0, autoClosed: false,
       },
     ]);
     await request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(ana.token)).expect(204);

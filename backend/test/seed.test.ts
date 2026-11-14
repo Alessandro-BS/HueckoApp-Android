@@ -110,6 +110,7 @@ describe('semilla de datos de ejemplo (D8)', () => {
       location: null,
       votingDeadline: new Date(NOW.getTime() + DAY).toISOString(),
       windows: [{ date: '2026-09-29', startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }],
+      multipleVotes: true,
       createdAt: NOW.toISOString(),
     });
     await groupsRepository(db).leave(groupId, anaId);

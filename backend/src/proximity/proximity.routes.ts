@@ -8,6 +8,7 @@ import { isForeignKeyViolation } from '../db/errors';
 import { groupNotFound, loadGroupForMember } from '../groups/group-access';
 import { groupsRepository } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
+import { closeDueBeforeMembershipChange } from '../proposals/voting-close';
 import { ACCEPT_DELAY_MS, CONFIRM_TTL_MS, effectiveStatus, PROXIMITY_LOCK_ID, WAITING_TTL_MS } from './proximity-rules';
 import { proximityRepository, type ProximityRow } from './proximity.repository';
 import { inviteProximitySchema, joinProximitySchema } from './proximity.schemas';
@@ -108,6 +109,12 @@ export function proximityRouter({ db, now, proximityRateLimit = PROXIMITY_RATE_L
   const respond = (verdict: 'ACCEPTED' | 'REJECTED') => async (req: { params: { id: string } }, res: Parameters<typeof getUserId>[0]) => {
     const userId = getUserId(res);
     let groupGone: ProximityRow | undefined;
+    if (verdict === 'ACCEPTED') {
+      // Aceptar mete a alguien en el grupo: antes se cierran sus votaciones vencidas (fuera de la transacción de abajo,
+      // porque cada cierre abre la suya). El grupo de una invitación no cambia; lo demás lo comprueba la transacción.
+      const invite = await proximity.findOwn(req.params.id, userId);
+      if (invite?.role === 'INVITE' && invite.group_id) await closeDueBeforeMembershipChange(db, invite.group_id, now());
+    }
     let at = now();
     try {
       const row = await db.transaction(async () => {

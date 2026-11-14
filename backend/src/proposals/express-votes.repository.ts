@@ -40,19 +40,22 @@ export type OpenExpressVote = {
 // solo plan se cierra con closeDue, después de comprobar el acceso.)
 export type CloseScope = { groupId: string } | { userId: string };
 
-const SCOPE_FILTER = {
+export const SCOPE_FILTER = {
   groupId: 'p.group_id = $1',
   userId: 'p.group_id IN (SELECT group_id FROM group_members WHERE user_id = $1)',
 } as const;
 
-// Lo que el resultado hace con el plan, solo si sigue CONFIRMADO (si alguien lo canceló, no se toca).
+// Lo que el resultado hace con el plan, solo si sigue CONFIRMADO (si alguien lo canceló, no se toca). Cancelar y
+// reagendar dejan auto_closed en false: solo describe el estado al que llegó el plazo (CONFIRMADO por el cierre, o
+// CANCELADO porque nadie votó, la única cancelada que se replantea).
 async function applyResult(db: Db, proposalId: string, result: ExpressOption): Promise<void> {
   if (result === 'CANCELAR') {
-    await db.query("UPDATE proposals SET state = 'CANCELADO' WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
+    await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
   } else if (result === 'REAGENDAR') {
     // Recoordinación: sin franja elegida ni fecha, y sin los votos de fecha (quien gestiona propone franjas nuevas).
     await db.query(
-      `UPDATE proposals SET state = 'EN_RECOORDINACION', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL
+      `UPDATE proposals SET state = 'EN_RECOORDINACION', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL,
+         auto_closed = FALSE
        WHERE id = $1 AND state = 'CONFIRMADO'`,
       [proposalId],
     );
@@ -241,8 +244,11 @@ export function expressVotesRepository(db: Db) {
   return repo;
 }
 
-/** Un cierre que falla no corta la petición: se anota (salvo en los tests) y lo reintenta la siguiente lectura. */
-export function logCloseError(proposalId: string | null, error: unknown): void {
+/**
+ * Un cierre que falla no corta la petición: se anota (salvo en los tests) y lo reintenta la siguiente lectura. `what`
+ * dice qué votación (por defecto la exprés; voting-close pasa la de franjas).
+ */
+export function logCloseError(proposalId: string | null, error: unknown, what = 'la votación exprés'): void {
   if (process.env.NODE_ENV === 'test') return;
-  console.error(`No se pudo cerrar la votación exprés${proposalId ? ` del plan ${proposalId}` : ''}:`, error instanceof Error ? error.message : error);
+  console.error(`No se pudo cerrar ${what}${proposalId ? ` del plan ${proposalId}` : ''}:`, error instanceof Error ? error.message : error);
 }

@@ -76,8 +76,21 @@ it('crea con «las 3 mejores» por defecto, con el título recortado, y vuelve a
     votingDeadline: new Date(2026, 9, 2, 20, 0).toISOString(),
     windows: [],
     week: '2026-09-28',
+    multipleVotes: true,
   });
   expect(showToast).toHaveBeenCalledWith('Propuesta creada.');
+});
+
+it('el interruptor «Permitir votar varias franjas» está activado y al apagarlo envía multipleVotes: false', async () => {
+  await renderScreen();
+  const toggle = screen.getByLabelText('Permitir votar varias franjas');
+  expect(toggle.props.value).toBe(true);
+  await fireEvent(toggle, 'valueChange', false);
+  await fireEvent.changeText(screen.getByLabelText('Título del plan'), 'Repaso');
+  await pickDeadline(new Date(2026, 9, 2, 20, 0));
+  await fireEvent.press(screen.getByText('Crear propuesta'));
+  await waitFor(() => expect(mocked.createProposal).toHaveBeenCalled());
+  expect(mocked.createProposal).toHaveBeenCalledWith('g1', expect.objectContaining({ multipleVotes: false }));
 });
 
 it('«Usar mi ubicación actual» rellena el lugar con coordenadas', async () => {
@@ -308,6 +321,7 @@ it('abre rellenada con una idea de la IA y la envía con su franja', async () =>
     title: 'Partido de fulbito',
     location: { name: 'Losa del campus', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 9, 2, 20, 0).toISOString(),
+    multipleVotes: true,
     windows: [
       { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
       { date: '2026-11-20', startTime: '08:00', endTime: '20:00' },
@@ -360,6 +374,7 @@ it('«Rellenar con IA» pide un borrador y rellena título, lugar, plazo y franj
     title: 'Estudiar para el parcial',
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
+    multipleVotes: true,
     windows: [
       { date: '2026-11-17', startTime: '08:00', endTime: '20:00' },
       { date: '2026-11-18', startTime: '08:00', endTime: '20:00' },

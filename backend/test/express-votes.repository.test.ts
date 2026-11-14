@@ -25,7 +25,7 @@ const setup = async () => {
   await groups.addMember(group.id, carla.id);
   const proposalId = await proposalsRepository(db).create({
     groupId: group.id, createdBy: ana.id, title: 'Plan', location: null, votingDeadline: DEADLINE,
-    windows: [{ date: '2026-10-05', startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 }], createdAt,
+    windows: [{ date: '2026-10-05', startTime: '10:00', endTime: '12:00', availabilityPercentage: 100 }], multipleVotes: false, createdAt,
   });
   const repo = expressVotesRepository(db);
   const open = (voterIds = [beto.id, carla.id]) =>

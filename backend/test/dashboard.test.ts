@@ -27,7 +27,7 @@ const prop1 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   id: 'prop_1', groupId: 'g1', groupName: 'Proyecto Integrador', title: 'Reunión de avance del proyecto',
   location: { name: 'Biblioteca central', latitude: null, longitude: null }, createdBy: test,
   votingDeadline: new Date(2026, 8, 28, 10, 0).toISOString(), state: 'CONFIRMADO',
-  windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], myVoteWindowId: 'w_1', canManage: true, chosenWindowId: 'w_1',
+  windows: [win('w_1', 3, '11:00', '13:00', 100, 2)], multipleVotes: false, autoClosed: false, myVoteWindowIds: ['w_1'], canManage: true, chosenWindowId: 'w_1',
   scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString(), scheduledDate: '2026-09-30', incidences: [incidence()], expressVote: null,
   createdAt: new Date(2026, 8, 27, 10, 0).toISOString(), ...over,
 });
@@ -36,7 +36,7 @@ const prop2 = (over: Partial<ProposalWithGroup> = {}): ProposalWithGroup => ({
   location: { name: 'Google Meet', latitude: null, longitude: null }, createdBy: ana,
   votingDeadline: new Date(2026, 8, 29, 20, 0).toISOString(), state: 'PROPUESTO',
   windows: [win('w_21', 2, '16:00', '18:00', 100, 1), win('w_22', 4, '10:00', '12:00', 100, 0), win('w_23', 5, '16:00', '18:00', 50, 0)],
-  myVoteWindowId: null, canManage: false, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [], expressVote: null,
+  multipleVotes: false, autoClosed: false, myVoteWindowIds: [], canManage: false, chosenWindowId: null, scheduledAt: null, scheduledDate: null, incidences: [], expressVote: null,
   createdAt: new Date(2026, 8, 29, 9, 0).toISOString(), ...over,
 });
 
@@ -66,7 +66,7 @@ describe('buildDashboard con la semilla (domain spec §2.2)', () => {
 
   it('tras REPROGRAMAR: 2 votaciones abiertas, sin próximo plan ni alerta', () => {
     const reprogramada = prop1({
-      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, myVoteWindowId: null,
+      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, myVoteWindowIds: [],
       windows: [win('w_1', 3, '11:00', '13:00', 100, 0)], incidences: [incidence({ resolved: true })],
       votingDeadline: new Date(2026, 9, 5, 20, 0).toISOString(),
     });

@@ -17,6 +17,8 @@ import { useVoteToggle } from './useVoteToggle';
 
 export type { VoteOutcome } from './useVoteToggle';
 
+const NO_VOTES: readonly string[] = [];
+
 // Una propuesta y todo lo que se puede hacer con ella. Cada acción reemplaza la propuesta con la que
 // devuelve el servidor (una sola fuente de verdad: B7). Votar usa useVoteToggle (no lanza: devuelve
 // { ok } y expone `voteError`); las demás acciones LANZAN si fallan y la pantalla decide cómo avisar.
@@ -32,11 +34,12 @@ export function useProposal(proposalId: string) {
     [mutate],
   );
 
-  const myVote = data?.myVoteWindowId ?? null;
   const { toggle, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
-    currentVote: () => myVote,
+    votesOf: () => data?.myVoteWindowIds ?? NO_VOTES,
+    isMultiple: () => data?.multipleVotes ?? false,
     vote: async (id, windowId) => apply(await voteWindow(id, windowId)),
-    unvote: async (id) => apply(await removeVote(id)),
+    // Sin windowId se llama con un solo argumento: DELETE sin ?windowId= quita todos mis votos (voto único).
+    unvote: async (id, windowId) => apply(windowId ? await removeVote(id, windowId) : await removeVote(id)),
   });
   const toggleVote = useCallback((windowId: string) => toggle(proposalId, windowId), [toggle, proposalId]);
 

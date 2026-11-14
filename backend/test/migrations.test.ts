@@ -436,3 +436,29 @@ describe('migración 10: el rol OWNER pasa a llamarse ORGANIZER', () => {
     expect(await count(db, 'group_members')).toBe(3);
   });
 });
+
+describe('migración 11: voto múltiple y cierre automático', () => {
+  it('conserva los votos, las columnas nuevas valen false y la misma persona puede votar dos franjas', async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 10));
+    await db.exec(`
+      INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x'), ('u2', 'Beto', 'beto@correo.com', 'x');
+      INSERT INTO groups (id, name, invite_code) VALUES ('g1', 'Grupo', 'ABCDEFGH');
+      INSERT INTO proposals (id, group_id, title, created_by, voting_deadline, created_at)
+        VALUES ('p1', 'g1', 'Plan', 'u1', '2026-10-03T20:00:00.000Z', '2026-09-29T10:00:00.000Z');
+      INSERT INTO proposal_windows (id, proposal_id, date, day_of_week, start_time, end_time, availability_percentage)
+        VALUES ('w1', 'p1', '2026-10-06', 2, '16:00', '18:00', 100), ('w2', 'p1', '2026-10-08', 4, '10:00', '12:00', 100);
+      INSERT INTO votes (proposal_id, user_id, window_id, created_at)
+        VALUES ('p1', 'u1', 'w1', '2026-09-29T10:00:00.000Z'), ('p1', 'u2', 'w2', '2026-09-29T10:00:00.000Z');
+    `);
+    const vote = (user: string, window: string) =>
+      db.query("INSERT INTO votes (proposal_id, user_id, window_id, created_at) VALUES ('p1', $1, $2, '2026-09-29T11:00:00.000Z')", [user, window]);
+    await failsWith(vote('u1', 'w2'), '23505'); // control: antes de la 11 la clave es (proposal_id, user_id)
+    await migrate(db);
+    expect(await count(db, 'votes')).toBe(2);
+    expect(await db.one('SELECT multiple_votes, auto_closed FROM proposals WHERE id = $1', ['p1'])).toEqual({ multiple_votes: false, auto_closed: false });
+    await vote('u1', 'w2');
+    expect(await count(db, 'votes')).toBe(3);
+    await failsWith(vote('u1', 'w2'), '23505');
+  });
+});
