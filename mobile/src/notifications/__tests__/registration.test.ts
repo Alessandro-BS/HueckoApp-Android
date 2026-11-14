@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 
+import { ApiError } from '../../api/client';
 import * as notificationsApi from '../../api/notifications';
 import { notificationsPreference, pushTokenStorage } from '../../storage/appStorage';
 import { registerDevice, unregisterDevice } from '../registration';
@@ -67,10 +68,24 @@ it('unregisterDevice borra en el servidor y olvida el token; sin token no llama'
   expect(await pushTokenStorage.get()).toBeNull();
 });
 
-it('unregisterDevice ignora los errores del servidor y igual olvida el token', async () => {
+it('al apagar el interruptor, si el DELETE falla el token se conserva para reintentar', async () => {
+  await pushTokenStorage.set('ExponentPushToken[abc]');
+  api.unregisterPushDevice.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'sin red'));
+  await expect(unregisterDevice()).resolves.toBeUndefined();
+  expect(await pushTokenStorage.get()).toBe('ExponentPushToken[abc]');
+});
+
+it('al apagar el interruptor, un 404 cuenta como borrado', async () => {
+  await pushTokenStorage.set('ExponentPushToken[abc]');
+  api.unregisterPushDevice.mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'no existe'));
+  await unregisterDevice();
+  expect(await pushTokenStorage.get()).toBeNull();
+});
+
+it('al cerrar sesión (forgetAlways) olvida el token aunque el DELETE falle', async () => {
   await pushTokenStorage.set('ExponentPushToken[abc]');
   api.unregisterPushDevice.mockRejectedValue(new Error('401'));
-  await expect(unregisterDevice()).resolves.toBeUndefined();
+  await expect(unregisterDevice({ forgetAlways: true })).resolves.toBeUndefined();
   expect(await pushTokenStorage.get()).toBeNull();
 });
 

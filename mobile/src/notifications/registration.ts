@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 
+import { ApiError } from '../api/client';
 import { registerPushDevice, unregisterPushDevice } from '../api/notifications';
 import { pushTokenStorage } from '../storage/appStorage';
 
@@ -31,15 +32,20 @@ export async function registerDevice(): Promise<RegisterResult> {
   }
 }
 
-/** Borra este celular en el servidor (necesita el JWT puesto) y olvida el token. Los errores se ignoran. */
-export async function unregisterDevice(): Promise<void> {
+/**
+ * Borra este celular en el servidor (necesita el JWT puesto). Por defecto (interruptor de Perfil) el token se olvida
+ * solo si el servidor lo borró (un 404 cuenta: ya no lo conocía); si falla, queda guardado y se reintenta al abrir la
+ * app. Con `forgetAlways` (cerrar sesión) se olvida antes del DELETE y se ignoran los errores: si el DELETE responde
+ * 401, el interceptor cierra la sesión y vuelve a pasar por aquí, y sin JWT no habría reintento.
+ */
+export async function unregisterDevice({ forgetAlways = false }: { forgetAlways?: boolean } = {}): Promise<void> {
   const token = await pushTokenStorage.get();
   if (!token) return;
-  // Se olvida primero: si el DELETE responde 401, el interceptor cierra la sesión y vuelve a pasar por aquí.
-  await pushTokenStorage.clear();
+  if (forgetAlways) await pushTokenStorage.clear();
   try {
     await unregisterPushDevice(token);
-  } catch {
-    // Sin red o sesión ya vencida: el servidor deja de enviar a tokens que Expo rechaza.
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) return;
   }
+  await pushTokenStorage.clear();
 }

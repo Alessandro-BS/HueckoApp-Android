@@ -22,7 +22,12 @@ type AuthContextValue = {
 
 // Registra el celular para los avisos si la persona no los apagó en Perfil (la preferencia es del celular).
 const registerIfEnabled = async () => {
-  if (await notificationsPreference.get()) await registerDevice();
+  if (await notificationsPreference.get()) {
+    await registerDevice();
+  } else if (await pushTokenStorage.get()) {
+    // Se apagó con el interruptor pero el servidor no alcanzó a borrar el token: se reintenta.
+    await unregisterDevice();
+  }
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -33,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     // Antes de soltar el JWT: el DELETE lo necesita. Si la sesión ya venció (401), falla y se ignora.
-    await unregisterDevice().catch(() => undefined);
+    await unregisterDevice({ forgetAlways: true }).catch(() => undefined);
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');

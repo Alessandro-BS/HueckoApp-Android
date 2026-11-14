@@ -7,7 +7,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import * as authApi from '../../api/auth';
 import { api, ApiError } from '../../api/client';
-import { dashboardCache, lastEmailStorage, notificationsPreference, sessionUserStorage } from '../../storage/appStorage';
+import { dashboardCache, lastEmailStorage, notificationsPreference, pushTokenStorage, sessionUserStorage } from '../../storage/appStorage';
 import { showToast } from '../../utils/toast';
 import { makeDashboard } from '../../testing/fixtures';
 import { AuthProvider, useAuth } from '../AuthContext';
@@ -247,6 +247,35 @@ describe('notificaciones push', () => {
     mocked.meRequest.mockResolvedValue(ana);
     await renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(registration.registerDevice).toHaveBeenCalledTimes(1));
+  });
+
+  it('al abrir con la preferencia apagada y un token guardado, reintenta desregistrar; con la preferencia activa no', async () => {
+    await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+    mocked.meRequest.mockResolvedValue(ana);
+    await notificationsPreference.set(false);
+    await pushTokenStorage.set('ExponentPushToken[abc]');
+    await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(registration.unregisterDevice).toHaveBeenCalledTimes(1));
+    expect(registration.unregisterDevice).toHaveBeenCalledWith();
+    expect(registration.registerDevice).not.toHaveBeenCalled();
+  });
+
+  it('con la preferencia apagada y sin token guardado no llama al servidor', async () => {
+    await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+    mocked.meRequest.mockResolvedValue(ana);
+    await notificationsPreference.set(false);
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedIn'));
+    expect(registration.unregisterDevice).not.toHaveBeenCalled();
+  });
+
+  it('logout desregistra con forgetAlways', async () => {
+    mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+    await act(() => result.current.logout());
+    expect(registration.unregisterDevice).toHaveBeenCalledWith({ forgetAlways: true });
   });
 
   it('logout desregistra el celular con el JWT todavía puesto', async () => {
