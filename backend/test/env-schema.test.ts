@@ -36,3 +36,21 @@ describe('EXPRESS_VOTE_MINUTES', () => {
     expect(() => parseEnv({ ...BASE, EXPRESS_VOTE_MINUTES: '1.5' })).toThrow();
   });
 });
+
+describe('CRON_SECRET y EXPO_ACCESS_TOKEN', () => {
+  it('sin configurar: undefined; vacía o en blanco (Render la deja así) tampoco rompe el arranque', () => {
+    expect(parseEnv(BASE).CRON_SECRET).toBeUndefined();
+    expect(parseEnv({ ...BASE, CRON_SECRET: '' }).CRON_SECRET).toBeUndefined();
+    expect(parseEnv({ ...BASE, CRON_SECRET: '   ' }).CRON_SECRET).toBeUndefined();
+  });
+
+  it('con valor exige 32 caracteres', () => {
+    expect(() => parseEnv({ ...BASE, CRON_SECRET: 'corto' })).toThrow('CRON_SECRET debe tener al menos 32 caracteres');
+    expect(parseEnv({ ...BASE, CRON_SECRET: ' ' + 'x'.repeat(32) + ' ' }).CRON_SECRET).toBe('x'.repeat(32));
+  });
+
+  it('EXPO_ACCESS_TOKEN es opcional', () => {
+    expect(parseEnv(BASE).EXPO_ACCESS_TOKEN).toBeUndefined();
+    expect(parseEnv({ ...BASE, EXPO_ACCESS_TOKEN: ' tok ' }).EXPO_ACCESS_TOKEN).toBe('tok');
+  });
+});

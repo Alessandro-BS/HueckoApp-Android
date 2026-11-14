@@ -448,6 +448,49 @@ Cancela: un `WAITING` o `MATCHED` aún vigente pasa a `CANCELLED` en las dos mit
 
 ---
 
+## Notificaciones
+
+Avisos push (Expo) de los planes. Cada cambio de un plan guarda sus avisos (tabla `notifications`, una fila por destinatario) **en la misma transacción** que el cambio: si el cambio se deshace, el aviso no queda; si se guarda, el aviso queda pendiente hasta que el envío lo marque. Solo se avisa cuando el cambio de verdad ocurrió (un `409` no deja avisos).
+
+### Avisos
+
+| `kind` | Cuándo | A quién | `data.screen` |
+|---|---|---|---|
+| `NEW_PROPOSAL` | se crea una propuesta | miembros del grupo menos quien la creó | `VOTING` |
+| `PLAN_CONFIRMED` | se confirma a mano o al cerrarse la votación sola | miembros del grupo; a mano, menos quien confirmó | `PLAN` |
+| `PLAN_CANCELLED` | se cancela a mano, desde el admin o sin votos (cierre automático) | miembros del grupo; a mano, menos quien canceló | `PLAN` |
+| `EXPRESS_OPENED` | se abre una votación exprés | sus votantes (miembros menos quien avisó) | `PLAN` |
+| `EXPRESS_RESULT` | se cierra una votación exprés de un plan que sigue `CONFIRMADO` | miembros del grupo | `PLAN` |
+| `REMINDER` | desde 60 min antes del inicio de un plan `CONFIRMADO` que aún no empezó | miembros del grupo sin una incidencia `FALTA`/`IMPREVISTO` en ese plan | `PLAN` |
+
+- **Destinatarios:** los miembros **actuales** del grupo en el momento del cambio (quien ya salió no recibe). Quien hace el cambio a mano no recibe su propio aviso; el admin que cancela no se excluye (avisa a todos los miembros).
+- **Un aviso por hecho:** una votación exprés que decide `CANCELAR` avisa solo con `EXPRESS_RESULT`, sin un `PLAN_CANCELLED` aparte. Moderar (admin) una propuesta que ya se canceló sola no avisa (el grupo ya recibió `PLAN_CANCELLED`). Si quien gestiona cancela el plan con una votación exprés abierta, al cerrarse esa votación no avisa (su resultado ya no se aplica).
+- `data` = `NotificationData` `{ "kind", "proposalId", "groupId", "screen" }`: la app abre la pantalla indicada al tocar el aviso.
+- **Textos** (título · cuerpo). El título es el nombre del grupo; `{plan}` es el título de la propuesta, `{nombre}` el nombre de la persona, y las fechas y horas van en `America/Lima` (`{cuándo}` = «jueves 15 de octubre, 16:00»; `{HH:mm}` en 24 h):
+  - `NEW_PROPOSAL`: «{nombre} propuso «{plan}». Vota tus franjas.»
+  - `PLAN_CONFIRMED`: ««{plan}» se confirmó para el {cuándo}.»
+  - `PLAN_CANCELLED`: ««{plan}» se canceló.»; sin votos (cierre automático): ««{plan}» se canceló: nadie votó antes del plazo.»
+  - `EXPRESS_OPENED`: «{nombre} no podrá ir a «{plan}» ({razón crítica}). Vota qué hacer.» (la razón crítica de la incidencia, p. ej. «propuso este plan»)
+  - `EXPRESS_RESULT`: «El grupo decidió {mantener|reagendar|cancelar} «{plan}».»; sin quórum: «Sin quórum: «{plan}» se mantiene.»
+  - `REMINDER`: ««{plan}» empieza a las {HH:mm} en {lugar}.»; sin lugar: ««{plan}» empieza a las {HH:mm}.»
+
+### `PUT /me/push-devices`
+Registra el celular para recibir avisos. Cuerpo `PushDeviceInput` `{ "token": "ExponentPushToken[…]" }`; el token debe ser `ExponentPushToken[...]` o `ExpoPushToken[...]`, de **255 caracteres como máximo**. Si ya existía (también de otra cuenta), pasa a quien lo envía y se actualiza `last_seen_at`. `204` · `400 VALIDATION_ERROR` · `401`.
+
+### `DELETE /me/push-devices/:token`
+Borra ese token si es de quien lo pide (la app lo envía con `encodeURIComponent`, porque lleva corchetes). `204` siempre, también si no existe o es de otra persona (idempotente) · `401`.
+
+---
+
+## Internal
+
+Rutas para el despertador de GitHub Actions; no las usa la app. Solo existen si el servidor tiene `CRON_SECRET`; sin él responden `404`. No llevan token de usuario: se autentican con `Authorization: Bearer <CRON_SECRET>`.
+
+### `POST /internal/tick`
+Ejecuta un barrido, el mismo que el servidor hace cada minuto: cierra las votaciones de franjas y las exprés vencidas de todos los grupos, encola un `REMINDER` por miembro de cada plan `CONFIRMADO` que empieza en la próxima hora (menos a quien reportó `FALTA` o `IMPREVISTO`; una sola vez por plan y hora) y envía los avisos pendientes. `200 { "closed": 0, "reminders": 0, "sent": 0 }` (`closed`: votaciones cerradas; `reminders`: recordatorios nuevos; `sent`: avisos enviados) · `401 UNAUTHORIZED` «No autorizado.» si falta la cabecera o el secreto no coincide.
+
+---
+
 ## Administración
 
 Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: sin token (o con uno inválido) → `401 UNAUTHORIZED`; cuenta suspendida → `403 ACCOUNT_SUSPENDED`; si no es `ADMIN` → `403 NOT_ADMIN`. Reglas comunes:

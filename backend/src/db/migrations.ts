@@ -251,4 +251,30 @@ export const migrations: string[] = [
    ALTER TABLE proposals ADD COLUMN auto_closed BOOLEAN NOT NULL DEFAULT false;
    ALTER TABLE votes DROP CONSTRAINT votes_pkey;
    ALTER TABLE votes ADD PRIMARY KEY (proposal_id, user_id, window_id);`,
+
+  // 12 — Notificaciones push: celulares registrados y bandeja de salida de avisos.
+  `CREATE TABLE push_devices (
+     token        TEXT COLLATE "C" PRIMARY KEY,
+     user_id      TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     created_at   TEXT COLLATE "C" NOT NULL,
+     last_seen_at TEXT COLLATE "C" NOT NULL
+   );
+   CREATE INDEX push_devices_user_idx ON push_devices (user_id);
+   CREATE TABLE notifications (
+     id         TEXT COLLATE "C" PRIMARY KEY,
+     seq        BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+     user_id    TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     kind       TEXT COLLATE "C" NOT NULL CHECK (kind IN ('NEW_PROPOSAL', 'PLAN_CONFIRMED', 'PLAN_CANCELLED',
+                                                          'EXPRESS_OPENED', 'EXPRESS_RESULT', 'REMINDER')),
+     title      TEXT COLLATE "C" NOT NULL,
+     body       TEXT COLLATE "C" NOT NULL,
+     data       TEXT COLLATE "C" NOT NULL,
+     dedupe_key TEXT COLLATE "C" UNIQUE,
+     created_at TEXT COLLATE "C" NOT NULL,
+     sent_at    TEXT COLLATE "C",
+     claimed_at TEXT COLLATE "C",
+     attempts   INTEGER NOT NULL DEFAULT 0,
+     last_error TEXT COLLATE "C"
+   );
+   CREATE INDEX notifications_pending_idx ON notifications (seq) WHERE sent_at IS NULL;`,
 ];

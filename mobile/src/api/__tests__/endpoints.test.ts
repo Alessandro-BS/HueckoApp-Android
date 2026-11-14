@@ -5,6 +5,7 @@ import * as ai from '../ai';
 import { api } from '../client';
 import * as dashboard from '../dashboard';
 import * as groups from '../groups';
+import * as notifications from '../notifications';
 import * as proposals from '../proposals';
 import * as proximity from '../proximity';
 import * as schedule from '../schedule';
@@ -113,4 +114,15 @@ it('pingServer no lanza si el servidor no responde', async () => {
     throw new Error('sin red');
   };
   await expect(proximity.pingServer()).resolves.toBeUndefined();
+});
+
+it('PUT /me/push-devices envía el token y DELETE lo pone codificado en la ruta', async () => {
+  await notifications.registerPushDevice('ExponentPushToken[abc]');
+  expect(calls[0].method?.toUpperCase()).toBe('PUT');
+  expect(calls[0].url).toBe('/me/push-devices');
+  expect(JSON.parse(calls[0].data)).toEqual({ token: 'ExponentPushToken[abc]' });
+  await notifications.unregisterPushDevice('ExponentPushToken[abc]');
+  expect(calls[1].method?.toUpperCase()).toBe('DELETE');
+  expect(calls[1].url).toBe('/me/push-devices/ExponentPushToken%5Babc%5D');
+  expect(calls[1].timeout).toBe(5_000);
 });

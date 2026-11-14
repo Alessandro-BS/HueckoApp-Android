@@ -408,3 +408,13 @@ export type ProximityRequest = {
   expiresAt: string | null;      // ISO, en WAITING y MATCHED (cuenta atrás de la app); null en estados finales
   acceptableFrom: string | null; // ISO; en MATCHED, matched_at + 3 s; null en otros estados
 };
+
+// ---- Notificaciones push (docs/api.md, «Notificaciones») ----
+
+export type NotificationKind = 'NEW_PROPOSAL' | 'PLAN_CONFIRMED' | 'PLAN_CANCELLED' | 'EXPRESS_OPENED' | 'EXPRESS_RESULT' | 'REMINDER';
+
+// Carga útil (`data`) de cada aviso: la app abre la pantalla indicada al tocarlo.
+export type NotificationData = { kind: NotificationKind; proposalId: string; groupId: string; screen: 'VOTING' | 'PLAN' };
+
+// Cuerpo de PUT /me/push-devices: token de Expo (`ExponentPushToken[...]` o `ExpoPushToken[...]`).
+export type PushDeviceInput = { token: string };

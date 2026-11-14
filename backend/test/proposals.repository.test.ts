@@ -61,7 +61,7 @@ describe('proposalsRepository: franjas con fecha', () => {
     const [first, second] = (await repo.findById(id, ana.id))!.windows;
     await repo.voteIfOpen(id, ana.id, first.id, NOW);
     await repo.voteIfOpen(id, beto.id, second.id, NOW);
-    expect(await repo.confirm(id, first.id, '2026-09-30T21:00:00.000Z', '2026-09-30', NOW)).toBe(true);
+    expect(await repo.confirm(id, first.id, '2026-09-30T21:00:00.000Z', '2026-09-30', NOW, ana.id)).toBe(true);
 
     const deadline = '2026-10-07T01:00:00.000Z';
     const calls = recordQueries(db);
@@ -133,11 +133,11 @@ describe('proposalsRepository: confirm (comprobación con la propuesta bloqueada
     const id = await create([win('2026-10-05', '16:00', '18:00'), win('2026-10-06', '10:00', '12:00')]);
     const [first] = (await repo.findById(id, ana.id))!.windows;
     const stored = () => db.one('SELECT state, chosen_window_id, scheduled_at FROM proposals WHERE id = $1', [id]);
-    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(DEADLINE))).toBe(false);
-    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(new Date(DEADLINE).getTime() + 60_000))).toBe(false);
+    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(DEADLINE), ana.id)).toBe(false);
+    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(new Date(DEADLINE).getTime() + 60_000), ana.id)).toBe(false);
     expect(await stored()).toEqual({ state: 'PROPUESTO', chosen_window_id: null, scheduled_at: null });
     // Control positivo: un milisegundo antes del plazo sí confirma.
-    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(new Date(DEADLINE).getTime() - 1))).toBe(true);
+    expect(await repo.confirm(id, first.id, '2026-10-05T21:00:00.000Z', '2026-10-05', new Date(new Date(DEADLINE).getTime() - 1), ana.id)).toBe(true);
     expect(await stored()).toMatchObject({ state: 'CONFIRMADO', chosen_window_id: first.id });
   });
 });

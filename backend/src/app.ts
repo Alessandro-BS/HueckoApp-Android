@@ -14,6 +14,10 @@ import type { Db } from './db/db';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { internalRouter } from './notifications/internal.routes';
+import { createFlushScheduler } from './notifications/flush-scheduler';
+import type { PushClient } from './notifications/push-client';
+import { pushDevicesRouter } from './notifications/push-devices.routes';
 import { EXPRESS_VOTE_MINUTES_DEFAULT } from './proposals/express-rules';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
 import { proximityRouter } from './proximity/proximity.routes';
@@ -40,6 +44,11 @@ export type AppDeps = {
   expressVoteMinutes?: number;
   // Recibe las tareas que siguen tras responder (p. ej. la recomendación de la IA) para que los tests las esperen.
   onBackgroundTask?: (task: Promise<void>) => void;
+  // Cliente de la Expo Push API. Con él, al terminar cada petición a /api se envían los avisos pendientes en segundo
+  // plano; sin él (la mayoría de los tests) no se envía nada.
+  push?: PushClient;
+  // Secreto del despertador (CRON_SECRET). Con él se monta POST /api/internal/tick; sin él, esa ruta no existe.
+  cronSecret?: string;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
@@ -66,13 +75,25 @@ export function createApp(appDeps: AppDeps) {
   app.use(express.json({ limit: '1mb' }));
 
   const api = express.Router();
+  if (appDeps.push) {
+    // Lo que una petición encoló sale al terminarla, sin hacerla esperar. También tras los GET (las lecturas cierran
+    // votaciones vencidas y encolan sus avisos), salvo /health, que no toca la base.
+    const flusher = createFlushScheduler({ db: deps.db, push: appDeps.push, now: deps.now, onBackgroundTask: deps.onBackgroundTask });
+    api.use((req, res, next) => {
+      if (!(req.method === 'GET' && req.path === '/health')) res.on('finish', () => flusher.kick());
+      next();
+    });
+  }
   api.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
   api.use('/auth', authRouter(deps));
+  // Sin token de usuario: lo protege el secreto compartido.
+  if (appDeps.cronSecret) api.use('/internal', internalRouter({ ...deps, cronSecret: appDeps.cronSecret }));
   // Un único middleware para todas las rutas con token: lee rol y estado de la base en cada petición (D2).
   const auth = requireAuth(deps.db, deps.jwtSecret);
   api.use('/me/time-blocks', auth, timeBlocksRouter(deps));
+  api.use('/me/push-devices', auth, pushDevicesRouter(deps));
   api.use('/me', auth, meRouter(deps));
   api.use('/groups', auth, groupsRouter(deps));
   // groupsRouter no tiene /:id/proposals: esas peticiones pasan de largo y las atiende este router.

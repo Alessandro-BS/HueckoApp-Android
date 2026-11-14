@@ -43,6 +43,13 @@
           "microphonePermission": false
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#6750A4"
+        }
+      ],
       "expo-sharing",
       "expo-asset"
     ],

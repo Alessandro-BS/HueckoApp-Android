@@ -61,9 +61,12 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
 
   // Se renuevan en cada ejecución: se borran las de la semilla anterior (sus franjas, votos e incidencias caen por
   // ON DELETE CASCADE) y se crean otra vez con fechas de hoy. Las propuestas creadas desde la app no se tocan.
-  const remove = 'DELETE FROM proposals WHERE group_id = $1 AND title = $2 AND created_by = $3';
-  await db.query(remove, [groupId, meetingTitle, ids.test]);
-  await db.query(remove, [groupId, reviewTitle, ids.ana]);
+  // notifications no tiene clave foránea a proposals: los avisos de las de antes se borran aparte (al final).
+  const remove = 'DELETE FROM proposals WHERE group_id = $1 AND title = $2 AND created_by = $3 RETURNING id';
+  const removedIds = [
+    ...(await db.many<{ id: string }>(remove, [groupId, meetingTitle, ids.test])),
+    ...(await db.many<{ id: string }>(remove, [groupId, reviewTitle, ids.ana])),
+  ].map((r) => r.id);
 
   // «Reunión de avance del proyecto»: confirmada para dentro de 2 días a las 11:00, votada por los dos y con el
   // imprevisto de Ana sin resolver (aviso en Inicio). Las fechas son días de Lima (common/zone).
@@ -82,7 +85,7 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
   const [meetingWindow] = (await proposals.findById(meetingId, ids.test))!.windows;
   await proposals.voteIfOpen(meetingId, ids.test, meetingWindow.id, new Date(ago(30)));
   await proposals.voteIfOpen(meetingId, ids.ana, meetingWindow.id, new Date(ago(30)));
-  await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date, new Date(ago(30)));
+  await proposals.confirm(meetingId, meetingWindow.id, instant(meetingWindow.date, meetingWindow.startTime).toISOString(), meetingWindow.date, new Date(ago(30)), ids.test);
   await proposals.reportIncidence(
     meetingId,
     {
@@ -117,6 +120,11 @@ async function seedProposals(db: Db, ids: Record<UserKey, string>, now: Date): P
   });
   const tuesday = (await proposals.findById(reviewId, ids.ana))!.windows.find((w) => w.dayOfWeek === 2)!;
   await proposals.voteIfOpen(reviewId, ids.ana, tuesday.id, now);
+
+  // La semilla no deja avisos pendientes: ni los que acaba de encolar al crear y confirmar (el envío mandaría historia
+  // de demo a los celulares de prueba) ni los de las propuestas de ejemplo que borró (apuntarían a propuestas que ya
+  // no existen).
+  await db.query("DELETE FROM notifications WHERE data::json->>'proposalId' = ANY($1::text[])", [[...removedIds, meetingId, reviewId]]);
 
   return DEMO_PROPOSAL_TITLES.length;
 }

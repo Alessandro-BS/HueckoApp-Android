@@ -144,3 +144,22 @@ jest.mock('expo-sensors', () => {
     },
   };
 });
+
+// Notificaciones push: cada test fija permisos y token (jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue(...)).
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { HIGH: 4 },
+  setNotificationChannelAsync: jest.fn(async () => null),
+  getPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true })),
+  DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
+  setNotificationHandler: jest.fn(),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  getExpoPushTokenAsync: jest.fn(async () => ({ type: 'expo', data: 'ExponentPushToken[abc]' })),
+}));
+// expo-constants: app instalada (no Expo Go) con el projectId de EAS; un test cambia executionEnvironment a 'storeClient'.
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { executionEnvironment: 'standalone', expoConfig: { extra: { eas: { projectId: 'proj-1' } } } },
+}));

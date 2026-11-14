@@ -5,6 +5,10 @@ import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Prop
 import { isoDay } from '../common/zone';
 import type { Db } from '../db/db';
 import { MEMBER_ORDER } from '../groups/groups.repository';
+import { planInfo, userName } from '../notifications/audience';
+import { expressOpenedMessage, newProposalMessage, planCancelledMessage, planConfirmedMessage } from '../notifications/messages';
+import { notifyGroup } from '../notifications/notify';
+import { enqueueMessage } from '../notifications/outbox.repository';
 import { expiresAtFor } from './express-rules';
 import { expressVotesRepository } from './express-votes.repository';
 import { canManageProposal, type ManagerCandidate } from './permissions';
@@ -242,7 +246,7 @@ export function proposalsRepository(db: Db) {
       return hydrate(rows, viewerId);
     },
 
-    // La propuesta y sus franjas, todo o nada.
+    // La propuesta, sus franjas y el aviso NEW_PROPOSAL (a los miembros menos quien la creó), todo o nada.
     async create(input: NewProposal): Promise<string> {
       const id = randomUUID();
       await db.transaction(async () => {
@@ -255,6 +259,8 @@ export function proposalsRepository(db: Db) {
           ],
         );
         for (const w of input.windows) await insertWindow(id, w);
+        const creatorName = await userName(db, input.createdBy);
+        await notifyGroup(db, id, (plan) => newProposalMessage(plan, creatorName), { except: input.createdBy }, new Date(input.createdAt));
       });
       return id;
     },
@@ -343,8 +349,9 @@ export function proposalsRepository(db: Db) {
     // lectura de la ruta y aquí ya la borró (con READ COMMITTED, un EXISTS dentro del UPDATE no lo vería). Si el
     // replanteo llega después, espera al candado y ve el plan ya CONFIRMADO.
     // Confirmar a mano: solo PROPUESTO y antes del plazo, comprobado con la fila bloqueada (si el plazo vence mientras
-    // tanto, la cierra el cierre automático, no esto). false si no.
-    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string, now: Date): Promise<boolean> {
+    // tanto, la cierra el cierre automático, no esto). false si no. Si confirmó, avisa (PLAN_CONFIRMED) en la misma
+    // transacción a los miembros menos `actorId`, quien confirmó.
+    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string, now: Date, actorId: string): Promise<boolean> {
       return db.transaction(async () => {
         const row = await db.one<{ state: ProposalState; voting_deadline: string }>(
           'SELECT id, state, voting_deadline FROM proposals WHERE id = $1 FOR UPDATE',
@@ -358,18 +365,27 @@ export function proposalsRepository(db: Db) {
            WHERE id = $4 AND state = 'PROPUESTO'`,
           [windowId, scheduledAt, scheduledDate, id],
         );
-        return rowCount > 0;
+        if (rowCount === 0) return false;
+        await notifyGroup(db, id, planConfirmedMessage, { except: actorId }, now);
+        return true;
       });
     },
 
     // Cancelar a mano (quien gestiona o el admin) deja auto_closed en false, aunque el plan se hubiera confirmado solo:
     // «CANCELADO con auto_closed» significa solo «se canceló sola porque nadie votó», la única cancelada que se replantea.
-    async cancel(id: string): Promise<boolean> {
-      const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = $1 AND state <> 'CANCELADO'", [id]);
-      return rowCount > 0;
+    // Si canceló, avisa (PLAN_CANCELLED) en la misma transacción a los miembros menos `actorId`: quien gestiona y canceló,
+    // o null desde el admin (no se excluye a nadie).
+    cancel(id: string, actorId: string | null, now: Date): Promise<boolean> {
+      return db.transaction(async () => {
+        const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = FALSE WHERE id = $1 AND state <> 'CANCELADO'", [id]);
+        if (rowCount === 0) return false;
+        await notifyGroup(db, id, (plan) => planCancelledMessage(plan, { noVotes: false }), { except: actorId }, now);
+        return true;
+      });
     },
 
     // Moderar (admin) una propuesta que se canceló sola: sigue CANCELADO, pero como cancelada a mano (ya no se replantea).
+    // No avisa: el grupo ya recibió el PLAN_CANCELLED del cierre automático.
     async clearAutoCancelled(id: string): Promise<boolean> {
       const { rowCount } = await db.query("UPDATE proposals SET auto_closed = FALSE WHERE id = $1 AND state = 'CANCELADO' AND auto_closed", [id]);
       return rowCount > 0;
@@ -380,6 +396,7 @@ export function proposalsRepository(db: Db) {
      * plan bloqueado. Solo sobre un plan CONFIRMADO (según el estado bloqueado); `saved: false`, sin guardar nada, si
      * otra petición lo canceló o lo mandó a recoordinar mientras tanto. No abre otra si ya hay una ABIERTA (la
      * incidencia se guarda igual) ni si nadie más del grupo puede votar. `openedVoteId`: la votación que abrió, si abrió.
+     * Si la abrió, avisa (EXPRESS_OPENED) a sus votantes en la misma transacción.
      */
     reportIncidence(proposalId: string, input: NewIncidence, expressVoteMinutes: number): Promise<{ saved: boolean; openedVoteId: string | null }> {
       return db.transaction(async () => {
@@ -416,6 +433,10 @@ export function proposalsRepository(db: Db) {
           // scheduled_at del plan CONFIRMADO bloqueado (siempre lo tiene; null solo si faltara: entonces no se acota).
           expiresAt: expiresAtFor(new Date(input.createdAt), row.scheduled_at, expressVoteMinutes),
         });
+        if (openedVoteId !== null) {
+          const message = expressOpenedMessage(await planInfo(db, proposalId), await userName(db, input.userId), input.criticalReason);
+          await enqueueMessage(db, voterIds, message, new Date(input.createdAt));
+        }
         return { saved: true, openedVoteId };
       });
     },

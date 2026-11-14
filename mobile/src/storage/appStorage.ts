@@ -88,3 +88,25 @@ export const dashboardCache = {
     }
   },
 };
+
+const PUSH_TOKEN_KEY = 'hueckoapp.pushToken';
+const NOTIFICATIONS_PREF_KEY = 'hueckoapp.notificationsEnabled';
+
+/** Token de Expo Push de este celular (no es un secreto de la cuenta). Se borra al cerrar sesión. */
+export const pushTokenStorage = {
+  get: () => read<string>(PUSH_TOKEN_KEY),
+  set: (token: string) => write(PUSH_TOKEN_KEY, token),
+  clear: async () => {
+    try {
+      await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
+    } catch {
+      // Se vuelve a intentar en el próximo cierre de sesión.
+    }
+  },
+};
+
+/** ¿Este celular recibe avisos? Es del celular, no de la cuenta: se conserva al cerrar sesión. Por defecto, sí. */
+export const notificationsPreference = {
+  get: async () => (await read<boolean>(NOTIFICATIONS_PREF_KEY)) !== false,
+  set: (enabled: boolean) => write(NOTIFICATIONS_PREF_KEY, enabled),
+};

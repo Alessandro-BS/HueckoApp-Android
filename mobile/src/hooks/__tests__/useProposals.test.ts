@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../api/client';
 import * as proposalsApi from '../../api/proposals';
+import { emitProposalChanged } from '../../notifications/proposalEvents';
 import { makeConfirmed, makeProposal, makeWindow } from '../../testing/fixtures';
 import { useProposal } from '../useProposal';
 import { useProposals } from '../useProposals';
@@ -23,6 +24,17 @@ describe('useProposals', () => {
 });
 
 describe('useProposal', () => {
+  it('recarga la propuesta cuando llega un aviso de su id (y no de otra)', async () => {
+    mocked.getProposal.mockResolvedValue(makeProposal());
+    const hook = await renderHook(() => useProposal('prop_2'));
+    await waitFor(() => expect(hook.result.current.proposal).toBeDefined());
+    mocked.getProposal.mockClear();
+    await act(async () => emitProposalChanged('otra'));
+    expect(mocked.getProposal).not.toHaveBeenCalled();
+    await act(async () => emitProposalChanged('prop_2'));
+    await waitFor(() => expect(mocked.getProposal).toHaveBeenCalledWith('prop_2'));
+  });
+
   const load = async (initial = makeProposal()) => {
     mocked.getProposal.mockResolvedValue(initial);
     const hook = await renderHook(() => useProposal('prop_2'));

@@ -186,6 +186,23 @@ Ojo: si un bloque ya se cruzaba con otro antes de esta versión, guardarlo da el
 
 ---
 
+## 🔔 Avisos push (development build y dos celulares)
+
+> Los avisos remotos **no funcionan en Expo Go**: instala el APK `development` (`eas build -p android --profile development`) con Firebase configurado (ver [despliegue](despliegue.md#-avisos-push-firebase)), abre `npx expo start --dev-client` y usa **dos celulares** con cuentas distintas (p. ej. `test@test.com` y `ana@test.com`) en el mismo grupo. El backend debe ser alcanzable y, para probarlo en local, puedes forzar el barrido con `POST /api/internal/tick`.
+
+| # | Qué hacer | Qué deberías ver | Por qué |
+|---|---|---|---|
+| 1 | En ambos celulares: **Perfil → Notificaciones en este celular** (acepta el permiso de Android) | El interruptor queda encendido | La app registra el token del celular en el servidor |
+| 2 | Con `test@test.com`, crea una propuesta en el grupo | Ana recibe «nueva propuesta» | Se avisa a los demás miembros |
+| 3 | Ana, con la app **abierta**, espera el aviso | Banner con sonido y Inicio se actualiza solo | La app refresca Inicio y los grupos al recibir |
+| 4 | Ana, con la app **en segundo plano**, toca el aviso | Se abre **Votar** de esa propuesta | `data.screen = VOTING` |
+| 5 | Cierra la app de Ana del todo, confirma el plan con `test@test.com` y toca el aviso | La app arranca y abre el **detalle del plan** | El destino se abre cuando la sesión y la navegación están listas |
+| 6 | Ana: apaga el interruptor y confirma otro plan | No llega ningún aviso | El celular se borra del servidor |
+
+> **Limitación conocida:** si cierras sesión **sin conexión**, la app no puede borrar el token y el servidor sigue asociándolo a esa cuenta: sus avisos seguirán llegando a ese celular hasta que alguien inicie sesión en él (el nuevo inicio de sesión reasigna el token).
+
+---
+
 ## 🐞 Si algo falla
 
 Anota **la cuenta**, **el paso**, **qué esperabas** y **qué viste** (con captura). Mensajes útiles:

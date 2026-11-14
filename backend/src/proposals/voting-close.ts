@@ -1,6 +1,8 @@
 import type { ProposalState } from '@hueckoapp/shared';
 
 import type { Db } from '../db/db';
+import { planCancelledMessage, planConfirmedMessage } from '../notifications/messages';
+import { notifyGroup } from '../notifications/notify';
 import { type CloseScope, expressVotesRepository, logCloseError, SCOPE_FILTER } from './express-votes.repository';
 import { windowsWithVotes } from './proposals.repository';
 import { pickWinner, scheduleFor } from './rules';
@@ -16,7 +18,8 @@ export type ProposalCloseScope = CloseScope | { all: true };
 /**
  * Cierra la votación de la propuesta si sigue PROPUESTO y su plazo venció: CONFIRMADO con la franja ganadora (la misma
  * regla que «confirmar» sin windowId, contando solo los votos de quienes siguen en el grupo) o CANCELADO si nadie votó.
- * Se confirma aunque la franja ya haya empezado: al vencer el plazo era válida. true si la cerró.
+ * Se confirma aunque la franja ya haya empezado: al vencer el plazo era válida. true si la cerró; entonces avisa
+ * (PLAN_CONFIRMED, o PLAN_CANCELLED «nadie votó») a todos los miembros en la misma transacción.
  */
 export function closeProposalIfDue(db: Db, proposalId: string, now: Date): Promise<boolean> {
   return db.transaction(async () => {
@@ -27,17 +30,21 @@ export function closeProposalIfDue(db: Db, proposalId: string, now: Date): Promi
     if (!row || row.state !== 'PROPUESTO' || new Date(row.voting_deadline).getTime() > now.getTime()) return false;
     // El mismo recuento que ve la app (windowsWithVotes): solo suman los votos de quienes siguen en el grupo.
     const winner = pickWinner((await windowsWithVotes(db, [proposalId])).get(proposalId) ?? []);
+    let rowCount: number;
     if (winner) {
       const { scheduledAt, scheduledDate } = scheduleFor(winner.date, winner.startTime);
-      const { rowCount } = await db.query(
+      ({ rowCount } = await db.query(
         `UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $2, scheduled_at = $3, scheduled_date = $4, auto_closed = TRUE
          WHERE id = $1 AND state = 'PROPUESTO'`,
         [proposalId, winner.id, scheduledAt, scheduledDate],
-      );
-      return rowCount > 0;
+      ));
+    } else {
+      ({ rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = TRUE WHERE id = $1 AND state = 'PROPUESTO'", [proposalId]));
     }
-    const { rowCount } = await db.query("UPDATE proposals SET state = 'CANCELADO', auto_closed = TRUE WHERE id = $1 AND state = 'PROPUESTO'", [proposalId]);
-    return rowCount > 0;
+    if (rowCount === 0) return false;
+    // Nadie lo hizo a mano: avisa a todos los miembros, en la misma transacción.
+    await notifyGroup(db, proposalId, (plan) => (winner ? planConfirmedMessage(plan) : planCancelledMessage(plan, { noVotes: true })), {}, now);
+    return true;
   });
 }
 
@@ -46,7 +53,8 @@ export function closeProposalIfDue(db: Db, proposalId: string, now: Date): Promi
  * una sola consulta). Nunca lanza: cada propuesta se cierra en su propio intento y un error se anota en el log (la
  * siguiente lectura lo reintenta).
  */
-export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: Date): Promise<void> {
+export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: Date): Promise<number> {
+  let closed = 0;
   const [filter, params]: [string, string[]] =
     'all' in scope
       ? ['TRUE', []]
@@ -60,7 +68,7 @@ export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: 
     );
     for (const { id } of due) {
       try {
-        await closeProposalIfDue(db, id, now);
+        if (await closeProposalIfDue(db, id, now)) closed++;
       } catch (error) {
         logCloseError(id, error, VOTING);
       }
@@ -68,6 +76,7 @@ export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: 
   } catch (error) {
     logCloseError(null, error, VOTING);
   }
+  return closed;
 }
 
 /**

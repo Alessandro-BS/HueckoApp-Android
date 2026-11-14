@@ -162,7 +162,8 @@ export function adminGroups(db: Db) {
         const autoCancelled = row.state === 'CANCELADO' && row.auto_closed;
         if (!canCancel(row.state) && !autoCancelled) throw alreadyCancelled();
         // Condicionado: si quien organiza la canceló (o la replanteó) justo ahora, no se cancela ni se anota dos veces.
-        const done = autoCancelled ? await proposals.clearAutoCancelled(id) : await proposals.cancel(id);
+        // Cancelar avisa a todos los miembros (el admin no se excluye: null); moderar una cancelada sola no avisa.
+        const done = autoCancelled ? await proposals.clearAutoCancelled(id) : await proposals.cancel(id, null, actor.now);
         if (!done) throw alreadyCancelled();
         await audit.record({
           adminId: actor.adminId,

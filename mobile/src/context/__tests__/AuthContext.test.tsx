@@ -1,19 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
-import { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios';
 import type { ReactNode } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import * as authApi from '../../api/auth';
 import { api, ApiError } from '../../api/client';
-import { dashboardCache, lastEmailStorage, sessionUserStorage } from '../../storage/appStorage';
+import { dashboardCache, lastEmailStorage, notificationsPreference, pushTokenStorage, sessionUserStorage } from '../../storage/appStorage';
 import { showToast } from '../../utils/toast';
 import { makeDashboard } from '../../testing/fixtures';
 import { AuthProvider, useAuth } from '../AuthContext';
 
 jest.mock('../../api/auth');
 jest.mock('../../utils/toast', () => ({ showToast: jest.fn() }));
+jest.mock('../../notifications/registration', () => ({
+  registerDevice: jest.fn(async () => 'registered'),
+  unregisterDevice: jest.fn(async () => undefined),
+}));
 const mocked = authApi as jest.Mocked<typeof authApi>;
 const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const };
 const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
@@ -215,5 +219,94 @@ describe('al volver la app a primer plano (A3)', () => {
     await waitFor(() => expect(mocked.meRequest).toHaveBeenCalledTimes(1));
     expect(result.current.status).toBe('signedIn');
     expect(result.current.user).toEqual(ana);
+  });
+});
+
+describe('notificaciones push', () => {
+  const registration = jest.requireMock('../../notifications/registration') as {
+    registerDevice: jest.Mock;
+    unregisterDevice: jest.Mock;
+  };
+
+  it('al iniciar sesión registra el celular; con la preferencia apagada no', async () => {
+    mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+    await waitFor(() => expect(registration.registerDevice).toHaveBeenCalledTimes(1));
+
+    await act(() => result.current.logout());
+    registration.registerDevice.mockClear();
+    await notificationsPreference.set(false);
+    await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+    expect(registration.registerDevice).not.toHaveBeenCalled();
+  });
+
+  it('al abrir con sesión válida registra el celular', async () => {
+    await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+    mocked.meRequest.mockResolvedValue(ana);
+    await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(registration.registerDevice).toHaveBeenCalledTimes(1));
+  });
+
+  it('al abrir con la preferencia apagada y un token guardado, reintenta desregistrar; con la preferencia activa no', async () => {
+    await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+    mocked.meRequest.mockResolvedValue(ana);
+    await notificationsPreference.set(false);
+    await pushTokenStorage.set('ExponentPushToken[abc]');
+    await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(registration.unregisterDevice).toHaveBeenCalledTimes(1));
+    expect(registration.unregisterDevice).toHaveBeenCalledWith();
+    expect(registration.registerDevice).not.toHaveBeenCalled();
+  });
+
+  it('con la preferencia apagada y sin token guardado no llama al servidor', async () => {
+    await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+    mocked.meRequest.mockResolvedValue(ana);
+    await notificationsPreference.set(false);
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedIn'));
+    expect(registration.unregisterDevice).not.toHaveBeenCalled();
+  });
+
+  it('logout desregistra con forgetAlways', async () => {
+    mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+    await act(() => result.current.logout());
+    expect(registration.unregisterDevice).toHaveBeenCalledWith({ forgetAlways: true });
+  });
+
+  it('logout desregistra el celular con el JWT todavía puesto', async () => {
+    mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+
+    const original = api.defaults.adapter;
+    const seen: unknown[] = [];
+    // Al llamar a unregisterDevice, lo que importa es que el interceptor aún ponga Authorization.
+    registration.unregisterDevice.mockImplementationOnce(async () => {
+      const config = { headers: new AxiosHeaders() } as InternalAxiosRequestConfig;
+      for (const h of (api.interceptors.request as unknown as { handlers: { fulfilled: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }[] }).handlers) {
+        h.fulfilled(config);
+      }
+      seen.push(config.headers.Authorization);
+    });
+    await act(() => result.current.logout());
+    expect(seen).toEqual(['Bearer nuevo']);
+    expect(registration.unregisterDevice).toHaveBeenCalledTimes(1);
+    api.defaults.adapter = original;
+  });
+
+  it('si desregistrar falla, el logout igual termina', async () => {
+    mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+    registration.unregisterDevice.mockRejectedValueOnce(new Error('401'));
+    await act(() => result.current.logout());
+    expect(result.current.status).toBe('signedOut');
   });
 });

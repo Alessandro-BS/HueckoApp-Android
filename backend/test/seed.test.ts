@@ -98,6 +98,23 @@ describe('semilla de datos de ejemplo (D8)', () => {
     expect(d.pendingVotes.map((p) => p.votingDeadline)).toEqual([new Date(2026, 9, 10, 20, 0).toISOString()]);
   });
 
+  it('no deja avisos pendientes: ni los suyos ni los de las propuestas de ejemplo de una siembra anterior', async () => {
+    const db = await makeTestDb();
+    const pending = async () => (await db.one<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE sent_at IS NULL'))!.n;
+    await seedDemoData(db, HASH, NOW);
+    expect(await pending()).toBe(0);
+    // Un aviso pendiente de una propuesta de ejemplo (p. ej. de una semilla anterior, o de alguien que la usó desde la
+    // app): al volver a sembrar, la propuesta se borra y su aviso también.
+    const [demoId] = await column(db, "SELECT id AS v FROM proposals WHERE title = 'Reunión de avance del proyecto'");
+    await db.query(
+      `INSERT INTO notifications (id, user_id, kind, title, body, data, created_at)
+       VALUES ('viejo', $1, 'PLAN_CONFIRMED', 'Proyecto Integrador', 'x', $2, $3)`,
+      [await userId(db, 'ana@test.com'), JSON.stringify({ kind: 'PLAN_CONFIRMED', proposalId: demoId, groupId: 'g', screen: 'PLAN' }), NOW.toISOString()],
+    );
+    await seedDemoData(db, HASH, new Date(NOW.getTime() + DAY));
+    expect(await pending()).toBe(0);
+  });
+
   it('no toca las propuestas creadas desde la app y devuelve al grupo a quien se había ido', async () => {
     const db = await makeTestDb();
     await seedDemoData(db, HASH, NOW);
@@ -114,8 +131,13 @@ describe('semilla de datos de ejemplo (D8)', () => {
       createdAt: NOW.toISOString(),
     });
     await groupsRepository(db).leave(groupId, anaId);
+    // Su aviso NEW_PROPOSAL (a test@test.com) tampoco se toca.
+    const notices = async () =>
+      (await db.many<{ kind: string }>("SELECT kind FROM notifications WHERE data::json->>'proposalId' = $1", [mine])).map((r) => r.kind);
+    expect(await notices()).toEqual(['NEW_PROPOSAL']);
 
     await seedDemoData(db, HASH, NOW);
+    expect(await notices()).toEqual(['NEW_PROPOSAL']);
     // Sigue existiendo con el mismo id (findById lo encuentra por él).
     expect((await proposalsRepository(db).findById(mine, anaId))?.id).toBe(mine);
     expect((await proposalsRepository(db).findById(mine, anaId))?.title).toBe('Plan propio');
