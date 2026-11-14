@@ -33,6 +33,9 @@ export type AuthResult = AuthResponse | { challenge: Challenge };
 export type ForgotPasswordInput = { email: string };
 export type GoogleLoginInput = { idToken: string };
 
+// Activar/desactivar la verificación en dos pasos: pide la contraseña actual.
+export type PasswordInput = { password: string };
+
 export type VerifyChallengeInput = { code: string; newPassword?: string };
 
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';

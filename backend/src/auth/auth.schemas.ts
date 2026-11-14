@@ -37,3 +37,8 @@ export const verifyChallengeSchema = z.object({
   code: z.string({ error: 'El código es requerido' }).trim().regex(/^\d{6}$/, 'El código tiene 6 dígitos'),
   newPassword: newPassword.optional(),
 });
+
+// Activar/desactivar el 2FA: la contraseña actual, tal cual (no se valida su largo: una mala es 400 WRONG_PASSWORD).
+export const passwordInputSchema = z.object({
+  password: z.string({ error: 'La contraseña es requerida' }).min(1, 'La contraseña es requerida'),
+});

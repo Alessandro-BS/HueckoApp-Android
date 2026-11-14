@@ -8,22 +8,22 @@ import { devicesRepository } from '../notifications/devices.repository';
 import { isUniqueViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
 import { type Account, toCurrentUser, usersRepository } from '../users/users.repository';
-import { forgotPasswordSchema, googleLoginSchema, loginSchema, registerSchema, verifyChallengeSchema } from './auth.schemas';
+import { forgotPasswordSchema, googleLoginSchema, loginSchema, passwordInputSchema, registerSchema, verifyChallengeSchema } from './auth.schemas';
 import type { ChallengePurpose } from './challenge-rules';
 import { emailHint, generateChallengeId } from './codes';
 import { type ChallengeDeps, issueChallenge, resendChallenge, verifyChallenge } from './challenges';
 import { RESEND_COOLDOWN_SECONDS } from './challenge-rules';
 import { DUMMY_HASH, hashPassword, verifyPassword } from './passwords';
-import { accountSuspended, getUserId, requireAuth } from './require-auth';
+import { accountSuspended, authenticate, getUserId, requireAuth } from './require-auth';
 import { signToken } from './tokens';
 
 export const LOGIN_RATE_LIMIT_DEFAULT = 20;
 export const REGISTER_RATE_LIMIT_DEFAULT = 10;
 export const CODE_RATE_LIMIT_DEFAULT = 30;
 
-// Propósitos que /challenges/:id/verify ya sabe aplicar. Los demás responden 410 como un reto inexistente, sin gastar
-// intento (los añade el 2FA).
-const VERIFIABLE_PURPOSES: ReadonlySet<ChallengePurpose> = new Set(['VERIFY_EMAIL', 'RESET_PASSWORD']);
+// Propósitos que /challenges/:id/verify sabe aplicar. Uno que no esté aquí responde 410 como un reto inexistente, sin
+// gastar intento.
+const VERIFIABLE_PURPOSES: ReadonlySet<ChallengePurpose> = new Set(['VERIFY_EMAIL', 'RESET_PASSWORD', 'LOGIN_2FA', 'ENABLE_2FA']);
 const challengeExpired = () => new ApiError(410, 'CHALLENGE_EXPIRED', 'Pide un código nuevo.');
 
 // Frena la fuerza bruta por IP cada 15 minutos. La IP es req.ip: detrás de un proxy depende de TRUST_PROXY (D9).
@@ -96,9 +96,13 @@ export function authRouter({
     // Solo quien sabe la contraseña se entera de que la cuenta está suspendida (D2).
     if (found.status === 'SUSPENDED') throw accountSuspended();
     const { passwordHash: _omit, ...account } = found;
-    const body: AuthResult = account.emailVerified
-      ? sessionFor(account)
-      : { challenge: await issueChallenge(challengeDeps, account, 'VERIFY_EMAIL') };
+    // Sin código no hay JWT: sin verificar manda VERIFY_EMAIL y con 2FA, LOGIN_2FA. La contraseña mala ya dio 401 arriba, sin
+    // mandar ningún correo.
+    const body: AuthResult = !account.emailVerified
+      ? { challenge: await issueChallenge(challengeDeps, account, 'VERIFY_EMAIL') }
+      : account.twoFactorEnabled
+        ? { challenge: await issueChallenge(challengeDeps, account, 'LOGIN_2FA') }
+        : sessionFor(account);
     res.json(body);
   });
 
@@ -161,9 +165,13 @@ export function authRouter({
     const { code, newPassword } = verifyChallengeSchema.parse(req.body);
     // El hash va fuera de la transacción (bcrypt tarda); solo se usa si el reto resulta ser RESET_PASSWORD.
     const newHash = newPassword === undefined ? undefined : await hashPassword(newPassword);
-    const { userId } = await verifyChallenge(challengeDeps, String(req.params.id), code, {
-      purposeCheck: ({ purpose }) => {
+    // ENABLE_2FA exige además el JWT de la dueña del reto. Se resuelve aquí (purposeCheck es síncrono) y se descarta
+    // cualquier fallo (sin token, token malo, suspendida): purposeCheck responde 410, nunca 401 (la app cierra sesión con un 401).
+    const bearerUserId = await authenticate(db, jwtSecret, req.get('authorization')).then((a) => a.userId, () => undefined);
+    const { userId, purpose } = await verifyChallenge(challengeDeps, String(req.params.id), code, {
+      purposeCheck: ({ userId: challengeUserId, purpose }) => {
         if (!VERIFIABLE_PURPOSES.has(purpose)) throw challengeExpired();
+        if (purpose === 'ENABLE_2FA' && bearerUserId !== challengeUserId) throw challengeExpired();
         // La contraseña nueva es obligatoria al recuperar: se exige antes de mirar el código, así no gasta intento.
         if (purpose === 'RESET_PASSWORD' && newHash === undefined) {
           throw new ZodError([{ code: 'custom', path: ['newPassword'], message: 'La contraseña es requerida', input: undefined }]);
@@ -177,11 +185,19 @@ export function authRouter({
         if (purpose === 'RESET_PASSWORD') {
           await users.resetPassword(id, newHash!);
           await devices.removeAllOf(id);
-        } else {
+        } else if (purpose === 'ENABLE_2FA') {
+          await users.setTwoFactor(id, true);
+        } else if (purpose === 'VERIFY_EMAIL') {
           await users.markEmailVerified(id);
         }
+        // LOGIN_2FA: el código es la prueba, no hay nada que escribir.
       },
     });
+    // ENABLE_2FA no abre sesión: la persona ya tiene la suya.
+    if (purpose === 'ENABLE_2FA') {
+      res.status(204).end();
+      return;
+    }
     const account = await users.findById(userId);
     if (!account) throw challengeExpired(); // la cuenta se borró entre medias
     // El efecto ya se aplicó, pero una cuenta suspendida no recibe sesión.
@@ -198,6 +214,32 @@ export function authRouter({
     const account = await users.findById(getUserId(res));
     if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró. Inicia sesión de nuevo.');
     res.json(toCurrentUser(account));
+  });
+
+  // Activar el 2FA: contraseña actual y un código al correo. Sin contraseña (cuenta solo de Google) no se puede. La
+  // contraseña mala es 400 (no 401: la app cerraría la sesión). No cambia la versión de sesión.
+  const checkPassword = async (res: Parameters<typeof getUserId>[0], password: string) => {
+    const id = getUserId(res);
+    const hash = await users.findPasswordHash(id);
+    if (hash === null) throw new ApiError(409, 'PASSWORD_REQUIRED', 'Para activarla, primero crea una contraseña con «¿Olvidaste tu contraseña?».');
+    if (!(await verifyPassword(password, hash))) throw new ApiError(400, 'WRONG_PASSWORD', 'La contraseña es incorrecta.');
+    return id;
+  };
+
+  router.post('/me/2fa/enable', codeLimiter, requireAuth(db, jwtSecret), async (req, res) => {
+    const { password } = passwordInputSchema.parse(req.body);
+    const id = await checkPassword(res, password);
+    const account = await users.findById(id);
+    if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró. Inicia sesión de nuevo.');
+    const body: AuthResult = { challenge: await issueChallenge(challengeDeps, account, 'ENABLE_2FA') };
+    res.json(body);
+  });
+
+  router.post('/me/2fa/disable', codeLimiter, requireAuth(db, jwtSecret), async (req, res) => {
+    const { password } = passwordInputSchema.parse(req.body);
+    const id = await checkPassword(res, password);
+    await users.setTwoFactor(id, false);
+    res.status(204).end();
   });
 
   return router;

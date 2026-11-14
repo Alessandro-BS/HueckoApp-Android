@@ -142,6 +142,13 @@ export function usersRepository(db: Db) {
       if (!row) throw new Error('cuenta inexistente');
       return row.session_version;
     },
+    async setTwoFactor(id: string, enabled: boolean): Promise<void> {
+      await db.query('UPDATE users SET two_factor_enabled = $2 WHERE id = $1', [id, enabled]);
+    },
+    async findPasswordHash(id: string): Promise<string | null> {
+      const row = await db.one<{ password_hash: string | null }>('SELECT password_hash FROM users WHERE id = $1', [id]);
+      return row?.password_hash ?? null;
+    },
     async findByEmail(email: string): Promise<(Account & { passwordHash: string | null }) | undefined> {
       const row = await db.one<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
       return row && { ...toAccount(row), passwordHash: row.password_hash };

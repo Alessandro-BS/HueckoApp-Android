@@ -2,10 +2,8 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 
-import type { ChallengePurpose } from '../src/auth/challenge-rules';
-import { issueChallenge } from '../src/auth/challenges';
 import type { Db } from '../src/db/db';
-import { bearer, type FakeEmail, makeClock, makeTestApp, NOW, recordQueries, registerUnverified, TEST_SECRET } from './helpers';
+import { bearer, makeClock, makeTestApp, NOW, recordQueries, registerUnverified } from './helpers';
 
 const SECOND = 1000;
 const verify = (app: Express, id: string, body: object) => request(app).post(`/api/auth/challenges/${id}/verify`).send(body);
@@ -130,21 +128,6 @@ describe('POST /api/auth/challenges/:id/verify (VERIFY_EMAIL)', () => {
     expect(res.body.token).toBeUndefined();
     expect(await db.one('SELECT email_verified FROM users WHERE email = $1', [email])).toEqual({ email_verified: true });
   });
-
-  it.each<ChallengePurpose>(['LOGIN_2FA', 'ENABLE_2FA'])(
-    'un reto %s todavía no se acepta aquí: 410 sin gastar intento ni consumirlo',
-    async (purpose) => {
-      const { app, db, emails } = await makeTestApp({ now: () => NOW });
-      const { email } = await registerUnverified(app);
-      const user = (await db.one<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]))!;
-      const view = await issueChallenge({ db, email: emails, secret: TEST_SECRET, now: () => NOW }, { id: user.id, email }, purpose);
-      const res = await verify(app, view.id, { code: (emails as FakeEmail).lastCodeTo(email) });
-      expect(res.status).toBe(410);
-      expect(res.body.error.code).toBe('CHALLENGE_EXPIRED');
-      expect(res.body.token).toBeUndefined();
-      expect(await attemptsOf(db, view.id)).toEqual({ attempts: 0, consumed_at: null });
-    },
-  );
 
   it('verify y resend tienen su límite por IP (CODE_RATE_LIMIT): 429 TOO_MANY_REQUESTS', async () => {
     const { app } = await makeTestApp({ codeRateLimit: 2 });

@@ -18,22 +18,30 @@ type AccessRow = { role: UserRole; status: UserStatus; session_version: number }
  * JWT (salvo `sub` y `sv`) cuenta. `sv` distinto de session_version → 401: así se cierran todas las sesiones anteriores
  * (p. ej. al recuperar la contraseña). No mira email_verified: una cuenta sin verificar nunca recibe un JWT.
  */
+export async function authenticate(db: Db, secret: string, authorization: string | undefined): Promise<{ userId: string; role: UserRole }> {
+  const [scheme, token] = (authorization ?? '').split(' ');
+  const claims = scheme === 'Bearer' && token ? verifyToken(token, secret) : null;
+  if (!claims) throw unauthorized();
+  const { userId } = claims;
+  const access = await db.one<AccessRow>('SELECT role, status, session_version FROM users WHERE id = $1', [userId]);
+  if (!access) throw unauthorized(); // la cuenta ya no existe
+  if (access.session_version !== claims.sessionVersion) throw unauthorized(); // sesión cerrada desde otro lado
+  if (access.status === 'SUSPENDED') throw accountSuspended();
+  return { userId, role: access.role };
+}
+
 export function requireAuth(db: Db, secret: string): RequestHandler {
   return async (req, res, next) => {
     // Ya comprobado en esta misma petición (p. ej. /groups/:id/ai/* atraviesa varios routers con este middleware).
     if (typeof res.locals.userId === 'string') return next();
-    const header = req.get('authorization') ?? '';
-    const [scheme, token] = header.split(' ');
-    const claims = scheme === 'Bearer' && token ? verifyToken(token, secret) : null;
-    if (!claims) return next(unauthorized());
-    const { userId } = claims;
-    const access = await db.one<AccessRow>('SELECT role, status, session_version FROM users WHERE id = $1', [userId]);
-    if (!access) return next(unauthorized()); // la cuenta ya no existe
-    if (access.session_version !== claims.sessionVersion) return next(unauthorized()); // sesión cerrada desde otro lado
-    if (access.status === 'SUSPENDED') return next(accountSuspended());
-    res.locals.userId = userId;
-    res.locals.role = access.role;
-    next();
+    try {
+      const { userId, role } = await authenticate(db, secret, req.get('authorization'));
+      res.locals.userId = userId;
+      res.locals.role = role;
+      next();
+    } catch (e) {
+      next(e);
+    }
   };
 }
 
