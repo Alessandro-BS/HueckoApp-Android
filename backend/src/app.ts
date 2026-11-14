@@ -14,6 +14,7 @@ import type { Db } from './db/db';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { internalRouter } from './notifications/internal.routes';
 import { createFlushScheduler } from './notifications/flush-scheduler';
 import type { PushClient } from './notifications/push-client';
 import { pushDevicesRouter } from './notifications/push-devices.routes';
@@ -46,6 +47,8 @@ export type AppDeps = {
   // Cliente de la Expo Push API. Con él, al terminar cada petición a /api se envían los avisos pendientes en segundo
   // plano; sin él (la mayoría de los tests) no se envía nada.
   push?: PushClient;
+  // Secreto del despertador (CRON_SECRET). Con él se monta POST /api/internal/tick; sin él, esa ruta no existe.
+  cronSecret?: string;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
@@ -85,6 +88,8 @@ export function createApp(appDeps: AppDeps) {
     res.json({ status: 'ok' });
   });
   api.use('/auth', authRouter(deps));
+  // Sin token de usuario: lo protege el secreto compartido.
+  if (appDeps.cronSecret) api.use('/internal', internalRouter({ ...deps, cronSecret: appDeps.cronSecret }));
   // Un único middleware para todas las rutas con token: lee rol y estado de la base en cada petición (D2).
   const auth = requireAuth(deps.db, deps.jwtSecret);
   api.use('/me/time-blocks', auth, timeBlocksRouter(deps));

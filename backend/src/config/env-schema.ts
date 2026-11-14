@@ -67,6 +67,16 @@ const envSchema = z.object({
   REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(REGISTER_RATE_LIMIT_DEFAULT),
   // Votación exprés: minutos que dura (sin pasar del inicio del plan y con al menos 5).
   EXPRESS_VOTE_MINUTES: z.coerce.number().int().positive().default(EXPRESS_VOTE_MINUTES_DEFAULT),
+  // Avisos (Fase 5): el secreto del despertador de GitHub Actions (vacío = sin configurar: Render deja las variables
+  // sin valor como cadena vacía) y el token opcional de la Expo Push API.
+  CRON_SECRET: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().min(32, 'CRON_SECRET debe tener al menos 32 caracteres').optional(),
+  ),
+  EXPO_ACCESS_TOKEN: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().optional(),
+  ),
 }).superRefine((env, ctx) => {
   // En producción (Render) el disco es efímero: una base PGlite se perdería en cada despliegue.
   if (env.NODE_ENV === 'production' && env.DATABASE_URL === '') {

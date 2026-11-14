@@ -41,6 +41,7 @@ export async function makeTestApp(options?: {
   proximityRateLimit?: number;
   onBackgroundTask?: (task: Promise<void>) => void;
   push?: PushClient;
+  cronSecret?: string;
 }): Promise<{ app: Express; db: Db }> {
   const db = await makeTestDb();
   const app = createApp({
@@ -58,6 +59,7 @@ export async function makeTestApp(options?: {
     onBackgroundTask: options?.onBackgroundTask,
     // Sin `push` no se envía nada en segundo plano (la mayoría de los tests).
     push: options?.push,
+    cronSecret: options?.cronSecret,
   });
   return { app, db };
 }

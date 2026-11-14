@@ -37,6 +37,8 @@
 | `TZ` | `America/Lima` | 🕐 Los planes confirmados (`scheduledAt`, `scheduledDate`) se calculan en esta zona. Sin ella el servidor usa UTC y los planes caerían en otra fecha u hora |
 | `TRUST_PROXY` | `1` | 🧱 Render pone un proxy delante. Sin esto, todas las peticiones parecen venir de la misma IP y el límite de intentos de login (`LOGIN_RATE_LIMIT`) y de registro (`REGISTER_RATE_LIMIT`) bloquearía a todos a la vez |
 | `GEMINI_API_KEY` | Tu clave | IA (opcional) |
+| `CRON_SECRET` | Valor largo y aleatorio (mínimo 32 caracteres) | ⏰ Protege `POST /api/internal/tick`, que llama el despertador de GitHub Actions. Vacío = sin ese endpoint |
+| `EXPO_ACCESS_TOKEN` | Token de Expo (opcional) | Solo si activaste «Enhanced Security» en tu cuenta de Expo |
 
 ### 🚀 Crear el servicio con el Blueprint
 
@@ -46,6 +48,8 @@
 4. Si la URL no es `https://hueckoapp-api.onrender.com` (Render añade un sufijo si el nombre está ocupado), cámbiala en `mobile/eas.json` antes de generar el APK.
 
 > ⚙️ Comandos (ya en `render.yaml`): build `npm ci --include=dev --workspace backend --workspace shared && npm run build -w backend` · start `npm start -w backend`. El `--include=dev` es obligatorio: con `NODE_ENV=production` npm se salta `typescript` (devDependency) y el build falla.
+>
+> ⏰ **Despertador (avisos push):** el servidor barre cada minuto (cierra votaciones vencidas, encola recordatorios y envía los avisos pendientes), pero el plan gratuito de Render lo duerme tras 15 min sin uso. El workflow [`despertador.yml`](../.github/workflows/despertador.yml) llama a `POST /api/internal/tick` cada ~10 min. En GitHub → *Settings → Secrets and variables → Actions*: secreto `CRON_SECRET` (el mismo valor que en Render) y variable `API_URL` (p. ej. `https://hueckoapp-api.onrender.com`, sin `/` final). Sin alguno de los dos, el workflow avisa y termina sin error.
 >
 > 💤 En el plan gratuito el servicio se duerme tras 15 min sin uso: la primera petición después tarda ~1 min en responder.
 

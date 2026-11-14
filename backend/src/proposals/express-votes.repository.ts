@@ -228,17 +228,23 @@ export function expressVotesRepository(db: Db) {
      * Cierre perezoso antes de una lectura: `closeDue` de cada votación ABIERTA y **vencida** del alcance (sin ninguna,
      * una sola consulta y nada más). Nunca lanza: un error se anota en el log y la lectura sigue (la siguiente lo reintenta).
      */
-    async closeDueInScope(scope: CloseScope, now: Date): Promise<void> {
-      const [filter, value] = 'groupId' in scope ? [SCOPE_FILTER.groupId, scope.groupId] : [SCOPE_FILTER.userId, scope.userId];
+    async closeDueInScope(scope: CloseScope | { all: true }, now: Date): Promise<number> {
+      const [filter, params]: [string, string[]] =
+        'all' in scope
+          ? ['TRUE', []]
+          : 'groupId' in scope
+            ? [SCOPE_FILTER.groupId, [scope.groupId]]
+            : [SCOPE_FILTER.userId, [scope.userId]];
+      let closed = 0;
       try {
         const due = await db.many<{ proposal_id: string }>(
           `SELECT v.proposal_id FROM express_votes v JOIN proposals p ON p.id = v.proposal_id
-           WHERE ${filter} AND v.status = 'ABIERTA' AND v.expires_at <= $2`,
-          [value, now.toISOString()],
+           WHERE ${filter} AND v.status = 'ABIERTA' AND v.expires_at <= $${params.length + 1}`,
+          [...params, now.toISOString()],
         );
         for (const { proposal_id } of due) {
           try {
-            await repo.closeDue(proposal_id, now);
+            if (await repo.closeDue(proposal_id, now)) closed++;
           } catch (error) {
             logCloseError(proposal_id, error);
           }
@@ -246,6 +252,7 @@ export function expressVotesRepository(db: Db) {
       } catch (error) {
         logCloseError(null, error);
       }
+      return closed;
     },
   };
   return repo;

@@ -53,7 +53,8 @@ export function closeProposalIfDue(db: Db, proposalId: string, now: Date): Promi
  * una sola consulta). Nunca lanza: cada propuesta se cierra en su propio intento y un error se anota en el log (la
  * siguiente lectura lo reintenta).
  */
-export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: Date): Promise<void> {
+export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: Date): Promise<number> {
+  let closed = 0;
   const [filter, params]: [string, string[]] =
     'all' in scope
       ? ['TRUE', []]
@@ -67,7 +68,7 @@ export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: 
     );
     for (const { id } of due) {
       try {
-        await closeProposalIfDue(db, id, now);
+        if (await closeProposalIfDue(db, id, now)) closed++;
       } catch (error) {
         logCloseError(id, error, VOTING);
       }
@@ -75,6 +76,7 @@ export async function closeDueProposals(db: Db, scope: ProposalCloseScope, now: 
   } catch (error) {
     logCloseError(null, error, VOTING);
   }
+  return closed;
 }
 
 /**

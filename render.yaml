@@ -31,3 +31,10 @@ services:
       # Opcional: vacía = Huecko IA en modo demostración.
       - key: GEMINI_API_KEY
         sync: false
+      # Secreto del despertador de GitHub Actions (mínimo 32 caracteres; el mismo en el secreto CRON_SECRET de GitHub).
+      # Vacío = sin despertador: el barrido sigue cada minuto mientras el servicio esté despierto.
+      - key: CRON_SECRET
+        sync: false
+      # Opcional: token de acceso de la Expo Push API (solo si activaste «Enhanced Security» en Expo).
+      - key: EXPO_ACCESS_TOKEN
+        sync: false

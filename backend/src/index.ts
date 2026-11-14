@@ -6,6 +6,8 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { databaseConfig, openDatabase } from './db/connect';
 import type { Db } from './db/db';
+import { createExpoPushClient } from './notifications/push-client';
+import { tick } from './notifications/tick';
 
 // Sin clave, la IA responde con datos de demostración para que la app se pueda probar igual (D2).
 const ai = env.GEMINI_API_KEY
@@ -33,6 +35,7 @@ if (env.NODE_ENV === 'production' && !env.TRUST_PROXY) {
 // Los manejadores van antes de abrir la base: una señal durante las migraciones también la cierra bien.
 let db: Db | undefined;
 let server: Server | undefined;
+let sweep: NodeJS.Timeout | undefined;
 let stopping = false;
 
 // Cierra la base (si llegó a abrirse) y sale con `code`, o con 1 si cerrarla falla.
@@ -52,6 +55,7 @@ function closeAndExit(code: number): void {
 function shutdown(signal: NodeJS.Signals): void {
   if (stopping) return;
   stopping = true;
+  if (sweep) clearInterval(sweep);
   console.log(`${signal}: cerrando el servidor…`);
   setTimeout(() => process.exit(1), 10_000).unref();
   if (server) server.close(() => closeAndExit(0));
@@ -67,6 +71,8 @@ async function main() {
   if (stopping) return closeAndExit(0);
   console.log(`Base de datos: ${db.description}`);
 
+  // Avisos push: el barrido corre cada minuto en este proceso (y el despertador de GitHub Actions lo mantiene vivo).
+  const push = createExpoPushClient({ accessToken: env.EXPO_ACCESS_TOKEN });
   server = createApp({
     db,
     jwtSecret: env.JWT_SECRET,
@@ -77,6 +83,8 @@ async function main() {
     ai,
     aiRateLimit: env.AI_RATE_LIMIT,
     expressVoteMinutes: env.EXPRESS_VOTE_MINUTES,
+    push,
+    cronSecret: env.CRON_SECRET,
   }).listen(env.PORT, (error?: NodeJS.ErrnoException) => {
     // Express 5 llama a este callback también si no puede escuchar (p. ej. un puerto ocupado): sin tratarlo aquí,
     // el servidor diría que escucha y la base quedaría sin cerrar.
@@ -88,6 +96,10 @@ async function main() {
       );
       return closeAndExit(1);
     }
+    // Cierra votaciones vencidas, encola recordatorios y envía lo pendiente; tick nunca lanza.
+    const openDb = db!;
+    sweep = setInterval(() => void tick(openDb, push, new Date()), 60_000);
+    sweep.unref();
     console.log(`HueckoApp API escuchando en http://localhost:${env.PORT}/api`);
   });
 }

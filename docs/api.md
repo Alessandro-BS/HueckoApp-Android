@@ -482,6 +482,15 @@ Borra ese token si es de quien lo pide (la app lo envía con `encodeURIComponent
 
 ---
 
+## Internal
+
+Rutas para el despertador de GitHub Actions; no las usa la app. Solo existen si el servidor tiene `CRON_SECRET`; sin él responden `404`. No llevan token de usuario: se autentican con `Authorization: Bearer <CRON_SECRET>`.
+
+### `POST /internal/tick`
+Ejecuta un barrido, el mismo que el servidor hace cada minuto: cierra las votaciones de franjas y las exprés vencidas de todos los grupos, encola un `REMINDER` por miembro de cada plan `CONFIRMADO` que empieza en la próxima hora (menos a quien reportó `FALTA` o `IMPREVISTO`; una sola vez por plan y hora) y envía los avisos pendientes. `200 { "closed": 0, "reminders": 0, "sent": 0 }` (`closed`: votaciones cerradas; `reminders`: recordatorios nuevos; `sent`: avisos enviados) · `401 UNAUTHORIZED` «No autorizado.» si falta la cabecera o el secreto no coincide.
+
+---
+
 ## Administración
 
 Rutas para las cuentas con rol `ADMIN` (ver «Rol y estado de la cuenta»). Todas exigen token y rol: sin token (o con uno inválido) → `401 UNAUTHORIZED`; cuenta suspendida → `403 ACCOUNT_SUSPENDED`; si no es `ADMIN` → `403 NOT_ADMIN`. Reglas comunes:

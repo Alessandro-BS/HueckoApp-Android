@@ -381,7 +381,7 @@ describe('closeProposalIfDue y closeDueProposals', () => {
       }
       return original(sql, params);
     }) as Db['query']);
-    await expect(closeDueProposals(db, { all: true }, AFTER_DEADLINE)).resolves.toBeUndefined();
+    await expect(closeDueProposals(db, { all: true }, AFTER_DEADLINE)).resolves.toBe(1);
     spy.mockRestore();
     expect(await stored(p1)).toMatchObject({ state: 'PROPUESTO', auto_closed: false });
     expect(await stored(p2)).toMatchObject({ state: 'CONFIRMADO', chosen_window_id: windowOf(p2, 4).id, auto_closed: true });
