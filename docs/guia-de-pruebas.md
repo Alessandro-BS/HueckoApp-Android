@@ -199,6 +199,8 @@ Ojo: si un bloque ya se cruzaba con otro antes de esta versión, guardarlo da el
 | 5 | Cierra la app de Ana del todo, confirma el plan con `test@test.com` y toca el aviso | La app arranca y abre el **detalle del plan** | El destino se abre cuando la sesión y la navegación están listas |
 | 6 | Ana: apaga el interruptor y confirma otro plan | No llega ningún aviso | El celular se borra del servidor |
 
+> **Limitación conocida:** si cierras sesión **sin conexión**, la app no puede borrar el token y el servidor sigue asociándolo a esa cuenta: sus avisos seguirán llegando a ese celular hasta que alguien inicie sesión en él (el nuevo inicio de sesión reasigna el token).
+
 ---
 
 ## 🐞 Si algo falla

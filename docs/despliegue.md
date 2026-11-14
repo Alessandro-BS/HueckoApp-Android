@@ -52,7 +52,7 @@
 > ⏰ **Despertador (avisos push):** el servidor barre cada minuto (cierra votaciones vencidas, encola recordatorios y envía los avisos pendientes), pero el plan gratuito de Render lo duerme tras 15 min sin uso. El workflow [`despertador.yml`](../.github/workflows/despertador.yml) llama a `POST /api/internal/tick` cada ~10 min. En GitHub → *Settings → Secrets and variables → Actions*: secreto `CRON_SECRET` (el mismo valor que en Render) y variable `API_URL` (p. ej. `https://hueckoapp-api.onrender.com`, sin `/` final). Sin alguno de los dos, el workflow avisa y termina sin error.
 >
 > ⚠️ **Límites de GitHub Actions para este despertador:**
-> - Los workflows con `schedule` **solo corren desde la rama predeterminada (`main`)**: hasta que `despertador.yml` llegue a `main` no se ejecutará solo (sí con *Run workflow* si ya está en la rama elegida).
+> - Los workflows con `schedule` **solo corren desde la rama predeterminada (`main`)**: hasta que `despertador.yml` llegue a `main` no se ejecutará solo (el botón *Run workflow* tampoco aparece hasta que el archivo del workflow exista en `main`).
 > - GitHub **desactiva los workflows programados tras 60 días sin actividad** en el repositorio: si los avisos dejan de salir, entra a la pestaña *Actions* y vuelve a habilitarlo.
 > - El cron **no es exacto**: en horas de mucha carga una ejecución puede retrasarse varios minutos o saltarse, y por eso un recordatorio puede llegar con retraso. Si hace falta puntualidad, usa un servicio de cron externo que llame al mismo endpoint.
 >
