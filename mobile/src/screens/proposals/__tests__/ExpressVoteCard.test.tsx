@@ -51,7 +51,7 @@ it('«Cancelar» pide la misma confirmación que «Cancelar plan» y solo resuel
   expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: cancelar.');
 });
 
-it('«Reprogramar» pide una nueva fecha límite futura antes de enviar (G4)', async () => {
+it('reprogramar envía votingDeadline y windows (G4)', async () => {
   const onResolve = jest.fn().mockResolvedValue(undefined);
   await render(<ExpressVoteCard {...base} onResolve={onResolve} />);
   await fireEvent.press(screen.getByText('Reprogramar'));
@@ -63,14 +63,28 @@ it('«Reprogramar» pide una nueva fecha límite futura antes de enviar (G4)', a
     await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);
     await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, date);
   };
+  const add = async (day: string, start: string, end: string) => {
+    await fireEvent.press(screen.getByText(day));
+    await fireEvent.changeText(screen.getByLabelText('Hora de inicio (HH:mm)'), start);
+    await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), end);
+    await fireEvent.press(screen.getByText('Añadir franja'));
+  };
   await pick(new Date(2026, 8, 29, 9, 0));
   expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();
-  expect(screen.getByLabelText('Abrir nueva votación').props.accessibilityState.disabled).toBe(true);
 
-  await pick(new Date(2026, 9, 5, 20, 0));
-  await fireEvent.press(screen.getByText('Abrir nueva votación'));
+  await pick(new Date(2026, 8, 30, 20, 0));
+  await add('Vie', '18:00', '19:00');
+  await add('Sáb', '10:00', '11:00');
+  await fireEvent.press(screen.getByLabelText('Abrir nueva votación'));
   await waitFor(() =>
-    expect(onResolve).toHaveBeenCalledWith({ newState: 'PROPUESTO', votingDeadline: new Date(2026, 9, 5, 20, 0).toISOString() }),
+    expect(onResolve).toHaveBeenCalledWith({
+      newState: 'PROPUESTO',
+      votingDeadline: new Date(2026, 8, 30, 20, 0).toISOString(),
+      windows: [
+        { date: '2026-10-02', startTime: '18:00', endTime: '19:00' },
+        { date: '2026-10-03', startTime: '10:00', endTime: '11:00' },
+      ],
+    }),
   );
   expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: reprogramar.');
 });

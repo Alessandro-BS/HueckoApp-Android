@@ -14,7 +14,7 @@
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1195%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1296%20%E2%9C%94-2EA44F)
 
 [🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
 [🚀 Instalación](#-instalación-paso-a-paso) ·
@@ -42,11 +42,11 @@ flowchart LR
 
 | | Función | Detalle |
 |---|---|---|
-| 📅 | **Horario semanal** | Bloques escritos a mano (reloj nativo de Android) o leídos de una foto con IA |
+| 📅 | **Horario semanal** | Bloques recurrentes o **puntuales** (un día concreto, que cuenta solo en su fecha) escritos a mano (reloj nativo de Android) o leídos de una foto con IA |
 | 👥 | **Grupos** | Código de invitación y roles: dueño, miembro y miembro **imprescindible** |
-| 🔍 | **Huecos en común** | El servidor cruza las agendas de 08:00 a 20:00 y muestra el % del grupo libre |
-| 🗳️ | **Propuestas y votación** | Franjas, fecha límite, lugar con tu ubicación, un voto por persona |
-| ⚠️ | **Imprevistos** | Si alguien no puede ir, el responsable decide si el plan sigue o se reprograma |
+| 🔍 | **Huecos en común** | El servidor cruza las agendas de 08:00 a 20:00 de la semana que elijas (hora de Lima) y muestra el % del grupo libre |
+| 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, un voto por persona y **replantear** la propuesta en votación (franjas y plazo nuevos) |
+| ⚠️ | **Imprevistos** | Si alguien no puede ir, el responsable decide si el plan sigue o se reprograma con franjas nuevas y una fecha límite nueva |
 | 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
 | 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
 | 🛡️ | **Administración** | Estadísticas, gráficos, informes PDF/CSV, usuarios, grupos y registro de acciones |
@@ -309,14 +309,14 @@ La app tiene que saber dónde está el backend. Se configura en `EXPO_PUBLIC_API
 | 1️⃣ | 📝 **Entra** | Regístrate o inicia sesión. Al reabrir la app sigues dentro, incluso sin red |
 | 2️⃣ | 📅 **Carga tu horario** | **Horario → Añadir bloque** (las horas se eligen con el reloj de Android) o **Escanear → Cámara / Galería**: la IA lee la foto, tú revisas y tocas **Añadir a mi horario** |
 | 3️⃣ | 👥 **Arma el grupo** | **Grupos → Crear grupo** y comparte el código, o **Unirme** con un código |
-| 4️⃣ | 🔍 **Mira los huecos** | En el grupo, pestaña **Huecos**: las franjas en las que el grupo está libre |
-| 5️⃣ | ✨ **Propón un plan con IA** | **Planes → Crear propuesta → Describe tu plan**: escribe *«reunión de 2 horas el viernes en la tarde»* y toca **Rellenar con IA**. Revisa las franjas y crea la propuesta |
+| 4️⃣ | 🔍 **Mira los huecos** | En el grupo, pestaña **Huecos**: las franjas en las que el grupo está libre, por semana (elígela con el selector) |
+| 5️⃣ | ✨ **Propón un plan con IA** | **Planes → Crear propuesta → Describe tu plan**: escribe *«reunión de 2 horas el viernes en la tarde»* y toca **Rellenar con IA**. Cada franja queda con su fecha: revisa, cambia la semana, el día o las horas si hace falta, y crea la propuesta |
 | 6️⃣ | 📍 **Pon el lugar** | **Usar mi ubicación actual** o escríbelo a mano |
 | 7️⃣ | 🗳️ **Vota y confirma** | Cada uno toca **Votar**. En **Ver detalles**, **Resumir votación** pide a la IA un resumen y el responsable toca **Confirmar plan** |
-| 8️⃣ | ⚠️ **Resuelve imprevistos** | **Reportar imprevisto** en el plan. El dueño puede marcar a alguien **imprescindible** en **Miembros**: si esa persona falta, el plan se reprograma |
+| 8️⃣ | ⚠️ **Resuelve imprevistos** | **Reportar imprevisto** en el plan. El dueño puede marcar a alguien **imprescindible** en **Miembros**: si esa persona falta, el plan se reprograma: se eligen franjas nuevas con fecha (de 2 a 5) y un plazo nuevo |
 | 9️⃣ | 🏠 **Sigue todo en Inicio** | Próximo plan, grupos, votaciones abiertas y avisos de imprevistos |
 
-> 📆 **Las franjas son de una semana tipo.** «Vie 15:00–17:00» significa *el próximo viernes*: al confirmar, el plan se agenda en la próxima vez que ocurre esa franja. Confirma **antes** de que empiece para que sea esta semana.
+> 📆 **Las franjas tienen fecha.** Al proponer eliges la semana (esta o hasta 3 más), el día y las horas, así que cada franja es un día concreto. No se pueden elegir días pasados ni franjas que ya empezaron, y al confirmar el plan se agenda en la fecha de la franja ganadora. Un horario puntual cuenta solo en su fecha. Si la franja que quieres confirmar ya empezó, la app te ofrece **Replantear** la propuesta.
 
 ---
 
@@ -327,7 +327,7 @@ Google Gemini, llamado **solo desde el backend** ([`backend/src/ai/`](backend/sr
 | Función | Dónde en la app | Qué hace |
 |---|---|---|
 | 📷 **Escanear horario** | Horario → Escanear | Lee los bloques de una foto (las fotos grandes se reducen solas antes de subirse) |
-| ✨ **Borrador de plan** | Crear propuesta → Rellenar con IA | De una frase saca título, categoría, lugar, fecha límite y **hasta 3 franjas** recortadas a la duración y al momento pedidos |
+| ✨ **Borrador de plan** | Crear propuesta → Rellenar con IA | De una frase saca título, categoría, lugar, fecha límite y **de 2 a 5 franjas con fecha** (de la semana elegida) recortadas a la duración y al momento pedidos |
 | 💡 **Ideas de plan** | Planes → Ideas con IA | Hasta 3 ideas con lugar, franja y motivo, sin repetir planes recientes |
 | 📋 **Resumen de votación** | Ver detalles → Resumir votación | Quién votó, qué franja va ganando y una recomendación: confirmar, reprogramar o cancelar |
 
@@ -412,7 +412,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 | | Qué | Cómo |
 |---|---|---|
-| ✅ | **1195 tests** | 617 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 578 de la app (Jest + Testing Library) |
+| ✅ | **1296 tests** | 686 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 610 de la app (Jest + Testing Library) |
 | 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
 | 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
 | 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |
@@ -452,7 +452,7 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 | La IA dice «Modo demostración» | Falta `GEMINI_API_KEY` o no reiniciaste el backend | Pon la clave en `backend/.env` y reinicia |
 | «Demasiadas solicitudes» (`429`) | Límite de la IA: 20 llamadas cada 15 min por cuenta | Espera unos minutos |
 | «La base local … está abierta por otro proceso» | `seed` o `make-admin` con el servidor encendido | Detén el servidor primero |
-| El plan confirmado quedó para la semana siguiente | Se confirmó después de que empezara la franja | Confirma antes del inicio de la franja |
+| «Esa franja ya empezó» al confirmar | La franja elegida ya empezó (las franjas tienen fecha) | Toca **Replantear** en la propuesta y elige franjas nuevas, o confirma una franja que aún no empiece |
 
 ---
 

@@ -26,7 +26,7 @@ it('muestra la propuesta, sus franjas y los recuentos (UI spec §2.7, con tildes
   expect(screen.getByText('En votación')).toBeTruthy();
   expect(screen.getByText('Elige una franja horaria')).toBeTruthy();
   expect(screen.getByText('Selecciona la opción que más te convenga. Un voto por persona.')).toBeTruthy();
-  expect(screen.getByText('Mar · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.getByText('Mar 29 sep · 16:00 - 18:00')).toBeTruthy();
   expect(screen.getByText('1 voto')).toBeTruthy();
   expect(screen.getAllByText('0 votos')).toHaveLength(2);
   expect(screen.getByText('50% del grupo disponible')).toBeTruthy();
@@ -43,12 +43,12 @@ it('votar una franja usa PUT; tocar la mía retira el voto con DELETE (G1, B8)',
   mocked.removeVote.mockResolvedValue(makeProposal());
   await renderScreen();
 
-  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
   expect(mocked.voteWindow).toHaveBeenCalledWith('prop_2', 'w_22');
   expect(screen.getByLabelText('Tu voto')).toBeTruthy();
 
-  await fireEvent.press(screen.getByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(screen.getByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto se ha retirado.'));
   expect(mocked.removeVote).toHaveBeenCalledWith('prop_2');
   expect(screen.queryByLabelText('Tu voto')).toBeNull();
@@ -59,7 +59,7 @@ it('votación cerrada: aviso y sin votar ni agregar franjas (C1)', async () => {
   await renderScreen();
   expect(await screen.findByText('Cerró: Mar 29 sep, 09:00')).toBeTruthy();
   expect(screen.getByText('La votación está cerrada.')).toBeTruthy();
-  await fireEvent.press(screen.getByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(screen.getByText('Jue 1 oct · 10:00 - 12:00'));
   expect(mocked.voteWindow).not.toHaveBeenCalled();
   expect(screen.queryByText('Agregar franja horaria')).toBeNull();
 });
@@ -90,8 +90,8 @@ it('agregar franja: valida HH:mm y el orden (quirk 13) y la envía', async () =>
   await fireEvent(screen.getByLabelText('Hora de fin (HH:mm)'), 'submitEditing');
 
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Franja horaria agregada.'));
-  expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { dayOfWeek: 5, startTime: '18:00', endTime: '19:30' });
-  expect(screen.getByText('Vie · 18:00 - 19:30')).toBeTruthy();
+  expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { date: '2026-10-02', startTime: '18:00', endTime: '19:30' });
+  expect(screen.getByText('Vie 2 oct · 18:00 - 19:30')).toBeTruthy();
   expect(screen.queryByText('Selecciona el día y la franja horaria que propones.')).toBeNull();
 });
 
@@ -99,7 +99,64 @@ it('si votar falla, muestra el error sin avisar de éxito', async () => {
   mocked.getProposal.mockResolvedValue(makeProposal());
   mocked.voteWindow.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   expect(await screen.findByText('La votación ya cerró.')).toBeTruthy();
   expect(showToast).not.toHaveBeenCalled();
+});
+
+it('con 5 franjas ya no se ofrece agregar otra', async () => {
+  mocked.getProposal.mockResolvedValue(
+    makeProposal({ windows: [1, 2, 3, 4, 5].map((n) => makeWindow({ id: `w_${n}`, startTime: `0${n}:00`, endTime: `0${n}:30` })) }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Agregar franja horaria')).toBeNull();
+});
+
+const pickDeadline = async (date: Date) => {
+  await fireEvent.press(screen.getByLabelText('Nueva fecha límite de votación'));
+  await fireEvent(screen.getByTestId('datetimepicker-date'), 'valueChange', { nativeEvent: {} }, date);
+  await fireEvent(screen.getByTestId('datetimepicker-time'), 'valueChange', { nativeEvent: {} }, date);
+};
+const addNewWindow = async (day: string, start: string, end: string) => {
+  await fireEvent.press(screen.getByText(day));
+  await fireEvent.changeText(screen.getByLabelText('Hora de inicio (HH:mm)'), start);
+  await fireEvent.changeText(screen.getByLabelText('Hora de fin (HH:mm)'), end);
+  await fireEvent.press(screen.getByText('Añadir franja'));
+};
+
+it('quien gestiona ve «Replantear» en una propuesta en votación; llama a replanProposal', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ canManage: true }));
+  mocked.replanProposal.mockResolvedValue(
+    makeProposal({ windows: [makeWindow({ id: 'n1', date: '2026-10-02' }), makeWindow({ id: 'n2', date: '2026-10-03' })] }),
+  );
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Replantear'));
+  await pickDeadline(new Date(2026, 8, 30, 20, 0));
+  await addNewWindow('Vie', '18:00', '19:00');
+  await addNewWindow('Sáb', '10:00', '11:00');
+  await fireEvent.press(screen.getByLabelText('Replantear votación'));
+  await waitFor(() =>
+    expect(mocked.replanProposal).toHaveBeenCalledWith('prop_2', {
+      votingDeadline: new Date(2026, 8, 30, 20, 0).toISOString(),
+      windows: [
+        { date: '2026-10-02', startTime: '18:00', endTime: '19:00' },
+        { date: '2026-10-03', startTime: '10:00', endTime: '11:00' },
+      ],
+    }),
+  );
+  expect(showToast).toHaveBeenCalledWith('Propuesta replanteada: se borraron los votos.');
+  expect(screen.queryByText('Replantear propuesta')).toBeNull();
+});
+
+it('quien no gestiona no ve «Replantear», ni una propuesta que ya no está en votación', async () => {
+  mocked.getProposal.mockResolvedValue(makeProposal({ canManage: false }));
+  const first = await renderScreen();
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Replantear')).toBeNull();
+  first.unmount();
+  mocked.getProposal.mockResolvedValue(makeProposal({ state: 'CONFIRMADO', canManage: true }));
+  await renderScreen();
+  expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
+  expect(screen.queryByText('Replantear')).toBeNull();
 });

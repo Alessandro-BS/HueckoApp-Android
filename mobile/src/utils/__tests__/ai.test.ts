@@ -12,12 +12,12 @@ it('categorías y recomendaciones con tildes', () => {
   expect(RECOMMENDATION_BADGE.CANCELAR.text).toBe('Cancelar');
 });
 
-it('prefill desde un borrador: solo día y horas de la franja', () => {
+it('prefill desde un borrador: solo fecha y horas de la franja', () => {
   expect(prefillFromDraft(makeDraft())).toEqual({
     title: 'Estudiar para el parcial',
     placeName: 'Biblioteca central',
-    window: { dayOfWeek: 2, startTime: '08:00', endTime: '20:00' },
-    windows: [{ dayOfWeek: 2, startTime: '08:00', endTime: '20:00' }],
+    window: { date: '2026-11-17', startTime: '08:00', endTime: '20:00' },
+    windows: [{ date: '2026-11-17', startTime: '08:00', endTime: '20:00' }],
     votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
     category: 'ESTUDIO',
   });
@@ -25,11 +25,11 @@ it('prefill desde un borrador: solo día y horas de la franja', () => {
 });
 
 it('las franjas del formulario: todas las opciones del borrador, o solo `window` si no vienen', () => {
-  const viernes = (startTime: string, endTime: string) => ({ dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
+  const viernes = (startTime: string, endTime: string) => ({ date: '2026-11-20', dayOfWeek: 5, startTime, endTime, availabilityPercentage: 100, freeMembers: 3 });
   const draft = makeDraft({ window: viernes('15:00', '17:00'), windows: [viernes('15:00', '17:00'), viernes('09:00', '11:00')] });
   expect(prefillWindows(prefillFromDraft(draft))).toEqual([
-    { dayOfWeek: 5, startTime: '15:00', endTime: '17:00' },
-    { dayOfWeek: 5, startTime: '09:00', endTime: '11:00' },
+    { date: '2026-11-20', startTime: '15:00', endTime: '17:00' },
+    { date: '2026-11-20', startTime: '09:00', endTime: '11:00' },
   ]);
   expect(prefillWindows(prefillFromSuggestion(makeSuggestion()))).toEqual([prefillFromSuggestion(makeSuggestion()).window]);
   expect(prefillWindows(prefillFromSuggestion(makeSuggestion({ window: null })))).toEqual([]);

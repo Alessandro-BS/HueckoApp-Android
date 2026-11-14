@@ -59,6 +59,95 @@ describe('migrate', () => {
   });
 });
 
+describe('migración 7: fecha en las franjas', () => {
+  // Base con el esquema de la migración 6 y datos como los de producción: p1 confirmada (la franja w1 del jueves se
+  // eligió para el 19/11) y p2 creada el martes 10/11 a las 10:00 de Lima (15:00 UTC), con franjas de jueves y martes.
+  // p3 se creó el martes 10/11 a las 22:00 de Lima, que en UTC ya es miércoles: su martes sigue siendo el 10/11.
+  const setupV6 = async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 6));
+    await db.exec(`
+      INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x'), ('u2', 'Beto', 'beto@correo.com', 'x');
+      INSERT INTO groups (id, name, invite_code) VALUES ('g1', 'Grupo', 'ABCDEFGH');
+      INSERT INTO proposals (id, group_id, title, created_by, voting_deadline, state, chosen_window_id, scheduled_at, scheduled_date, created_at) VALUES
+        ('p1', 'g1', 'Confirmada', 'u1', '2026-11-11T20:00:00.000Z', 'CONFIRMADO', 'w1', '2026-11-19T16:00:00.000Z', '2026-11-19', '2026-11-10T15:00:00.000Z'),
+        ('p2', 'g1', 'En votación', 'u1', '2026-11-11T20:00:00.000Z', 'PROPUESTO', NULL, NULL, NULL, '2026-11-10T15:00:00.000Z'),
+        ('p3', 'g1', 'De noche', 'u1', '2026-11-11T20:00:00.000Z', 'PROPUESTO', NULL, NULL, NULL, '2026-11-11T03:00:00.000Z');
+      INSERT INTO proposal_windows (id, proposal_id, day_of_week, start_time, end_time, availability_percentage) VALUES
+        ('w1', 'p1', 4, '11:00', '13:00', 100),
+        ('w2', 'p1', 2, '16:00', '18:00', 50),
+        ('w3', 'p2', 4, '10:00', '12:00', 100),
+        ('w4', 'p2', 2, '16:00', '18:00', 100),
+        ('w5', 'p3', 2, '16:00', '18:00', 100);
+      INSERT INTO votes (proposal_id, user_id, window_id, created_at) VALUES
+        ('p1', 'u1', 'w1', '2026-11-10T16:00:00.000Z'),
+        ('p1', 'u2', 'w2', '2026-11-10T16:00:00.000Z'),
+        ('p2', 'u1', 'w4', '2026-11-10T16:00:00.000Z');
+    `);
+    return db;
+  };
+  const dateOf = async (db: Db, id: string) => (await db.one<{ date: string }>('SELECT date FROM proposal_windows WHERE id = $1', [id]))!.date;
+
+  it('migración 7: la franja elegida toma scheduled_date', async () => {
+    const db = await setupV6();
+    await migrate(db);
+    expect(await dateOf(db, 'w1')).toBe('2026-11-19');
+    expect(await versions(db)).toEqual(ALL_VERSIONS);
+  });
+
+  it('migración 7: las demás toman la próxima ocurrencia desde la creación en Lima', async () => {
+    const db = await setupV6();
+    await migrate(db);
+    expect(await dateOf(db, 'w3')).toBe('2026-11-12'); // jueves
+    expect(await dateOf(db, 'w4')).toBe('2026-11-10'); // martes: el mismo día de la creación
+    expect(await dateOf(db, 'w2')).toBe('2026-11-10'); // no elegida de una confirmada: también desde la creación
+    expect(await dateOf(db, 'w5')).toBe('2026-11-10'); // 22:00 de Lima del martes (miércoles en UTC)
+    // day_of_week no cambia y coincide con la fecha.
+    const rows = await db.many<{ id: string; day_of_week: number; dow: number }>(
+      'SELECT id, day_of_week, EXTRACT(ISODOW FROM date::date)::int AS dow FROM proposal_windows ORDER BY id',
+    );
+    for (const r of rows) expect(r.dow).toBe(r.day_of_week);
+    // La migración no cambia el estado ni la confirmación de ninguna propuesta.
+    expect(await db.many('SELECT id, state, chosen_window_id, scheduled_date FROM proposals ORDER BY id')).toEqual([
+      { id: 'p1', state: 'CONFIRMADO', chosen_window_id: 'w1', scheduled_date: '2026-11-19' },
+      { id: 'p2', state: 'PROPUESTO', chosen_window_id: null, scheduled_date: null },
+      { id: 'p3', state: 'PROPUESTO', chosen_window_id: null, scheduled_date: null },
+    ]);
+  });
+
+  it('migración 7: date es NOT NULL y el UNIQUE es por (proposal_id, date, start_time, end_time)', async () => {
+    const db = await setupV6();
+    await migrate(db);
+    const insert = (id: string, date: string | null, day: number, start = '16:00', end = '18:00') =>
+      db.query(
+        'INSERT INTO proposal_windows (id, proposal_id, date, day_of_week, start_time, end_time, availability_percentage) VALUES ($1, $2, $3, $4, $5, $6, 100)',
+        [id, 'p2', date, day, start, end],
+      );
+    await failsWith(insert('n1', null, 2), '23502');
+    await expect(insert('n2', '2026-11-10', 2)).rejects.toMatchObject({ code: '23505', constraint: 'proposal_windows_proposal_date_time_key' });
+    // El mismo día de la semana y la misma hora en otra fecha ya no choca (el UNIQUE viejo no queda).
+    await insert('n3', '2026-11-17', 2);
+    const uniques = await db.many<{ def: string }>(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'proposal_windows'::regclass AND contype = 'u' ORDER BY 1",
+    );
+    expect(uniques.map((u) => u.def)).toEqual(['UNIQUE (id, proposal_id)', 'UNIQUE (proposal_id, date, start_time, end_time)']);
+    const column = await db.one('SELECT data_type, collation_name FROM information_schema.columns WHERE table_name = $1 AND column_name = $2', ['proposal_windows', 'date']);
+    expect(column).toEqual({ data_type: 'text', collation_name: 'C' });
+  });
+
+  it('los votos sobreviven a la migración', async () => {
+    const db = await setupV6();
+    await migrate(db);
+    expect(await db.many('SELECT proposal_id, user_id, window_id FROM votes ORDER BY proposal_id, user_id')).toEqual([
+      { proposal_id: 'p1', user_id: 'u1', window_id: 'w1' },
+      { proposal_id: 'p1', user_id: 'u2', window_id: 'w2' },
+      { proposal_id: 'p2', user_id: 'u1', window_id: 'w4' },
+    ]);
+    // La clave foránea de los votos sigue activa.
+    await failsWith(db.query("INSERT INTO votes (proposal_id, user_id, window_id) VALUES ('p2', 'u2', 'w1')"), '23503');
+  });
+});
+
 describe('esquema: proximidad', () => {
   it('proximity_requests tiene índices por (status, created_at) y por (status, matched_at)', async () => {
     const db = await openTestDatabase();
@@ -142,9 +231,9 @@ describe('esquema: propuestas', () => {
       INSERT INTO proposals (id, group_id, title, created_by, voting_deadline, created_at) VALUES
         ('p1', 'g1', 'Plan', 'u1', '2026-10-03T20:00:00.000Z', '2026-09-29T10:00:00.000Z'),
         ('p2', 'g1', 'Otro', 'u1', '2026-10-03T20:00:00.000Z', '2026-09-29T10:00:00.000Z');
-      INSERT INTO proposal_windows (id, proposal_id, day_of_week, start_time, end_time, availability_percentage) VALUES
-        ('w1', 'p1', 2, '16:00', '18:00', 100),
-        ('w2', 'p2', 4, '10:00', '12:00', 100);
+      INSERT INTO proposal_windows (id, proposal_id, date, day_of_week, start_time, end_time, availability_percentage) VALUES
+        ('w1', 'p1', '2026-09-29', 2, '16:00', '18:00', 100),
+        ('w2', 'p2', '2026-10-01', 4, '10:00', '12:00', 100);
     `);
     return db;
   };
@@ -160,15 +249,15 @@ describe('esquema: propuestas', () => {
 
   it('rechaza franjas repetidas, al revés o con día inválido', async () => {
     const db = await setup();
-    const insert = (id: string, day: number, start: string, end: string) =>
+    const insert = (id: string, date: string, day: number, start: string, end: string) =>
       db.query(
-        'INSERT INTO proposal_windows (id, proposal_id, day_of_week, start_time, end_time, availability_percentage) VALUES ($1, $2, $3, $4, $5, $6)',
-        [id, 'p1', day, start, end, 100],
+        'INSERT INTO proposal_windows (id, proposal_id, date, day_of_week, start_time, end_time, availability_percentage) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [id, 'p1', date, day, start, end, 100],
       );
-    await failsWith(insert('w3', 2, '16:00', '18:00'), '23505');
-    await failsWith(insert('w4', 2, '18:00', '16:00'), '23514');
-    await failsWith(insert('w5', 8, '10:00', '11:00'), '23514');
-    await insert('w6', 3, '10:00', '11:00');
+    await failsWith(insert('w3', '2026-09-29', 2, '16:00', '18:00'), '23505');
+    await failsWith(insert('w4', '2026-09-29', 2, '18:00', '16:00'), '23514');
+    await failsWith(insert('w5', '2026-09-29', 8, '10:00', '11:00'), '23514');
+    await insert('w6', '2026-09-30', 3, '10:00', '11:00');
   });
 
   it('una tardanza exige minutos y el resto no los lleva', async () => {

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { summaryData } from '../src/ai/voting-summary';
 import type { Db } from '../src/db/db';
-import { bearer, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, setupSeedGroup, voteFor, windowOf } from './helpers';
+import { bearer, createProposal, DEADLINE, joinGroup, makeTestApp, NOW, registerUser, setupSeedGroup, voteFor, win, windowOf } from './helpers';
 
 let app: Express;
 let db: Db;
@@ -31,10 +31,7 @@ const votesInDb = async (proposalId: string) => (await db.one<{ n: number }>('SE
 async function votedPlan() {
   const p = await createProposal(app, yo.token, group.id, {
     votingDeadline: DEADLINE,
-    windows: [
-      { dayOfWeek: 2, startTime: '16:00', endTime: '18:00' },
-      { dayOfWeek: 4, startTime: '10:00', endTime: '12:00' },
-    ],
+    windows: [win(2, '16:00', '18:00'), win(4, '10:00', '12:00')],
   });
   await voteFor(app, p.id, windowOf(p, 2).id, yo.token);
   await voteFor(app, p.id, windowOf(p, 4).id, ana.token);
@@ -71,7 +68,7 @@ describe('votos de quien sale del grupo (D5)', () => {
   });
 
   it('si solo votó alguien que se fue, confirmar sin franja → 409 NO_VOTES', async () => {
-    const p = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }] });
+    const p = await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [win(2, '16:00', '18:00'), win(4, '16:00', '18:00')] });
     await voteFor(app, p.id, windowOf(p, 2).id, carlos.token);
     await leave(carlos.token);
     const res = await request(app).post(`/api/proposals/${p.id}/confirm`).set(bearer(yo.token)).send({});

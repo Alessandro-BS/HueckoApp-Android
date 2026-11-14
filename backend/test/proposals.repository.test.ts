@@ -1,0 +1,95 @@
+import { describe, expect, it } from 'vitest';
+
+import { groupsRepository } from '../src/groups/groups.repository';
+import { type NewWindow, proposalsRepository } from '../src/proposals/proposals.repository';
+import { usersRepository } from '../src/users/users.repository';
+import { DEADLINE, makeTestDb, NOW, recordQueries } from './helpers';
+
+const createdAt = NOW.toISOString();
+const win = (date: string, startTime: string, endTime: string, availabilityPercentage = 100): NewWindow => ({
+  date, startTime, endTime, availabilityPercentage,
+});
+
+// Ana (dueña) y Beto en un grupo, y un repositorio para crear propuestas directamente.
+const setup = async () => {
+  const db = await makeTestDb();
+  const users = usersRepository(db);
+  const ana = await users.create({ name: 'Ana', email: 'ana@correo.com', passwordHash: 'x', createdAt });
+  const beto = await users.create({ name: 'Beto', email: 'beto@correo.com', passwordHash: 'x', createdAt });
+  const groups = groupsRepository(db);
+  const group = await groups.create(ana.id, { name: 'Grupo', description: '', availabilityThreshold: 80, createdAt });
+  await groups.addMember(group.id, beto.id);
+  const repo = proposalsRepository(db);
+  const create = (windows: NewWindow[]) =>
+    repo.create({ groupId: group.id, createdBy: ana.id, title: 'Plan', location: null, votingDeadline: DEADLINE, windows, createdAt });
+  return { db, repo, create, ana, beto };
+};
+
+describe('proposalsRepository: franjas con fecha', () => {
+  it('insert guarda day_of_week derivado de date', async () => {
+    const { db, repo, create, ana } = await setup();
+    const id = await create([win('2026-10-01', '10:00', '12:00'), win('2026-10-04', '16:00', '18:00')]);
+    expect(await db.many('SELECT date, day_of_week FROM proposal_windows ORDER BY date')).toEqual([
+      { date: '2026-10-01', day_of_week: 4 },
+      { date: '2026-10-04', day_of_week: 7 },
+    ]);
+    await repo.addWindow(id, win('2026-10-05', '09:00', '10:00'));
+    const windows = (await repo.findById(id, ana.id))!.windows;
+    expect(windows.map((w) => [w.date, w.dayOfWeek])).toEqual([
+      ['2026-10-01', 4],
+      ['2026-10-04', 7],
+      ['2026-10-05', 1],
+    ]);
+  });
+
+  it('findById ordena por fecha y hora', async () => {
+    const { repo, create, ana } = await setup();
+    // Por día de la semana, el martes 6/10 iría antes que el miércoles 30/9: se ordena por fecha.
+    const id = await create([
+      win('2026-10-06', '10:00', '12:00'),
+      win('2026-09-30', '16:00', '18:00'),
+      win('2026-10-01', '08:00', '09:00'),
+      win('2026-09-30', '09:00', '11:00'),
+    ]);
+    const windows = (await repo.findById(id, ana.id))!.windows;
+    expect(windows.map((w) => `${w.date} ${w.startTime}`)).toEqual(['2026-09-30 09:00', '2026-09-30 16:00', '2026-10-01 08:00', '2026-10-06 10:00']);
+  });
+
+  it('replaceWindows borra votos y franjas viejas y limpia la confirmación', async () => {
+    const { db, repo, create, ana, beto } = await setup();
+    const id = await create([win('2026-09-30', '16:00', '18:00'), win('2026-10-01', '10:00', '12:00')]);
+    const [first, second] = (await repo.findById(id, ana.id))!.windows;
+    await repo.vote(id, ana.id, first.id, createdAt);
+    await repo.vote(id, beto.id, second.id, createdAt);
+    await repo.confirm(id, first.id, '2026-09-30T21:00:00.000Z', '2026-09-30');
+
+    const deadline = '2026-10-07T01:00:00.000Z';
+    const calls = recordQueries(db);
+    await repo.replaceWindows(id, [win('2026-10-08', '18:00', '20:00', 50), win('2026-10-07', '10:00', '12:00', 100)], deadline);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.some((c) => !c.inTransaction)).toBe(false);
+
+    const after = (await repo.findById(id, ana.id))!;
+    expect(after.windows.map((w) => [w.date, w.dayOfWeek, w.startTime, w.endTime, w.availabilityPercentage, w.voteCount])).toEqual([
+      ['2026-10-07', 3, '10:00', '12:00', 100, 0],
+      ['2026-10-08', 4, '18:00', '20:00', 50, 0],
+    ]);
+    expect(after.windows.some((w) => w.id === first.id || w.id === second.id)).toBe(false);
+    expect(after).toMatchObject({ chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: deadline, myVoteWindowId: null });
+    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [id])).toEqual({ n: 0 });
+  });
+
+  it('replaceWindows es todo o nada: si una franja nueva falla, quedan las viejas con sus votos', async () => {
+    const { repo, create, ana } = await setup();
+    const id = await create([win('2026-09-30', '16:00', '18:00'), win('2026-10-01', '10:00', '12:00')]);
+    const before = (await repo.findById(id, ana.id))!;
+    await repo.vote(id, ana.id, before.windows[0].id, createdAt);
+    // Dos franjas iguales chocan con el UNIQUE.
+    await expect(repo.replaceWindows(id, [win('2026-10-07', '10:00', '12:00'), win('2026-10-07', '10:00', '12:00')], DEADLINE)).rejects.toMatchObject({
+      code: '23505',
+    });
+    const after = (await repo.findById(id, ana.id))!;
+    expect(after.windows.map((w) => w.id)).toEqual(before.windows.map((w) => w.id));
+    expect(after.myVoteWindowId).toBe(before.windows[0].id);
+  });
+});

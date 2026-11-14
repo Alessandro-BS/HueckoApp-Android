@@ -2,12 +2,12 @@ import type { ResolveIncidencesInput } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppDialog, DateTimeField, ErrorBanner } from '../../components';
+import { ErrorBanner } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import { colors, radius, typography } from '../../theme';
-import { today } from '../../utils/clock';
 import { showToast } from '../../utils/toast';
 import { confirmCancelPlan } from './confirmCancelPlan';
+import { ReplanSheet } from './ReplanSheet';
 
 type Choice = { state: 'PROPUESTO' | 'CANCELADO' | 'CONFIRMADO'; label: string };
 const REPROGRAM: Choice = { state: 'PROPUESTO', label: 'Reprogramar' };
@@ -23,49 +23,8 @@ type Props = {
   onResolved?: () => void;
 };
 
-function ReprogramDialog({ loading, error, onConfirm, onDismiss }: {
-  loading: boolean;
-  error: string | null;
-  onConfirm: (deadline: Date) => void;
-  onDismiss: () => void;
-}) {
-  const [now] = useState(today);
-  const [deadline, setDeadline] = useState<Date | null>(null);
-  const future = deadline !== null && deadline.getTime() > now.getTime();
-  return (
-    <AppDialog
-      title="Reprogramar plan"
-      confirmLabel="Abrir nueva votación"
-      onConfirm={() => {
-        if (deadline && future) onConfirm(deadline);
-      }}
-      onDismiss={onDismiss}
-      confirmDisabled={!future}
-      loading={loading}
-    >
-      <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-        Se borrarán los votos y el grupo volverá a votar las franjas hasta la nueva fecha límite.
-      </Text>
-      <View style={{ height: 16 }} />
-      <DateTimeField
-        label="Nueva fecha límite de votación"
-        value={deadline}
-        onChange={setDeadline}
-        minimumDate={now}
-        placeholder="Elige fecha y hora"
-        error={deadline && !future ? 'La fecha límite debe ser futura' : undefined}
-      />
-      {error ? (
-        <View style={{ marginTop: 12 }}>
-          <ErrorBanner message={error} />
-        </View>
-      ) : null}
-    </AppDialog>
-  );
-}
-
 // G5: «Votación exprés» si el plan se re-coordina (falta un imprescindible); «Aviso de imprevisto» si sigue confirmado
-// con incidencias abiertas. Solo quien gestiona el plan decide (B20, canManage); reprogramar pide un plazo nuevo (G4).
+// con incidencias abiertas. Solo quien gestiona el plan decide (B20, canManage); reprogramar pide plazo y franjas nuevas (G4).
 export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onResolve, onResolved }: Props) {
   const [pending, setPending] = useState<Choice['state'] | null>(null);
   const [reprogramming, setReprogramming] = useState(false);
@@ -76,7 +35,6 @@ export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onRe
     const result = await action.run(input);
     setPending(null);
     if (!result.ok) return;
-    setReprogramming(false);
     showToast(`Votación exprés registrada: ${choice.label.toLowerCase()}.`);
     onResolved?.();
   };
@@ -118,16 +76,22 @@ export function ExpressVoteCard({ kind, who, reason, planTitle, canResolve, onRe
       ) : (
         <Text style={[typography.bodySmall, styles.warning, styles.onlyManager]}>{'Solo quien organiza el plan puede decidir qué hacer con él.'}</Text>
       )}
-      {action.error && !reprogramming ? (
+      {action.error ? (
         <View style={styles.error}>
           <ErrorBanner message={action.error} />
         </View>
       ) : null}
       {reprogramming ? (
-        <ReprogramDialog
-          loading={action.loading}
-          error={action.error}
-          onConfirm={(deadline) => void run(REPROGRAM, { newState: 'PROPUESTO', votingDeadline: deadline.toISOString() })}
+        <ReplanSheet
+          title="Reprogramar plan"
+          submitLabel="Abrir nueva votación"
+          // Lanza si el servidor rechaza: la hoja muestra el error y se queda abierta.
+          onSubmit={async (input) => {
+            await onResolve({ newState: 'PROPUESTO', ...input });
+            setReprogramming(false);
+            showToast(`Votación exprés registrada: ${REPROGRAM.label.toLowerCase()}.`);
+            onResolved?.();
+          }}
           onDismiss={() => setReprogramming(false)}
         />
       ) : null}

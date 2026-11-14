@@ -3,7 +3,7 @@ import { Router } from 'express';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
-import { groupWindows } from '../availability/group-availability';
+import { groupWeekWindows, parseWeek } from '../availability/group-availability';
 import { isForeignKeyViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
@@ -84,7 +84,7 @@ export function groupsRouter({ db, now }: ResolvedDeps) {
 
   router.get('/:id/availability', async (req, res) => {
     const { group } = await loadForMember(req.params.id, getUserId(res));
-    const windows: MatchWindow[] = await groupWindows(group, blocks);
+    const windows: MatchWindow[] = await groupWeekWindows(group, blocks, parseWeek(req.query.week, now()), now());
     res.json(windows);
   });
 

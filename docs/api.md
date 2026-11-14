@@ -34,7 +34,7 @@ Todos los errores tienen la misma forma:
 | 401 | Falta el token, expiró o la cuenta ya no existe → la app vuelve al login |
 | 403 | Autenticado pero sin permiso (p. ej. no es miembro del grupo). `ACCOUNT_SUSPENDED`: la cuenta está suspendida (en el login y con cualquier token) → la app cierra sesión y muestra el mensaje. `NOT_ADMIN`: ruta de administración y la cuenta no es `ADMIN` |
 | 404 | No existe, o no es visible para este usuario |
-| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y sin huecos en común en el grupo (`NO_COMMON_WINDOWS`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
+| 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
 | 500 | Error inesperado del servidor |
@@ -65,7 +65,7 @@ Resumen de las entidades:
 | `GroupMember` | Usuario + `role` (`OWNER`/`MEMBER`) + `isEssential` |
 | `MatchWindow` | Franja libre en común con su % de coincidencia |
 | `Proposal` | Propuesta de plan con ventanas, votos, ubicación e incidencias |
-| `TimeWindow` | Ventana horaria votable dentro de una propuesta |
+| `TimeWindow` | Ventana horaria votable dentro de una propuesta: fecha concreta (`date` `YYYY-MM-DD` en `America/Lima`) y su `dayOfWeek` |
 | `Incidence` | Imprevisto reportado sobre un plan confirmado |
 | `Location` | Lugar con nombre y coordenadas opcionales |
 | `ProposalWithGroup` | `Proposal` + `groupName` |
@@ -154,7 +154,7 @@ Todo lo que necesita «Inicio» en una sola llamada: `200 Dashboard`.
 - `metrics.matchingHours`: suma, sobre las franjas de las propuestas de mis grupos **que no están `CANCELADO`** (cualquier otro estado cuenta, también `EN_RECOORDINACION`) con `availabilityPercentage ≥ 80` (fijo, no el umbral del grupo), de `hora(endTime) − hora(startTime)` en horas enteras (se truncan los minutos), sin deduplicar solapes. Es la fórmula de la app Kotlin salvo que aquí las canceladas no cuentan.
 - `metrics.totalBlocks`: mis bloques de horario (recurrentes y puntuales).
 - `nextPlan`: el primero de `/me/upcoming-plans` con `attendees`, uno por miembro del grupo; su estado sale de su primera incidencia sin resolver: `TARDANZA` → `RETRASADO`, `FALTA`/`IMPREVISTO` → `NO_ASISTE`, ninguna → `PUNTUAL`. `null` si no hay.
-- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` = la franja elegida (o, si no hay, la primera) de su propuesta **más reciente** que no esté `CANCELADO` y tenga franjas. «Más reciente» = mayor `createdAt`; a igual `createdAt`, la creada después (el orden de `GET /groups/:id/proposals`). `null` si no hay ninguna.
+- `groups`: uno por grupo (en el orden de `GET /groups`), con `nextWindow` (`date`, `dayOfWeek`, `startTime`, `endTime`, `availabilityPercentage`) = la franja elegida (o, si no hay, la primera) de su propuesta **más reciente** que no esté `CANCELADO` y tenga franjas. «Más reciente» = mayor `createdAt`; a igual `createdAt`, la creada después (el orden de `GET /groups/:id/proposals`). `null` si no hay ninguna.
 - `pendingVotes`: propuestas `PROPUESTO` de mis grupos con `groupName`, las que cierran antes primero.
 - `expressAlert`: de los planes que aún no ocurrieron, el primero `EN_RECOORDINACION` (`kind: "RECOORDINACION"`) o, si no hay, el primero `CONFIRMADO` con incidencias sin resolver (`kind: "AVISO"`). `who` y `reason` salen de su incidencia sin resolver más crítica (`ALTA` primero; si no, la más antigua). `canResolve` es el `canManage` del plan para mí. `null` si no hay.
 
@@ -190,15 +190,17 @@ Solo el `OWNER`. `{ "isEssential": true }` → `200 GroupMember` · `404 MEMBER_
 Salir del grupo. `204`. Si sale el último `OWNER` y quedan miembros, pasa a `OWNER` quien lleva más tiempo en el grupo. Si no queda nadie, el grupo se borra. Sus votos se conservan, pero no cuentan mientras no vuelva (ver `GET /proposals/:id`). Sus propuestas siguen en el grupo y pasa a gestionarlas el `OWNER` (ver «Quién gestiona un plan»).
 
 ### `GET /groups/:id/availability`
-Cruce de horarios de todos los miembros, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`).
-`200 MatchWindow[]`, ordenadas por día (lunes a domingo) y hora · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
+Cruce de horarios de todos los miembros **en una semana concreta**, calculado en el servidor con el umbral del grupo (mismo algoritmo que `AvailabilityMatcher.kt`, aplicado día a día).
+Query `?week=YYYY-MM-DD` (opcional): cualquier día se normaliza a su lunes; por defecto, la semana actual (zona America/Lima). Solo valen esta semana y las 3 siguientes: otra → `400 VALIDATION_ERROR` («Elige una semana entre esta y las próximas 3»).
+`200 MatchWindow[]`, cada una con su `date` (`YYYY-MM-DD`), ordenadas por fecha y hora · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`.
 
 Reglas:
 - La agenda va de **08:00 a 20:00** en horas enteras; cada hora `h` es la franja `[h:00, h+1:00)`.
 - Un bloque ocupa **entera** cualquier hora que toque: el inicio trunca minutos (`10:30` → 10) y el fin redondea hacia arriba (`10:30` → 11).
 - Por hora: `libres = miembros − personas ocupadas` (una persona cuenta una vez aunque tenga bloques solapados); `% = round(libres × 100 / miembros)`.
 - Una hora vale si `% ≥ availabilityThreshold` (inclusivo). Las horas válidas seguidas se fusionan en una franja, que muestra el **peor** `%` y el **menor** `freeMembers` de sus horas.
-- Solo cuentan los bloques **recurrentes**; los puntuales no entran en esta vista semanal (un filtro `?weekOf=YYYY-MM-DD` queda pendiente).
+- Cada día cuenta los bloques **recurrentes** de ese día de la semana y los **puntuales** de esa fecha.
+- No se ofrecen franjas que ya empezaron (en la semana actual); se descartan enteras, sin recortarlas.
 - Los bloques de tipo **`LIBRE` no ocupan**.
 - Grupo sin miembros → `[]`.
 
@@ -213,21 +215,28 @@ Reglas:
   "title": "Estudiar para el parcial",
   "location": { "name": "Biblioteca", "latitude": -12.07, "longitude": -77.08 },
   "votingDeadline": "2026-10-03T23:59:00.000Z",
-  "windows": [ { "dayOfWeek": 5, "startTime": "16:00", "endTime": "18:00" } ]
+  "windows": [ { "date": "2026-10-09", "startTime": "16:00", "endTime": "18:00" },
+               { "date": "2026-10-10", "startTime": "10:00", "endTime": "12:00" } ]
 }
 ```
 Cuerpo = `ProposalInput` de `shared`. Reglas:
 - `title` obligatorio, 1–80 caracteres tras `trim` («El título no puede estar vacío.»).
 - `location` opcional (`null` u omitido = sin lugar). `name` 1–100 tras `trim`; `latitude` (−90…90) y `longitude` (−180…180) van **juntas** o ambas `null`/omitidas.
-- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura»). Se guarda y se devuelve en UTC.
-- `windows` opcional, hasta 10 y sin repetir; cada una `{ dayOfWeek 1–7, startTime, endTime }` en `HH:mm` con `startTime < endTime` (`TimeWindowInput`). El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`).
-- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability`: mayor `availabilityPercentage`, luego mayor duración, luego día y hora más tempranos. Si el grupo no tiene ningún hueco en común, **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
+- `votingDeadline` ISO 8601 (con `Z` u offset) **posterior al momento de crear** («La fecha límite debe ser futura») y **anterior al inicio de la primera franja** («La votación debe cerrar antes de la primera franja»). Sin `windows`, el servidor solo elige franjas que empiezan después de este plazo. Se guarda y se devuelve en UTC.
+- `windows` opcional: **de 2 a 5** («Elige entre 2 y 5 franjas»); cada una `{ date, startTime, endTime }` (`TimeWindowInput`) con estas reglas, todas `400 VALIDATION_ERROR`:
+  - `date` `YYYY-MM-DD` real (en `America/Lima`) de esta semana o las 3 siguientes («Elige una fecha entre esta semana y las próximas 3»);
+  - `startTime`/`endTime` en `HH:mm` con `startTime < endTime` («La hora de fin debe ser posterior a la de inicio»);
+  - su inicio (`date` + `startTime` en Lima) posterior a ahora («La franja ya empezó»): p. ej. el lunes de esta semana estando a jueves se rechaza;
+  - sin repetidas («Hay franjas repetidas») ni solapadas el mismo día («Hay franjas que se solapan el mismo día»; una que acaba justo cuando empieza otra no se solapa).
+  El `availabilityPercentage` lo calcula el servidor (ver `POST /proposals/:id/windows`), con los bloques recurrentes de ese día de la semana y los puntuales de esa fecha.
+- `week` opcional (`YYYY-MM-DD`; cualquier día se normaliza a su lunes; por defecto, la semana actual): **solo se usa si `windows` viene vacío u omitido**, y entonces solo valen esta semana y las 3 siguientes (`400` «Elige una semana entre esta y las próximas 3»). Con `windows` se ignora.
+- Si `windows` viene vacío u omitido, el servidor propone **las 3 mejores franjas** de `/availability?week=` que empiezan después del `votingDeadline` (así tampoco entran las que ya empezaron): mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas. Si salen menos de 2 (también porque el plazo deja fuera las demás), **no se crea** y responde `409 NO_COMMON_WINDOWS` («El grupo no tiene huecos en común esta semana: elige las franjas a mano.»).
 - Nace `PROPUESTO`, con `createdAt` = ahora, sin votos ni incidencias.
 
 `201 Proposal` · `400 VALIDATION_ERROR` · `403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND` · `409 NO_COMMON_WINDOWS`
 
 ### `GET /proposals/:id`
-`200 Proposal`. `windows` van por día y hora; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»).
+`200 Proposal`. `windows` van por fecha y hora; cada una lleva su `date` (`YYYY-MM-DD`, en `America/Lima`) y el `dayOfWeek` de esa fecha; `myVoteWindowId` es la franja que votó quien pregunta y `canManage` dice si quien pregunta puede gestionarla (ver «Quién gestiona un plan»).
 `404 PROPOSAL_NOT_FOUND` · `403 NOT_A_MEMBER` si no soy miembro de su grupo. (Igual en todas las rutas `/proposals/:id/...`.)
 
 **Votos de quien ya no está:** `voteCount` solo cuenta los votos de quienes **siguen** en el grupo. Si alguien sale, su voto no se borra, pero deja de contar en `voteCount`, en «la más votada» al confirmar, en `GET /me/dashboard` y en el resumen con IA; si vuelve a unirse, cuenta otra vez.
@@ -242,22 +251,27 @@ Cada `Proposal` trae `canManage` calculado para quien pregunta: la app muestra l
 
 ### `PUT /proposals/:id/vote`
 `{ "windowId": "..." }`. Un voto por persona y propuesta: votar otra franja **mueve** el voto; votar la misma otra vez **no cambia nada** (idempotente). El «tocar otra vez retira el voto» de la app Kotlin se hace desde la app con `DELETE`.
-`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta.
+`200 Proposal` · `409 VOTING_CLOSED` «La votación ya cerró.» si el estado no es `PROPUESTO` o ya llegó el `votingDeadline` · `404 WINDOW_NOT_FOUND` si la franja no es de esta propuesta (también si un replanteo la borró justo antes de guardar el voto).
 
 ### `DELETE /proposals/:id/vote`
 Retira mi voto (si no había, no pasa nada). `200 Proposal` · `409 VOTING_CLOSED` con las mismas reglas que votar.
 
 ### `POST /proposals/:id/windows`
-Añadir una franja a una propuesta en votación. Cualquier miembro. `{ "dayOfWeek": 5, "startTime": "18:00", "endTime": "19:30" }` (`TimeWindowInput`, mismas reglas de formato y orden).
+Añadir una franja a una propuesta en votación. Cualquier miembro. `{ "date": "2026-10-09", "startTime": "18:00", "endTime": "19:30" }` (`TimeWindowInput`, con las mismas reglas de una franja al crear: fecha de las 4 semanas válidas, horas, que no haya empezado). Además, todas `400 VALIDATION_ERROR`:
+- no puede solaparse con una franja que ya tiene la propuesta («Hay franjas que se solapan el mismo día»);
+- la propuesta no puede pasar de 5 franjas («Máximo 5 franjas»);
+- tiene que empezar después del `votingDeadline` vigente («La franja debe empezar después del cierre de la votación»).
 El servidor calcula su `availabilityPercentage` con los horarios **actuales** del grupo: para cada hora que toca la franja (mismo redondeo que `/availability`: inicio truncado, fin hacia arriba) calcula el % de miembros libres y se queda con el **peor**. No se aplica el umbral del grupo ni el rango 08–20. Los porcentajes no se recalculan después.
-`201 Proposal` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» · `409 VOTING_CLOSED`
+`201 Proposal` · `400 VALIDATION_ERROR` · `409 WINDOW_EXISTS` «Esa franja ya está propuesta.» (misma `date`, `startTime` y `endTime`) · `409 VOTING_CLOSED`
 
 ### `POST /proposals/:id/confirm`
 Solo quien gestiona el plan (`403 NOT_MANAGER`, ver «Quién gestiona un plan») y solo si está `PROPUESTO` (`409 INVALID_STATE`); se puede confirmar antes o después del plazo. `{ "windowId": "..." }` es opcional:
 - con `windowId`: se confirma esa franja, tenga votos o no (`404 WINDOW_NOT_FOUND` si no es de la propuesta);
-- sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de día y hora más tempranos. Si nadie votó → `409 NO_VOTES`.
+- sin `windowId`: gana la más votada; si empatan, la de mayor `availabilityPercentage`; si siguen empatadas, la de fecha y hora más tempranas. Si nadie votó → `409 NO_VOTES`.
+- si la franja elegida (con o sin `windowId`) ya empezó → `409 WINDOW_STARTED` «Esa franja ya empezó: replantea la propuesta.»
+- el estado y la franja se vuelven a comprobar al guardar, con el plan bloqueado: si otra petición lo canceló o lo **replanteó** justo antes (la franja elegida ya no existe), `409 INVALID_STATE` y no se toca nada; un replanteo que llega justo después espera y lo ve ya `CONFIRMADO`.
 
-Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = **la próxima vez que ocurre esa franja** (su día de la semana y hora de inicio) desde el momento de confirmar, y `scheduledDate` (`"YYYY-MM-DD"`) = esa misma fecha en la zona horaria del servidor, para que la app la muestre sin depender de la del teléfono. Si hoy es ese día y la hora aún no llegó, es hoy; si ya pasó, la semana siguiente. Se calcula en la zona horaria del servidor: la variable `TZ` del backend (`America/Lima` en `backend/.env.example`; si falta, la del PC). En producción `TZ` debe fijarse siempre. Desde ese momento no se puede votar. `200 Proposal`
+Pasa a `CONFIRMADO` con `chosenWindowId`, `scheduledAt` = el instante de inicio de esa franja (su `date` y `startTime` en `America/Lima`, en UTC) y `scheduledDate` (`"YYYY-MM-DD"`) = su `date`, para que la app la muestre sin depender de la zona del teléfono. No depende de la variable `TZ` del servidor. Desde ese momento no se puede votar. `200 Proposal` · `409 WINDOW_STARTED`
 
 ### `POST /proposals/:id/cancel`
 Solo quien gestiona el plan (`403 NOT_MANAGER`). Desde cualquier estado salvo `CANCELADO` (`409 INVALID_STATE`). Pasa a `CANCELADO`. `200 Proposal`
@@ -279,11 +293,20 @@ Cuerpo = `IncidenceInput`. Reglas:
 La «votación exprés». Solo quien gestiona el plan (`403 NOT_MANAGER`), y solo con el plan `CONFIRMADO` o `EN_RECOORDINACION` (`409 INVALID_STATE`). Cuerpo = `ResolveIncidencesInput`:
 - `{ "newState": "CONFIRMADO" }` — mantener el plan;
 - `{ "newState": "CANCELADO" }` — cancelarlo;
-- `{ "newState": "PROPUESTO", "votingDeadline": "2026-10-10T20:00:00.000Z" }` — reprogramar: `votingDeadline` obligatorio y futuro.
+- `{ "newState": "PROPUESTO", "votingDeadline": "2026-10-04T20:00:00.000Z", "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" }, ... ] }` — reprogramar: `votingDeadline` obligatorio, futuro y **anterior al inicio de la primera franja**; `windows` obligatorio (2 a 5, mismas reglas que al crear la propuesta).
 
-`votingDeadline` **solo se valida cuando `newState` es `PROPUESTO`**; con `CONFIRMADO` o `CANCELADO` se ignora. Siempre: **todas** las incidencias quedan `resolved: true`. Con `PROPUESTO` además se borran todos los votos, `chosenWindowId`, `scheduledAt` y `scheduledDate` vuelven a `null` y empieza una votación nueva hasta el plazo enviado; las franjas se conservan. `200 Proposal`
+`votingDeadline` y `windows` **solo se validan cuando `newState` es `PROPUESTO`**; con `CONFIRMADO` o `CANCELADO` se ignoran. Siempre: **todas** las incidencias quedan `resolved: true`. Con `PROPUESTO` además las franjas anteriores se **reemplazan** por las nuevas (el servidor calcula su `availabilityPercentage`) y se borran todos los votos, `chosenWindowId`, `scheduledAt` y `scheduledDate` vuelven a `null` y empieza una votación nueva hasta el plazo enviado. `200 Proposal` · `400 VALIDATION_ERROR`
 
 **Cuándo muestra la app la alerta exprés:** con el plan `EN_RECOORDINACION` («Votación exprés»: falta un imprescindible) o `CONFIRMADO` con incidencias sin resolver («Aviso de imprevisto»). En los dos casos solo quien gestiona el plan (`canManage`) ve Reprogramar / Cancelar / Mantener.
+
+### `POST /proposals/:id/replan`
+Replantea una propuesta **en votación**: reemplaza sus franjas y su plazo por otros nuevos. Solo quien gestiona el plan (`403 NOT_MANAGER`) y solo con la propuesta `PROPUESTO` (`409 INVALID_STATE`). Sirve sobre todo cuando todas las franjas ya pasaron (p. ej. propuestas anteriores a las fechas). Cuerpo = `ReplanInput`:
+```json
+{ "votingDeadline": "2026-10-04T20:00:00.000Z",
+  "windows": [ { "date": "2026-10-07", "startTime": "11:00", "endTime": "13:00" },
+               { "date": "2026-10-08", "startTime": "16:00", "endTime": "18:00" } ] }
+```
+`votingDeadline` futuro y anterior al inicio de la primera franja; `windows` de 2 a 5 con las mismas reglas que al crear (fechas de las 4 semanas válidas, inicio futuro, sin repetidas ni solapadas). Se borran las franjas anteriores con sus votos y se calcula el % de las nuevas. `200 Proposal` · `400 VALIDATION_ERROR`
 
 ## Inteligencia artificial
 
@@ -319,35 +342,34 @@ Reglas:
 ### `POST /groups/:id/ai/proposal-draft`
 Convierte una frase en un borrador para «Nueva propuesta». Solo miembros (`403 NOT_A_MEMBER` · `404 GROUP_NOT_FOUND`). Cuerpo = `ProposalDraftInput`:
 ```json
-{ "text": "Estudiar para el parcial el martes en la biblioteca" }
+{ "text": "Estudiar para el parcial el jueves en la biblioteca", "week": "2026-10-05" }
 ```
-`text` obligatorio, 3–500 caracteres tras `trim`. Responde `200 ProposalDraft` (no guarda nada):
+`text` obligatorio, 3–500 caracteres tras `trim`. `week` opcional (lunes `YYYY-MM-DD`; cualquier día se normaliza a su lunes): sin `week`, los candidatos son los huecos de esta semana y de la siguiente que aún no empezaron; con `week`, solo los de esa semana (los mismos que `GET /groups/:id/availability?week=`). Fuera de las 4 semanas válidas → `400 VALIDATION_ERROR`. Responde `200 ProposalDraft` (no guarda nada):
 ```json
 { "title": "Estudiar para el parcial", "category": "ESTUDIO", "placeName": "Biblioteca central",
-  "window": { "dayOfWeek": 2, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
-  "windows": [ { "dayOfWeek": 2, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
-               { "dayOfWeek": 2, "startTime": "14:00", "endTime": "16:00", "availabilityPercentage": 100, "freeMembers": 2 } ],
-  "votingDeadline": "2026-09-30T15:00:00.000Z" }
+  "window": { "date": "2026-10-08", "dayOfWeek": 4, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
+  "windows": [ { "date": "2026-10-08", "dayOfWeek": 4, "startTime": "16:00", "endTime": "18:00", "availabilityPercentage": 100, "freeMembers": 2 },
+               { "date": "2026-10-10", "dayOfWeek": 6, "startTime": "08:00", "endTime": "20:00", "availabilityPercentage": 100, "freeMembers": 2 } ],
+  "votingDeadline": "2026-10-08T14:00:00.000Z" }
 ```
 - `category` ∈ `ESTUDIO | REUNION | COMIDA | DEPORTE | SALIDA | OTRO` (`PlanCategory`; una desconocida → `OTRO`). No se guarda en la propuesta.
-- `window` está **siempre dentro** de uno de los huecos reales de `GET /groups/:id/availability`: a la IA se le pasan numerados y responde con el número (si da uno que no existe, `window` es `null`) y, además, con `startTime`/`endTime` para recortarlo a lo que se pide (duración, momento del día; 2 h si no dice). El recorte solo se aplica si son `HH:mm`, el fin va después del inicio y caen dentro del hueco; si no, `window` es el hueco completo. Conserva `availabilityPercentage` y `freeMembers` del hueco (el peor caso del tramo).
-- `windows`: de 0 a 3 opciones para votar (la IA da la principal y hasta 2 alternativas), cada una con las mismas reglas que `window`; las inválidas o repetidas se descartan. La primera es `window`. La app las carga todas en «Elegir yo las franjas».
-- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. Con opciones, el cierre se adelanta a 1 h antes del próximo inicio de la que llega primero (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
-- A la IA se le pasan como máximo 30 huecos (los primeros de `GET /groups/:id/availability`), así que `window` siempre cae dentro de uno de ellos.
-- **El hueco de hoy se ofrece dos veces**, porque cada franja se agenda en su próxima ocurrencia: lo que aún sirve hoy empieza en ahora + 2 h redondeado a la hora en punto (p. ej. a las 10:25 → desde las 13:00) y se marca «(hoy)»; si el hueco empieza antes de la hora actual, también va **entero** al final de la lista como «(la próxima semana, empezando antes de las HH:00)», y un recorte suyo solo vale si empieza antes de esa hora (si no, caería hoy: queda el hueco entero). Así un plan «para hoy» nunca cae la semana siguiente. El límite de 30 se aplica antes de partirlo, así que la lista puede tener alguno más.
-- Una opción que empieza en menos de 2 h se descarta, para que la votación siempre pueda cerrar 1 h antes de su inicio.
+- A la IA se le pasan los candidatos numerados y **con fecha** («1. Jue 8 oct 16:00–18:00 · 100 % del grupo libre (2 personas)»), como máximo 30, y responde con el número (`windowIndex`) y, además, con `startTime`/`endTime` para recortarlo a lo que se pide (duración, momento del día; 2 h si no dice). El recorte solo se aplica si son `HH:mm`, el fin va después del inicio y caen dentro del hueco; si no, vale el hueco completo. Conserva `availabilityPercentage` y `freeMembers` del hueco (el peor caso del tramo). Un número que no existe se descarta.
+- `windows`: **de 2 a 5 opciones** para votar, cada una dentro de un hueco real del grupo y lista para usarse como `TimeWindowInput` (`date`, `startTime`, `endTime`). La IA da la principal y hasta 2 alternativas; se descartan las inválidas, las repetidas o que se solapan el mismo día y las que empiezan en menos de 2 h (para que la votación pueda cerrar 1 h antes). Si quedan menos de 2, el servidor completa con las mejores franjas de los candidatos (mayor `availabilityPercentage`, luego mayor duración, luego fecha y hora más tempranas) que no se solapen con las elegidas. La primera es `window`.
+- Si ni así hay 2 opciones → `409 NO_COMMON_WINDOWS`. Si ya los candidatos son menos de 2, responde lo mismo **sin llamar a la IA** (no cuenta en el registro de llamadas).
+- `votingDeadline`: ahora + las horas que sugiere la IA, redondeado **hacia arriba** a la hora en punto (siempre a 1 h o más de ahora). Las horas van de 1 a 168; si faltan, no son enteras o están fuera de rango, se usan 48. El cierre se adelanta a 1 h antes del inicio de la opción que llega primero (puede caer en :30) si eso es anterior y deja al menos 1 h desde ahora.
+- Fechas y horas son las de **America/Lima**; el prompt dice «hoy» en esa zona.
 - Títulos de más de 80 y lugares de más de 100 caracteres se recortan; un lugar vacío es `null`.
+
+`200` · `400 VALIDATION_ERROR` · `403` · `404` · `409 NO_COMMON_WINDOWS` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
+
+### `POST /groups/:id/ai/suggestions`
+Cuerpo opcional `{ "week"?: "YYYY-MM-DD" }` con la misma regla que el borrador (sin `week`: esta semana y la siguiente, solo lo que no empezó; fuera de las 4 semanas válidas → `400 VALIDATION_ERROR`). 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta su descripción y sus últimas 5 propuestas (para no repetir). Solo miembros.
+`200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` es un `MatchWindow` con `date` de la lista de candidatos, o `null` si la IA dio un número que no existe. La app abre «Nueva propuesta» rellenada con la idea elegida.
 
 `200` · `400 VALIDATION_ERROR` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
 
-### `POST /groups/:id/ai/suggestions`
-Sin cuerpo. 3 ideas de plan para los huecos libres del grupo, teniendo en cuenta su descripción y sus últimas 5 propuestas (para no repetir). Solo miembros.
-`200 PlanSuggestions`: `{ "suggestions": [ { "title", "category", "placeIdea", "window", "reason" } ] }`, entre 1 y 3 (las ideas mal formadas se descartan; si no queda ninguna → `502`). `window` sigue la misma regla que en el borrador. La app abre «Nueva propuesta» rellenada con la idea elegida.
-
-`200` · `403` · `404` · `429` · `502 AI_BAD_RESPONSE` · `503 AI_UNAVAILABLE`
-
 ### `POST /proposals/:id/ai/summary`
-Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recomendación para quien lo gestiona. Cualquier miembro (`403 NOT_A_MEMBER` · `404 PROPOSAL_NOT_FOUND`); no para planes `CANCELADO` (`409 INVALID_STATE`). **Nunca cambia el plan**: confirmar, reprogramar o cancelar se hace con los endpoints de siempre.
+Sin cuerpo. Resumen corto de los votos y los imprevistos del plan, con una recomendación para quien lo gestiona. Cualquier miembro (`403 NOT_A_MEMBER` · `404 PROPOSAL_NOT_FOUND`); no para planes `CANCELADO` (`409 INVALID_STATE`). A la IA le llega cada franja con su fecha («Jue 8 oct 08:00–20:00»). **Nunca cambia el plan**: confirmar, reprogramar o cancelar se hace con los endpoints de siempre.
 ```json
 { "summary": "Votó 1 de 2 integrantes: el jueves va ganando y no hay imprevistos.",
   "recommendation": "CONFIRMAR", "reason": "Hay una franja clara y nadie reportó problemas." }
@@ -483,6 +505,7 @@ Moderación: cancela una propuesta de **cualquier** grupo, sin ser miembro ni qu
 ## Cambios respecto a la app Kotlin
 
 - **Bloques puntuales con fecha:** en Kotlin un bloque puntual solo tenía `dayOfWeek = null` y no guardaba *qué día* ocurría. Ahora lleva `date`.
+- **Franjas con fecha:** en Kotlin las franjas eran «semana tipo» (día de la semana y horas), y la fecha se calculaba al confirmar («el próximo jueves»); los puntuales no contaban para la disponibilidad. Ahora cada franja lleva `date` (`YYYY-MM-DD`, en `America/Lima`), elegida en una de las 4 semanas válidas; el plan se agenda en la fecha de la franja ganadora y `dayOfWeek` se deriva de esa fecha.
 - **`isEssential` es por grupo:** en Kotlin estaba en `User`, pero alguien puede ser imprescindible en un grupo y no en otro. Ahora está en `GroupMember`.
 - **Votos por usuario, no por email:** el servidor sabe quién vota por el token; la app ya no envía `userEmail`.
 - **Un solo usuario actual:** el `id` sale siempre del token. Esto elimina el desajuste `mock_123` / `user_1` de la versión Kotlin.

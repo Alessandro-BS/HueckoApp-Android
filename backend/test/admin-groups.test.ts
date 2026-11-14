@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/db';
 import { insertGroup, registerAdmin } from './admin-fixtures';
-import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp, NOW, setupSeedGroup, voteFor } from './helpers';
+import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp, NOW, setupSeedGroup, voteFor, win } from './helpers';
 
 async function setupGroups() {
   const { app, db } = await makeTestApp({ now: () => NOW });
@@ -19,10 +19,10 @@ const names = (body: { items: { name: string }[] }) => body.items.map((g) => g.n
 
 type Session = { token: string; user: { id: string } };
 
-// Plan de un solo tramo (miércoles 11–13) votado por los dos y confirmado por quien lo creó.
+// Plan con dos franjas (miércoles 7/10 y sábado 10/10, 11–13), votado por los dos en el miércoles y confirmado por quien lo creó.
 async function confirmedPlan(app: Express, yo: Session, ana: Session, groupId: string, title = 'Reunión'): Promise<Proposal> {
   const plan = await createProposal(app, yo.token, groupId, {
-    title, votingDeadline: DEADLINE, windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00' }],
+    title, votingDeadline: DEADLINE, windows: [win(3, '11:00', '13:00'), win(6, '11:00', '13:00')],
   });
   await voteFor(app, plan.id, plan.windows[0].id, yo.token).expect(200);
   await voteFor(app, plan.id, plan.windows[0].id, ana.token).expect(200);
@@ -120,7 +120,7 @@ describe('DELETE /api/admin/groups/:id', () => {
       await count(db, 'SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', plan.id),
       await count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = $1', plan.id),
     ];
-    expect(await left()).toEqual([2, 1, 1, 2, 1]); // control positivo: antes de borrar, todo existe
+    expect(await left()).toEqual([2, 1, 2, 2, 1]); // control positivo: antes de borrar, todo existe
     expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(204);
     expect(await left()).toEqual([0, 0, 0, 0, 0]);
     expect((await request(app).get(`/api/groups/${group.id}`).set(bearer(yo.token))).status).toBe(404);

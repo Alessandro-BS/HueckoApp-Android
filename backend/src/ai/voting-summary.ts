@@ -3,12 +3,10 @@ import { z } from 'zod';
 
 import { isVotingOpen } from '../proposals/rules';
 import type { JsonSchema } from './ai-client';
-import { todayLabel } from './plan-context';
+import { todayLabel, windowLabel } from './plan-context';
 import { userData } from './prompt';
 
 export const RECOMMENDATIONS = ['CONFIRMAR', 'REPROGRAMAR', 'CANCELAR'] as const satisfies readonly SummaryRecommendation[];
-
-const DAY_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const;
 
 // La recomendación es lo que la app muestra en grande: si no es una de las tres, la respuesta no sirve (502).
 export const summaryResponseSchema = z.object({
@@ -46,7 +44,7 @@ export function summaryData(p: Proposal, group: Group, now: Date) {
     votacionAbierta: isVotingOpen(p, now),
     votosEmitidos: p.windows.reduce((total, w) => total + w.voteCount, 0),
     franjas: p.windows.map((w) => ({
-      franja: `${DAY_SHORT[w.dayOfWeek - 1]} ${w.startTime}-${w.endTime}`,
+      franja: windowLabel(w),
       votos: w.voteCount,
       disponibilidad: `${w.availabilityPercentage} %`,
       elegida: w.id === p.chosenWindowId,

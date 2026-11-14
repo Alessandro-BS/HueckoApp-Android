@@ -29,7 +29,7 @@ it('plan confirmado: datos, franja elegida, imprevistos y «Abrir en el mapa»',
   expect(screen.getByText('Fecha: Mié 30 sep · 11:00 - 13:00')).toBeTruthy();
   expect(screen.getByText('Confirmado')).toBeTruthy();
   expect(screen.getByText('Franjas horarias')).toBeTruthy();
-  expect(screen.getByText('Mié · 11:00 - 13:00')).toBeTruthy();
+  expect(screen.getByText('Mié 30 sep · 11:00 - 13:00')).toBeTruthy();
   expect(screen.getByText('Elegida')).toBeTruthy();
   expect(screen.getByText('Ana · Imprevisto')).toBeTruthy();
   expect(screen.getByText('Media')).toBeTruthy();
@@ -55,7 +55,7 @@ it('en votación: «Ir a votar» navega y quien la creó confirma eligiendo la f
 
   await fireEvent.press(screen.getByText('Confirmar plan'));
   expect(screen.getByText('La más votada')).toBeTruthy();
-  await fireEvent.press(screen.getByText('Jue · 10:00 - 12:00 · 0 votos'));
+  await fireEvent.press(screen.getByText('Jue 1 oct · 10:00 - 12:00 · 0 votos'));
   await fireEvent.press(screen.getByText('Confirmar'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Plan confirmado.'));
   expect(mocked.confirmProposal).toHaveBeenCalledWith('prop_2', 'w_22');

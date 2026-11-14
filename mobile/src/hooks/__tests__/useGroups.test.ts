@@ -137,11 +137,18 @@ describe('useGroup', () => {
 
 describe('useAvailability', () => {
   it('carga las franjas del grupo', async () => {
-    const windows = [{ dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 }];
+    const windows = [{ date: '2026-11-16', dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 }];
     mocked.getAvailability.mockResolvedValue(windows);
     const { result } = await renderHook(() => useAvailability('g1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(mocked.getAvailability).toHaveBeenCalledWith('g1');
+    expect(mocked.getAvailability).toHaveBeenCalledWith('g1', undefined);
     expect(result.current.windows).toEqual(windows);
+  });
+
+  it('pide la semana indicada', async () => {
+    mocked.getAvailability.mockResolvedValue([]);
+    const { result } = await renderHook(() => useAvailability('g1', '2026-11-23'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mocked.getAvailability).toHaveBeenCalledWith('g1', '2026-11-23');
   });
 });

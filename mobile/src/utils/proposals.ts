@@ -1,7 +1,8 @@
 import type { Criticality, Incidence, IncidenceType, Proposal, ProposalState, TimeWindow } from '@hueckoapp/shared';
 
 import { colors } from '../theme';
-import { dayShort, formatDateLabel, formatDateTime } from './days';
+import { formatDateLabel, formatDateTime } from './days';
+import { shortDate } from './zone';
 
 type BadgeStyle = { text: string; container: string; content: string };
 
@@ -27,10 +28,9 @@ export const CRITICALITY_BADGE: Record<Criticality, BadgeStyle> = {
   BAJA: { text: 'Baja', container: colors.surfaceContainerHigh, content: colors.onSurfaceVariant },
 };
 
-type WindowLike = Pick<TimeWindow, 'dayOfWeek' | 'startTime' | 'endTime'>;
-
-/** «Mar · 16:00 - 18:00» en todas las pantallas (quirk 20: un solo formato). */
-export const windowLabel = (w: WindowLike) => `${dayShort(w.dayOfWeek)} · ${w.startTime} - ${w.endTime}`;
+/** «Jue 20 nov · 16:00 - 18:00» en todas las pantallas (quirk 20: un solo formato). */
+export const windowLabel = (w: Pick<TimeWindow, 'date' | 'startTime' | 'endTime'>) =>
+  `${shortDate(w.date)} · ${w.startTime} - ${w.endTime}`;
 
 export const voteCountLabel = (n: number) => (n === 1 ? '1 voto' : `${n} votos`);
 

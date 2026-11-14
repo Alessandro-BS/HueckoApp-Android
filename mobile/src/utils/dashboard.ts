@@ -1,8 +1,8 @@
 import type { Attendee, BlockType, DashboardGroup } from '@hueckoapp/shared';
 
 import { colors } from '../theme';
-import { dayShort } from './days';
 import { memberCountLabel } from './groups';
+import { windowLabel } from './proposals';
 
 const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -31,7 +31,7 @@ export const attendanceLabel = (attendees: readonly Attendee[]) =>
 /** «2 miembros · Mié 11:00 - 13:00» o «… · Sin propuesta aún» (quirk 19: singulariza). */
 export const groupSlotLabel = (g: DashboardGroup) =>
   `${memberCountLabel(g.memberCount)} · ${
-    g.nextWindow ? `${dayShort(g.nextWindow.dayOfWeek)} ${g.nextWindow.startTime} - ${g.nextWindow.endTime}` : 'Sin propuesta aún'
+    g.nextWindow ? windowLabel(g.nextWindow) : 'Sin propuesta aún'
   }`;
 
 /** «100%», o «—» si el grupo no tiene propuesta (B18: el umbral no es una coincidencia real). */

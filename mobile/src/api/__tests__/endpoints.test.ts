@@ -31,7 +31,8 @@ const block: TimeBlockInput = {
 };
 
 const proposalInput = { title: 'Repaso', votingDeadline: '2026-10-03T01:00:00.000Z', windows: [] };
-const windowInput = { dayOfWeek: 5, startTime: '18:00', endTime: '19:30' };
+const windowInput = { date: '2026-10-02', startTime: '18:00', endTime: '19:30' };
+const replanInput = { votingDeadline: '2026-11-18T20:00:00.000Z', windows: [windowInput, { date: '2026-11-19', startTime: '10:00', endTime: '12:00' }] };
 const incidenceInput = { type: 'TARDANZA' as const, reason: 'Tráfico', delayMinutes: 20 };
 
 // [método, url, llamada, cuerpo esperado]: el título de cada test se lee como "GET /groups".
@@ -46,6 +47,7 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['PATCH', '/groups/g1/members/u2', () => groups.setMemberEssential('g1', 'u2', true), { isEssential: true }],
   ['DELETE', '/groups/g1/members/me', () => groups.leaveGroup('g1'), undefined],
   ['GET', '/groups/g1/availability', () => groups.getAvailability('g1'), undefined],
+  ['GET', '/groups/g1/availability?week=2026-11-16', () => groups.getAvailability('g1', '2026-11-16'), undefined],
   ['GET', '/groups/g1/proposals', () => proposals.listGroupProposals('g1'), undefined],
   ['POST', '/groups/g1/proposals', () => proposals.createProposal('g1', proposalInput), proposalInput],
   ['GET', '/proposals/p1', () => proposals.getProposal('p1'), undefined],
@@ -54,13 +56,14 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['POST', '/proposals/p1/windows', () => proposals.addWindow('p1', windowInput), windowInput],
   ['POST', '/proposals/p1/confirm', () => proposals.confirmProposal('p1'), {}],
   ['POST', '/proposals/p1/confirm', () => proposals.confirmProposal('p1', 'w1'), { windowId: 'w1' }],
+  ['POST', '/proposals/p1/replan', () => proposals.replanProposal('p1', replanInput), replanInput],
   ['POST', '/proposals/p1/cancel', () => proposals.cancelProposal('p1'), undefined],
   ['POST', '/proposals/p1/incidences', () => proposals.reportIncidence('p1', incidenceInput), incidenceInput],
   ['POST', '/proposals/p1/incidences/resolve', () => proposals.resolveIncidences('p1', { newState: 'CANCELADO' }), { newState: 'CANCELADO' }],
   ['GET', '/me/dashboard', () => dashboard.getDashboard(), undefined],
   ['POST', '/me/time-blocks/bulk', () => schedule.createTimeBlocksBulk([block]), { blocks: [block] }],
   ['GET', '/ai/status', () => ai.getAiStatus(), undefined],
-  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes'), { text: 'Estudiar el viernes' }],
+  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes', '2026-11-16'), { text: 'Estudiar el viernes', week: '2026-11-16' }],
   ['POST', '/groups/g1/ai/suggestions', () => ai.suggestPlans('g1'), undefined],
   ['POST', '/proposals/p1/ai/summary', () => ai.summarizeVoting('p1'), undefined],
   ['POST', '/proximity/invite', () => proximity.sendInvite('g1'), { groupId: 'g1' }],
@@ -80,7 +83,7 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
 
 it('las llamadas que usan la IA esperan hasta 45 s; el resto, lo normal', async () => {
   await ai.suggestPlans('g1');
-  await ai.draftProposal('g1', 'Estudiar');
+  await ai.draftProposal('g1', 'Estudiar', '2026-11-16');
   await ai.summarizeVoting('p1');
   await ai.getAiStatus();
   expect(calls.map((c) => c.timeout)).toEqual([45_000, 45_000, 45_000, 15_000]);

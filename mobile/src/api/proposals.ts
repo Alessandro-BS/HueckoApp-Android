@@ -1,8 +1,8 @@
-import type { IncidenceInput, Proposal, ProposalInput, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
+import type { IncidenceInput, Proposal, ProposalInput, ReplanInput, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
 
 import { api } from './client';
 
-export type { IncidenceInput, ProposalInput, ResolveIncidencesInput, TimeWindowInput };
+export type { IncidenceInput, ProposalInput, ReplanInput, ResolveIncidencesInput, TimeWindowInput };
 
 const groupProposalsPath = (groupId: string) => `/groups/${encodeURIComponent(groupId)}/proposals`;
 const proposalPath = (id: string) => `/proposals/${encodeURIComponent(id)}`;
@@ -33,3 +33,7 @@ export const reportIncidence = async (id: string, input: IncidenceInput) =>
 
 export const resolveIncidences = async (id: string, input: ResolveIncidencesInput) =>
   (await api.post<Proposal>(`${proposalPath(id)}/incidences/resolve`, input)).data;
+
+// Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; el servidor borra los votos.
+export const replanProposal = async (id: string, input: ReplanInput) =>
+  (await api.post<Proposal>(`${proposalPath(id)}/replan`, input)).data;

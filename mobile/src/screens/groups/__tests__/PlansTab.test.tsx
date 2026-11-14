@@ -67,7 +67,7 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
       makeSuggestion({ title: 'Almuerzo del grupo', category: 'COMIDA', placeIdea: null, window: null, reason: 'Un plan corto.' }),
       makeSuggestion({
         title: 'Partido de fulbito', category: 'DEPORTE', placeIdea: 'Losa del campus',
-        window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+        window: { date: '2026-11-19', dayOfWeek: 4, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
       }),
     ],
   });
@@ -77,8 +77,8 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
   expect(await screen.findByText('Sesión de estudio antes del parcial')).toBeTruthy();
   expect(mockedAi.suggestPlans).toHaveBeenCalledWith('g1');
   expect(screen.getByText('Ideas con Huecko IA')).toBeTruthy();
-  expect(screen.getByText('Lun · 12:00 - 20:00')).toBeTruthy();
-  expect(screen.getByText('Jue · 08:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Lun 16 nov · 12:00 - 20:00')).toBeTruthy();
+  expect(screen.getByText('Jue 19 nov · 08:00 - 20:00')).toBeTruthy();
   expect(screen.getByText('Huecko IA no eligió franja: añade una a mano al crear (o deja que Huecko elija si el grupo tiene huecos en común).')).toBeTruthy();
   expect(screen.getByText('Comida')).toBeTruthy();
   expect(screen.getByText('Un plan corto.')).toBeTruthy();
@@ -94,7 +94,7 @@ it('«Ideas con IA» muestra 3 ideas y «Usar» abre la propuesta rellenada', as
     groupId: 'g1',
     groupName: 'Proyecto Integrador',
     prefill: {
-      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { dayOfWeek: 4, startTime: '08:00', endTime: '20:00' },
+      title: 'Partido de fulbito', placeName: 'Losa del campus', window: { date: '2026-11-19', startTime: '08:00', endTime: '20:00' },
       votingDeadline: null, category: 'DEPORTE',
     },
   });

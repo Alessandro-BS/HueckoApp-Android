@@ -72,8 +72,8 @@ describe('useProposal', () => {
     await act(async () => void (await result.current.cancel()));
     expect(result.current.proposal?.state).toBe('CANCELADO');
 
-    await act(async () => void (await result.current.addWindow({ dayOfWeek: 5, startTime: '18:00', endTime: '19:00' })));
-    expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { dayOfWeek: 5, startTime: '18:00', endTime: '19:00' });
+    await act(async () => void (await result.current.addWindow({ date: '2026-10-02', startTime: '18:00', endTime: '19:00' })));
+    expect(mocked.addWindow).toHaveBeenCalledWith('prop_2', { date: '2026-10-02', startTime: '18:00', endTime: '19:00' });
     expect(result.current.proposal?.title).toBe('Con franja nueva');
 
     await act(async () => void (await result.current.reportIncidence({ type: 'FALTA', reason: 'Enfermo' })));

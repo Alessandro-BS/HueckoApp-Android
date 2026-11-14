@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { createProposal } from '../../api/proposals';
-import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, SecondaryButton, TextField } from '../../components';
+import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, SecondaryButton, TextField, WeekSelector } from '../../components';
 import { features } from '../../config';
 import { useAction } from '../../hooks/useAction';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
@@ -13,8 +13,10 @@ import type { AppStackScreen } from '../../navigation/types';
 import { colors, typography } from '../../theme';
 import { prefillFromDraft, prefillWindows, type ProposalPrefill } from '../../utils/ai';
 import { today } from '../../utils/clock';
+import { deadlineAfterFirstWindow, DEADLINE_AFTER_WINDOW, MAX_WINDOWS, MIN_WINDOWS } from '../../utils/planWindows';
 import { windowLabel } from '../../utils/proposals';
 import { showToast } from '../../utils/toast';
+import { weekOptions } from '../../utils/zone';
 import { AiDraftCard } from './AiDraftCard';
 import { PlacePickerModal, type PickedPlace } from './PlacePickerModal';
 import { WindowEditor } from './WindowEditor';
@@ -28,6 +30,7 @@ function FieldLabel({ children }: { children: string }) {
 export function CreateProposalScreen({ navigation, route }: AppStackScreen<'CreateProposal'>) {
   const { groupId, groupName, prefill } = route.params;
   const [now] = useState(today);
+  const [week, setWeek] = useState(() => weekOptions(now)[0].week);
   const [title, setTitle] = useState(prefill?.title ?? '');
   const [placeName, setPlaceName] = useState(prefill?.placeName ?? '');
   const [coords, setCoords] = useState<Coords | null>(null);
@@ -49,7 +52,10 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   const draft = useProposalDraft(groupId);
 
   const deadlineError = deadline && deadline.getTime() <= now.getTime() ? 'La fecha límite debe ser futura' : undefined;
-  const formValid = title.trim().length > 0 && deadline !== null && !deadlineError && (auto || windows.length > 0);
+  const afterWindow = !auto && deadlineAfterFirstWindow(deadline, windows);
+  const windowCountOk = auto || (windows.length >= MIN_WINDOWS && windows.length <= MAX_WINDOWS);
+  const formValid =
+    title.trim().length > 0 && deadline !== null && !deadlineError && !afterWindow && windowCountOk;
 
   // Escribir el lugar a mano descarta las coordenadas de «Usar mi ubicación actual».
   const changePlace = (text: string) => {
@@ -89,7 +95,8 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
   };
 
   const generateDraft = async (text: string) => {
-    const result = await draft.generate(text);
+    // Con la semana del selector: la IA propone franjas de esa semana.
+    const result = await draft.generate(text, week);
     if (!result || !mounted.current) return;
     applyPrefill(prefillFromDraft(result));
     showToast('Borrador listo: revísalo antes de crear la propuesta.');
@@ -102,7 +109,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
       title: title.trim(),
       location: name ? { name, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null } : null,
       votingDeadline: deadline.toISOString(),
-      windows: auto ? [] : windows,
+      ...(auto ? { windows: [], week } : { windows }),
     });
     if (result.ok) {
       showToast('Propuesta creada.');
@@ -165,11 +172,13 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           onChange={setDeadline}
           minimumDate={now}
           placeholder="Elige fecha y hora"
-          error={deadlineError}
+          error={deadlineError ?? (afterWindow ? DEADLINE_AFTER_WINDOW : undefined)}
           helperText="Después de esta hora ya no se puede votar."
         />
 
         <View style={styles.section}>
+          <FieldLabel>Semana</FieldLabel>
+          <WeekSelector value={week} onChange={setWeek} now={now} />
           <FieldLabel>Franjas horarias</FieldLabel>
           <View style={styles.options}>
             <ChoiceChip label="Que Huecko proponga las 3 mejores" selected={auto} onPress={() => setAuto(true)} />
@@ -187,7 +196,7 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
           ) : (
             <>
               {windows.map((w) => (
-                <View key={`${w.dayOfWeek}-${w.startTime}-${w.endTime}`} style={styles.windowRow}>
+                <View key={`${w.date}-${w.startTime}-${w.endTime}`} style={styles.windowRow}>
                   <Text style={[typography.titleSmall, styles.flex, { color: colors.onSurface }]}>{windowLabel(w)}</Text>
                   <Pressable
                     accessibilityRole="button"
@@ -199,12 +208,25 @@ export function CreateProposalScreen({ navigation, route }: AppStackScreen<'Crea
                   </Pressable>
                 </View>
               ))}
-              <WindowEditor
-                variant="secondary"
-                submitLabel="Añadir franja"
-                existing={windows}
-                onSubmit={(w) => setWindows((prev) => [...prev, w])}
-              />
+              {windows.length < MAX_WINDOWS ? (
+                <WindowEditor
+                  variant="secondary"
+                  week={week}
+                  now={now}
+                  submitLabel="Añadir franja"
+                  existing={windows}
+                  onSubmit={(w) => setWindows((prev) => [...prev, w])}
+                />
+              ) : (
+                <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+                  Ya tienes {MAX_WINDOWS} franjas: quita una para añadir otra.
+                </Text>
+              )}
+              {!windowCountOk ? (
+                <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+                  Elige entre {MIN_WINDOWS} y {MAX_WINDOWS} franjas
+                </Text>
+              ) : null}
             </>
           )}
         </View>

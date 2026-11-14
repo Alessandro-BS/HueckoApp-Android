@@ -168,4 +168,36 @@ export const migrations: string[] = [
 
   // 6 — El emparejamiento hacia adelante busca parejas MATCHED de los últimos 3 s por matched_at (la tabla no se vacía).
   `CREATE INDEX proximity_requests_matched_idx ON proximity_requests (status, matched_at);`,
+
+  // 7 — Franjas con fecha: cada franja es un día concreto ("YYYY-MM-DD" en America/Lima), no un día de la semana.
+  // Corre sobre datos reales: no cambia el estado de ninguna propuesta ni toca los votos (apuntan a la franja por id).
+  // - La franja elegida de un plan confirmado toma su scheduled_date.
+  // - Las demás, la próxima vez que ocurre su day_of_week desde el día (en Lima) en que se creó la propuesta, ese mismo
+  //   día incluido: 0 a 6 días después. Una franja del mismo día de la creación que ya había empezado a esa hora
+  //   queda con esa fecha, ya pasada: confirmarla da WINDOW_STARTED y basta con replantear la propuesta.
+  // day_of_week se conserva y desde ahora el código siempre lo deriva de date.
+  // El UNIQUE viejo se declaró sin nombre en la migración 3: su nombre lo generó Postgres (y lo recorta a 63 bytes),
+  // así que se busca en el catálogo por sus columnas. Si no aparece exactamente uno, la migración falla (STRICT).
+  `ALTER TABLE proposal_windows ADD COLUMN date TEXT COLLATE "C";
+   UPDATE proposal_windows w SET date = p.scheduled_date
+   FROM proposals p
+   WHERE p.id = w.proposal_id AND p.chosen_window_id = w.id AND p.scheduled_date IS NOT NULL;
+   UPDATE proposal_windows w
+   SET date = to_char(c.d + ((w.day_of_week - EXTRACT(ISODOW FROM c.d)::int + 7) % 7), 'YYYY-MM-DD')
+   FROM (SELECT id, (created_at::timestamptz AT TIME ZONE 'America/Lima')::date AS d FROM proposals) c
+   WHERE c.id = w.proposal_id AND w.date IS NULL;
+   ALTER TABLE proposal_windows ALTER COLUMN date SET NOT NULL;
+   DO $$
+   DECLARE old_name TEXT;
+   BEGIN
+     SELECT con.conname INTO STRICT old_name
+     FROM pg_constraint con
+     WHERE con.conrelid = 'proposal_windows'::regclass AND con.contype = 'u'
+       AND (SELECT array_agg(a.attname::text ORDER BY a.attname::text) FROM pg_attribute a
+            WHERE a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey))
+           = ARRAY['day_of_week', 'end_time', 'proposal_id', 'start_time'];
+     EXECUTE format('ALTER TABLE proposal_windows DROP CONSTRAINT %I', old_name);
+   END
+   $$;
+   ALTER TABLE proposal_windows ADD CONSTRAINT proposal_windows_proposal_date_time_key UNIQUE (proposal_id, date, start_time, end_time);`,
 ];

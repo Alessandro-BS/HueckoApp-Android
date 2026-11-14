@@ -1,4 +1,4 @@
-import type { CurrentUser, Group, Proposal, ProposalInput, User } from '@hueckoapp/shared';
+import type { CurrentUser, Group, Proposal, ProposalInput, TimeWindowInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 import { vi } from 'vitest';
@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
 import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
+import { addDays } from '../src/common/zone';
 import type { Db, SqlParam } from '../src/db/db';
 import { openTestDatabase } from './db';
 
@@ -19,6 +20,12 @@ export const NOW = new Date(2026, 8, 29, 10, 0);
 export const DEADLINE = new Date(2026, 9, 3, 20, 0).toISOString();
 // Un minuto después del plazo: la votación ya cerró.
 export const AFTER_DEADLINE = new Date(2026, 9, 3, 20, 1);
+// Lunes de la semana siguiente a NOW: sus franjas empiezan todas después de DEADLINE.
+export const NEXT_WEEK = '2026-10-05';
+// Fecha de la semana siguiente a NOW con ese día de la semana (1 = lunes 5/10 … 7 = domingo 11/10).
+export const dateOf = (dayOfWeek: number) => addDays(NEXT_WEEK, dayOfWeek - 1);
+// Franja de la semana siguiente a NOW por su día de la semana.
+export const win = (dayOfWeek: number, startTime: string, endTime: string): TimeWindowInput => ({ date: dateOf(dayOfWeek), startTime, endTime });
 
 // Base PGlite nueva y migrada para un test (se cierra sola al terminar: test/setup.ts).
 export const makeTestDb = (): Promise<Db> => openTestDatabase();
@@ -55,11 +62,17 @@ export async function makeTestApp(options?: {
  */
 export function interleave(db: Db, before: RegExp, sql: string, params: readonly SqlParam[] = []): void {
   const original = db.query.bind(db);
+  interleaveWith(db, before, () => original(sql, params));
+}
+
+/** Como interleave, pero la otra petición es `run` (p. ej. un método de un repositorio con varias consultas). */
+export function interleaveWith(db: Db, before: RegExp, run: () => Promise<unknown>): void {
+  const original = db.query.bind(db);
   let done = false;
   vi.spyOn(db, 'query').mockImplementation((async (text: string, values?: readonly SqlParam[]) => {
     if (!done && before.test(text)) {
       done = true;
-      await original(sql, params);
+      await run();
     }
     return original(text, values);
   }) as Db['query']);
@@ -182,7 +195,9 @@ export async function createProposal(
   groupId: string,
   body: Partial<ProposalInput> & { votingDeadline: string },
 ): Promise<Proposal> {
-  const res = await request(app).post(`/api/groups/${groupId}/proposals`).set(bearer(token)).send({ title: 'Plan', ...body });
+  // Sin franjas, las 3 mejores se buscan en la semana siguiente a NOW (las de esta semana empiezan antes de DEADLINE).
+  const week = body.windows?.length ? undefined : NEXT_WEEK;
+  const res = await request(app).post(`/api/groups/${groupId}/proposals`).set(bearer(token)).send({ title: 'Plan', week, ...body });
   if (res.status !== 201) throw new Error(`crear propuesta falló: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;
 }

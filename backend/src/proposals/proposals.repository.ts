@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Proposal, ProposalState, ProposalWithGroup, TimeWindow } from '@hueckoapp/shared';
 
+import { isoDay } from '../common/zone';
 import type { Db } from '../db/db';
 import { MEMBER_ORDER } from '../groups/groups.repository';
 import { canManageProposal, type ManagerCandidate } from './permissions';
@@ -27,6 +28,7 @@ type ProposalRow = {
 type WindowRow = {
   id: string;
   proposal_id: string;
+  date: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
@@ -49,7 +51,8 @@ type IncidenceRow = {
 type MyVoteRow = { proposal_id: string; window_id: string };
 type MemberRow = { group_id: string; id: string; role: GroupMember['role'] };
 
-export type NewWindow = { dayOfWeek: number; startTime: string; endTime: string; availabilityPercentage: number };
+// `date` es "YYYY-MM-DD" (en America/Lima) y ya validada por quien llama: el día de la semana se deriva de ella.
+export type NewWindow = { date: string; startTime: string; endTime: string; availabilityPercentage: number };
 export type NewIncidence = {
   userId: string;
   type: IncidenceType;
@@ -98,6 +101,7 @@ function groupBy<R, T>(rows: readonly R[], keyOf: (row: R) => string, map: (row:
 
 const toWindow = (r: WindowRow): TimeWindow => ({
   id: r.id,
+  date: r.date,
   dayOfWeek: r.day_of_week,
   startTime: r.start_time,
   endTime: r.end_time,
@@ -129,7 +133,7 @@ export function proposalsRepository(db: Db) {
     // pero no suma; si vuelve a unirse, cuenta otra vez. De aquí salen pickWinner, Inicio y el resumen con IA.
     const windows = groupBy(
       await db.many<WindowRow>(
-        `SELECT w.id, w.proposal_id, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
+        `SELECT w.id, w.proposal_id, w.date, w.day_of_week, w.start_time, w.end_time, w.availability_percentage,
                 COUNT(m.user_id) AS vote_count
          FROM proposal_windows w
          JOIN proposals p ON p.id = w.proposal_id
@@ -137,7 +141,7 @@ export function proposalsRepository(db: Db) {
          LEFT JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
          WHERE w.proposal_id ${inProposalIds(1)}
          GROUP BY w.id
-         ORDER BY w.day_of_week, w.start_time, w.end_time`,
+         ORDER BY w.date, w.start_time, w.end_time`,
         [ids],
       ),
       (r) => r.proposal_id,
@@ -190,12 +194,13 @@ export function proposalsRepository(db: Db) {
     }));
   };
 
-  // proposal_windows no tiene created_at: se ordenan por día y hora, no por creación.
+  // proposal_windows no tiene created_at: se ordenan por fecha y hora, no por creación.
+  // day_of_week se guarda siempre derivado de la fecha (lo siguen leyendo el cruce de horarios y la app).
   const insertWindow = async (proposalId: string, w: NewWindow): Promise<string> => {
     const id = randomUUID();
     await db.query(
-      'INSERT INTO proposal_windows (id, proposal_id, day_of_week, start_time, end_time, availability_percentage) VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, proposalId, w.dayOfWeek, w.startTime, w.endTime, w.availabilityPercentage],
+      'INSERT INTO proposal_windows (id, proposal_id, date, day_of_week, start_time, end_time, availability_percentage) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, proposalId, w.date, isoDay(w.date), w.startTime, w.endTime, w.availabilityPercentage],
     );
     return id;
   };
@@ -231,6 +236,35 @@ export function proposalsRepository(db: Db) {
 
     addWindow: insertWindow,
 
+    // Reprogramar y replantear: las franjas nuevas reemplazan a las anteriores, todo o nada. Primero se borran los
+    // votos (apuntan a las franjas viejas por id) y después las franjas; la confirmación se limpia porque su franja
+    // elegida ya no existe. El estado lo decide quien llama.
+    async replaceWindows(proposalId: string, windows: NewWindow[], votingDeadline: string): Promise<void> {
+      await db.transaction(async () => {
+        await db.query('DELETE FROM votes WHERE proposal_id = $1', [proposalId]);
+        await db.query('DELETE FROM proposal_windows WHERE proposal_id = $1', [proposalId]);
+        for (const w of windows) await insertWindow(proposalId, w);
+        await db.query(
+          'UPDATE proposals SET chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL, voting_deadline = $1 WHERE id = $2',
+          [votingDeadline, proposalId],
+        );
+      });
+    },
+
+    // Replantear: igual que replaceWindows, pero solo si la propuesta sigue en PROPUESTO (false si otra petición la
+    // confirmó o canceló mientras tanto; entonces no se toca nada).
+    async replanWindows(proposalId: string, windows: NewWindow[], votingDeadline: string): Promise<boolean> {
+      return db.transaction(async () => {
+        const { rowCount } = await db.query(
+          "UPDATE proposals SET voting_deadline = $1 WHERE id = $2 AND state = 'PROPUESTO'",
+          [votingDeadline, proposalId],
+        );
+        if (rowCount === 0) return false;
+        await this.replaceWindows(proposalId, windows, votingDeadline);
+        return true;
+      });
+    },
+
     // Un voto por persona y propuesta: votar otra franja lo mueve; la misma, no cambia nada (G1).
     // `createdAt` (ISO del reloj de la app) se escribe explícito; al mover el voto se actualiza también.
     async vote(proposalId: string, userId: string, windowId: string, createdAt: string): Promise<void> {
@@ -249,13 +283,22 @@ export function proposalsRepository(db: Db) {
 
     // Los cambios de estado solo se aplican si el plan sigue en el estado que la ruta comprobó: false si otra petición
     // lo cambió mientras tanto (p. ej. un admin lo canceló), y la ruta responde 409 en vez de pisarlo o resucitarlo.
-    async confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<boolean> {
-      const { rowCount } = await db.query(
-        `UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $1, scheduled_at = $2, scheduled_date = $3
-         WHERE id = $4 AND state = 'PROPUESTO'`,
-        [windowId, scheduledAt, scheduledDate, id],
-      );
-      return rowCount > 0;
+    // Confirmar, además, bloquea el plan y comprueba que la franja elegida sigue en él: un replanteo que llegó entre la
+    // lectura de la ruta y aquí ya la borró (con READ COMMITTED, un EXISTS dentro del UPDATE no lo vería). Si el
+    // replanteo llega después, espera al candado y ve el plan ya CONFIRMADO.
+    confirm(id: string, windowId: string, scheduledAt: string, scheduledDate: string): Promise<boolean> {
+      return db.transaction(async () => {
+        const row = await db.one<{ state: ProposalState }>('SELECT id, state FROM proposals WHERE id = $1 FOR UPDATE', [id]);
+        if (!row || row.state !== 'PROPUESTO') return false;
+        const window = await db.one('SELECT id FROM proposal_windows WHERE id = $1 AND proposal_id = $2', [windowId, id]);
+        if (!window) return false;
+        const { rowCount } = await db.query(
+          `UPDATE proposals SET state = 'CONFIRMADO', chosen_window_id = $1, scheduled_at = $2, scheduled_date = $3
+           WHERE id = $4 AND state = 'PROPUESTO'`,
+          [windowId, scheduledAt, scheduledDate, id],
+        );
+        return rowCount > 0;
+      });
     },
 
     async cancel(id: string): Promise<boolean> {
@@ -284,7 +327,12 @@ export function proposalsRepository(db: Db) {
 
     // Votación exprés (G4): todas las incidencias quedan resueltas; reprogramar abre una votación nueva. Solo sobre un
     // plan activo (CONFIRMADO o EN_RECOORDINACION); false, sin tocar nada, si ya no lo es.
-    resolveIncidences(id: string, newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO', votingDeadline: string | null): Promise<boolean> {
+    resolveIncidences(
+      id: string,
+      newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO',
+      votingDeadline: string | null,
+      windows: NewWindow[] | null = null,
+    ): Promise<boolean> {
       return db.transaction(async () => {
         const { rowCount } =
           newState === 'PROPUESTO'
@@ -295,7 +343,8 @@ export function proposalsRepository(db: Db) {
               )
             : await db.query('UPDATE proposals SET state = $1 WHERE id = $2 AND state = ANY($3::text[])', [newState, id, ACTIVE_STATES]);
         if (rowCount === 0) return false;
-        if (newState === 'PROPUESTO') await db.query('DELETE FROM votes WHERE proposal_id = $1', [id]);
+        // Reprogramar: franjas nuevas (borra las viejas con sus votos). Reentrante: va dentro de esta transacción.
+        if (newState === 'PROPUESTO') await this.replaceWindows(id, windows ?? [], votingDeadline!);
         await db.query('UPDATE incidences SET resolved = TRUE WHERE proposal_id = $1', [id]);
         return true;
       });

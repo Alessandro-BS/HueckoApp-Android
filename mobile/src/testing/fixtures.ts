@@ -4,8 +4,12 @@ import type { Dashboard, PlanSuggestion, Proposal, ProposalDraft, TimeWindow, Us
 export const TEST_USER: User = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com' };
 export const ANA: User = { id: 'u2', name: 'Ana', email: 'ana@test.com' };
 
+// Sin `date`, la franja cae ese día de la semana de hoy (lunes 28/09 … domingo 04/10).
+const dateInTestWeek = (dayOfWeek: number) => new Date(Date.UTC(2026, 8, 27 + dayOfWeek)).toISOString().slice(0, 10);
+
 export const makeWindow = (over: Partial<TimeWindow> = {}): TimeWindow => ({
-  id: 'w_21', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0, ...over,
+  id: 'w_21', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100, voteCount: 0,
+  date: dateInTestWeek(over.dayOfWeek ?? 2), ...over,
 });
 
 // prop_2: en votación, creada por Ana, cierra hoy a las 20:00; Ana votó el martes.
@@ -69,7 +73,7 @@ export const makeDashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
     ],
   },
   groups: [
-    { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
+    { id: 'g1', name: 'Proyecto Integrador', memberCount: 2, nextWindow: { date: '2026-10-07', dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100 } },
   ],
   pendingVotes: [{ ...makeProposal(), groupName: 'Proyecto Integrador' }],
   expressAlert: {
@@ -86,7 +90,7 @@ export const makeDraft = (over: Partial<ProposalDraft> = {}): ProposalDraft => {
     title: 'Estudiar para el parcial',
     category: 'ESTUDIO' as const,
     placeName: 'Biblioteca central',
-    window: { dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+    window: { date: '2026-11-17', dayOfWeek: 2, startTime: '08:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
     votingDeadline: new Date(2026, 8, 30, 10, 0).toISOString(),
     ...over,
   };
@@ -97,7 +101,7 @@ export const makeSuggestion = (over: Partial<PlanSuggestion> = {}): PlanSuggesti
   title: 'Sesión de estudio antes del parcial',
   category: 'ESTUDIO',
   placeIdea: 'Biblioteca central',
-  window: { dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
+  window: { date: '2026-11-16', dayOfWeek: 1, startTime: '12:00', endTime: '20:00', availabilityPercentage: 100, freeMembers: 2 },
   reason: 'Todo el grupo está libre el lunes por la tarde.',
   ...over,
 });

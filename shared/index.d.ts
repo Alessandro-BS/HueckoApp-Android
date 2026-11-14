@@ -46,6 +46,7 @@ export type Group = GroupSummary & {
 };
 
 export type MatchWindow = {
+  date: string;                  // YYYY-MM-DD (America/Lima) del día concreto de la franja
   dayOfWeek: number;
   startTime: string;
   endTime: string;
@@ -63,7 +64,8 @@ export type Location = {
 
 export type TimeWindow = {
   id: string;
-  dayOfWeek: number;
+  date: string;                    // "YYYY-MM-DD" en America/Lima: el día concreto de la franja
+  dayOfWeek: number;               // 1 = lunes … 7 = domingo, siempre el de `date`
   startTime: string;
   endTime: string;
   availabilityPercentage: number;
@@ -92,31 +94,39 @@ export type Proposal = {
   createdBy: User;
   votingDeadline: string;          // ISO 8601 (UTC); solo se vota antes de esta hora
   state: ProposalState;
-  windows: TimeWindow[];           // ordenadas por día y hora
+  windows: TimeWindow[];           // ordenadas por fecha y hora
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
   canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
-  scheduledAt: string | null;      // ISO: próxima vez que ocurre la franja elegida, calculada al confirmar
-  scheduledDate: string | null;    // "YYYY-MM-DD": la misma fecha en la zona horaria del servidor (para mostrarla sin depender de la del teléfono)
+  scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
+  scheduledDate: string | null;    // "YYYY-MM-DD": la fecha de la franja elegida (para mostrarla sin depender de la zona del teléfono)
   incidences: Incidence[];
   createdAt: string;               // ISO; GET /groups/:id/proposals ordena por aquí (más recientes primero)
 };
 
 // Cuerpos de las peticiones de propuestas (docs/api.md, «Propuestas y votación»).
-export type TimeWindowInput = { dayOfWeek: number; startTime: string; endTime: string };
+export type TimeWindowInput = {
+  date: string;                    // "YYYY-MM-DD" en America/Lima, entre esta semana y las próximas 3
+  startTime: string;
+  endTime: string;
+};
 
 export type ProposalInput = {
   title: string;
   location?: Location | null;
-  votingDeadline: string;          // ISO 8601 futura
-  windows?: TimeWindowInput[];     // vacío u omitido: el servidor propone las 3 mejores franjas
+  votingDeadline: string;          // ISO 8601 futura y anterior al inicio de la primera franja
+  windows?: TimeWindowInput[];     // de 2 a 5; vacío u omitido: el servidor propone las 3 mejores franjas de `week`
+  week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); solo se usa sin `windows`; por defecto, esta semana
 };
 
 export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes?: number | null };
 
 export type ResolveIncidencesInput =
   | { newState: 'CONFIRMADO' | 'CANCELADO' }
-  | { newState: 'PROPUESTO'; votingDeadline: string };
+  | { newState: 'PROPUESTO'; votingDeadline: string; windows: TimeWindowInput[] };
+
+// Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; se borran los votos.
+export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };
 
 // Propuesta con el nombre de su grupo (Inicio y /me/upcoming-plans).
 export type ProposalWithGroup = Proposal & { groupName: string };
@@ -172,7 +182,10 @@ export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
 export type PlanCategory = 'ESTUDIO' | 'REUNION' | 'COMIDA' | 'DEPORTE' | 'SALIDA' | 'OTRO';
 
 // Cuerpo de POST /groups/:id/ai/proposal-draft.
-export type ProposalDraftInput = { text: string };
+export type ProposalDraftInput = {
+  text: string;
+  week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); por defecto, esta semana y la siguiente
+};
 
 // Borrador para pre-rellenar «Nueva propuesta». No se guarda nada hasta que el usuario crea la propuesta.
 export type ProposalDraft = {
@@ -180,7 +193,7 @@ export type ProposalDraft = {
   category: PlanCategory;
   placeName: string | null;
   window: MatchWindow | null;      // dentro de un hueco real del grupo (GET /groups/:id/availability), recortado a lo pedido, o null
-  windows: MatchWindow[];          // 0–3 opciones para votar (la primera = `window`), con las mismas reglas
+  windows: MatchWindow[];          // 2–5 opciones para votar (la primera = `window`), con las mismas reglas
   votingDeadline: string;          // ISO futura sugerida (antes de la opción que llega primero)
 };
 

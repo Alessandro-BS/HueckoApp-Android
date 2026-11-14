@@ -3,7 +3,7 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { bearer, createProposal, DEADLINE, makeClock, makeTestApp, NOW, registerUser, setupSeedGroup, voteFor, windowOf } from './helpers';
+import { bearer, createProposal, DEADLINE, makeClock, makeTestApp, NOW, registerUser, setupSeedGroup, voteFor, win, windowOf } from './helpers';
 
 let app: Express;
 let clock: ReturnType<typeof makeClock>;
@@ -26,7 +26,8 @@ async function seedProposals() {
     title: 'Reunión de avance del proyecto',
     location: { name: 'Biblioteca central', latitude: null, longitude: null },
     votingDeadline: DEADLINE,
-    windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00' }],
+    // La segunda opción (lunes 08–10, 0 %) no suma horas de coincidencia.
+    windows: [win(3, '11:00', '13:00'), win(1, '08:00', '10:00')],
   });
   await vote(prop1, 3, yo.token);
   await vote(prop1, 3, ana.token);
@@ -40,11 +41,7 @@ async function seedProposals() {
     title: 'Repaso antes de la entrega',
     location: { name: 'Google Meet', latitude: null, longitude: null },
     votingDeadline: DEADLINE,
-    windows: [
-      { dayOfWeek: 2, startTime: '16:00', endTime: '18:00' },
-      { dayOfWeek: 4, startTime: '10:00', endTime: '12:00' },
-      { dayOfWeek: 5, startTime: '16:00', endTime: '18:00' },
-    ],
+    windows: [win(2, '16:00', '18:00'), win(4, '10:00', '12:00'), win(5, '16:00', '18:00')],
   });
   await vote(prop2, 2, ana.token);
   return { prop1, prop2 };
@@ -53,8 +50,8 @@ async function seedProposals() {
 describe('GET /api/me/dashboard', () => {
   it('con el mismo createdAt, el resumen del grupo sigue a la propuesta insertada después', async () => {
     // El reloj no avanza: ambas propuestas tienen exactamente el mismo createdAt y decide el orden de inserción.
-    await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00' }] });
-    await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [{ dayOfWeek: 5, startTime: '10:00', endTime: '12:00' }] });
+    await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [win(2, '16:00', '18:00'), win(7, '16:00', '18:00')] });
+    await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE, windows: [win(5, '10:00', '12:00'), win(7, '10:00', '12:00')] });
     expect(((await get('dashboard', yo.token)).body as Dashboard).groups[0].nextWindow).toMatchObject({ dayOfWeek: 5, startTime: '10:00' });
   });
 
@@ -64,7 +61,7 @@ describe('GET /api/me/dashboard', () => {
     expect((await request(app).post(`/api/proposals/${prop2.id}/cancel`).set(bearer(ana.token))).status).toBe(200);
     // prop1 está confirmada: se muestra su franja elegida (miércoles 11–13).
     expect(((await get('dashboard', yo.token)).body as Dashboard).groups[0].nextWindow).toEqual({
-      dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100,
+      date: '2026-10-07', dayOfWeek: 3, startTime: '11:00', endTime: '13:00', availabilityPercentage: 100,
     });
   });
 
@@ -96,14 +93,14 @@ describe('GET /api/me/dashboard', () => {
     const d: Dashboard = (await get('dashboard', yo.token)).body;
     // 8 y no 6: aquí el servidor calcula w_23 (viernes 16–18) al 100 %, no el 50 % fijo de Kotlin (B15).
     expect(d.metrics).toEqual({ activeGroups: 1, openVotes: 1, matchingHours: 8, totalBlocks: 2 });
-    expect(d.nextPlan).toMatchObject({ id: prop1.id, groupName: 'Proyecto Integrador', scheduledAt: new Date(2026, 8, 30, 11, 0).toISOString() });
+    expect(d.nextPlan).toMatchObject({ id: prop1.id, groupName: 'Proyecto Integrador', scheduledAt: '2026-10-07T16:00:00.000Z' });
     expect(d.nextPlan!.attendees.map((a) => [a.user.name, a.status])).toEqual([
       ['Usuario de Prueba', 'PUNTUAL'],
       ['Ana', 'NO_ASISTE'],
     ]);
     // D6: la propuesta más reciente del grupo es prop2 (martes 16–18, 100 %).
     expect(d.groups).toEqual([
-      { id: group.id, name: 'Proyecto Integrador', memberCount: 2, nextWindow: { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
+      { id: group.id, name: 'Proyecto Integrador', memberCount: 2, nextWindow: { date: '2026-10-06', dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 } },
     ]);
     expect(d.pendingVotes).toEqual([expect.objectContaining({ id: prop2.id, groupName: 'Proyecto Integrador', myVoteWindowId: null })]);
     expect(d.expressAlert).toMatchObject({ proposalId: prop1.id, kind: 'AVISO', who: 'Ana', canResolve: true });

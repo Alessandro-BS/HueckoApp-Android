@@ -24,8 +24,8 @@ async function groupWithProposals(count: number) {
       location: i % 2 === 0 ? { name: `Lugar ${i}`, latitude: -12.07, longitude: -77.08 } : null,
       votingDeadline: DEADLINE,
       windows: [
-        { dayOfWeek: 4, startTime: '10:00', endTime: '12:00', availabilityPercentage: 50 },
-        { dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
+        { date: '2026-10-01', startTime: '10:00', endTime: '12:00', availabilityPercentage: 50 },
+        { date: '2026-09-29', startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 },
       ],
       createdAt: new Date(NOW.getTime() - (count - i) * MINUTE).toISOString(),
     });
