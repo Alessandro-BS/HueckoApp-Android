@@ -53,6 +53,7 @@ export async function makeTestApp(options?: {
   codeRateLimit?: number;
   twoFactorRateLimit?: number;
   google?: GoogleVerifier;
+  brevoDailyLimit?: number;
 }): Promise<{ app: Express; db: Db; emails: FakeEmail }> {
   const db = options?.db ?? (await makeTestDb());
   const emails = fakeEmail();
@@ -77,6 +78,7 @@ export async function makeTestApp(options?: {
     codeRateLimit: options?.codeRateLimit ?? 10_000,
     twoFactorRateLimit: options?.twoFactorRateLimit,
     google: options?.google,
+    brevoDailyLimit: options?.brevoDailyLimit,
   });
   const client = options?.email ?? emails;
   if ('lastCodeTo' in client) emailsOf.set(app, client as FakeEmail);
@@ -184,21 +186,25 @@ export function fakePush(behaviour: FakePushBehaviour = 'ok'): FakePush {
   };
 }
 
-export type FakeEmail = EmailClient & { sent: EmailMessage[]; fail(next: boolean): void; lastCodeTo(email: string): string };
+export type FakeEmail = EmailClient & { sent: EmailMessage[]; attempted: EmailMessage[]; fail(next: boolean): void; lastCodeTo(email: string): string };
 
 /**
  * Correo falso, sin red: guarda cada mensaje en `sent`; con `fail(true)` los envíos lanzan EmailSendError (Brevo caído)
- * hasta `fail(false)`. `lastCodeTo` saca el código de 6 dígitos del asunto del último correo a ese destinatario.
+ * hasta `fail(false)`. `attempted` guarda todos los intentos, también los que fallaron (con el código que nunca llegó).
+ * `lastCodeTo` saca el código de 6 dígitos del asunto del último correo enviado a ese destinatario.
  */
 export function fakeEmail(): FakeEmail {
   const sent: EmailMessage[] = [];
+  const attempted: EmailMessage[] = [];
   let failing = false;
   return {
     sent,
+    attempted,
     fail(next) {
       failing = next;
     },
     async send(message) {
+      attempted.push(message);
       if (failing) throw new EmailSendError('Brevo respondió 503');
       sent.push(message);
     },

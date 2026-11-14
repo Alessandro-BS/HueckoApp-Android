@@ -142,22 +142,29 @@ describe('issueChallenge', () => {
     expect(warnLog).toHaveBeenCalledTimes(1);
   });
 
-  it('si Brevo falla: 503 EMAIL_SEND_FAILED, el reto sigue vivo con last_sent_at nulo y se reenvía sin esperar', async () => {
+  it('si Brevo falla: 503 EMAIL_SEND_FAILED, el reto sigue vivo con last_sent_at nulo, el envío fallido cuenta y se reenvía sin esperar', async () => {
     email.fail(true);
     await expectApiError(issueChallenge(deps, USER, 'VERIFY_EMAIL'), 503, 'EMAIL_SEND_FAILED');
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('VERIFY_EMAIL'), 'Brevo respondió 503'); // la causa queda en el log
     const live = await db.one<{ id: string; last_sent_at: string | null; consumed_at: string | null; send_count: number }>('SELECT * FROM auth_challenges');
-    expect(live).toMatchObject({ last_sent_at: null, consumed_at: null, send_count: 0 });
+    // El intento fallido cuenta para el límite diario: si no, con Brevo caído no habría tope de códigos por cuenta.
+    expect(live).toMatchObject({ last_sent_at: null, consumed_at: null, send_count: 1 });
     email.fail(false);
     await resendChallenge(deps, live!.id); // sin avanzar el reloj
+    expect(await row(live!.id)).toMatchObject({ send_count: 2, last_sent_at: START.toISOString() });
     expect(await verifyChallenge(deps, live!.id, email.lastCodeTo(USER.email))).toEqual({ userId: 'u1', purpose: 'VERIFY_EMAIL' });
   });
 
-  it('si Brevo falla con quiet: no lanza, registra la causa y devuelve resendAvailableAt = ahora + 60 s como si hubiera salido', async () => {
+  it('si Brevo falla con quiet: no lanza, registra la causa, consume el reto y devuelve uno falso con la misma forma', async () => {
     email.fail(true);
     const view = await issueChallenge(deps, USER, 'RESET_PASSWORD', { quiet: true });
-    expect(view).toMatchObject({ purpose: 'RESET_PASSWORD', emailHint: 'u***@correo.com', resendAvailableAt: later(60).toISOString() });
+    expect(view).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), purpose: 'RESET_PASSWORD', emailHint: 'u***@correo.com', resendAvailableAt: later(60).toISOString() });
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('RESET_PASSWORD'), 'Brevo respondió 503');
+    // El código que nunca llegó no se puede adivinar: el id devuelto no es el del reto guardado, que queda consumido.
+    const neverDelivered = email.attempted.at(-1)!.subject.match(/\d{6}/)![0];
+    await expectApiError(verifyChallenge(deps, view.id, neverDelivered), 410, 'CHALLENGE_EXPIRED');
+    expect(await db.many("SELECT id FROM auth_challenges WHERE purpose = 'RESET_PASSWORD' AND consumed_at IS NULL")).toEqual([]);
+    expect(await db.many('SELECT send_count FROM auth_challenges')).toEqual([{ send_count: 1 }]); // pero el envío cuenta
   });
 
   it('dos peticiones a la vez para la misma cuenta y propósito: el mismo reto, un solo correo y ningún error', async () => {
@@ -177,6 +184,52 @@ describe('issueChallenge', () => {
     const calls = recordQueries(db);
     await issueChallenge(deps, USER, 'VERIFY_EMAIL');
     expect(calls.find((c) => c.inTransaction)!.sql).toMatch(/FROM users WHERE id = \$1 FOR UPDATE/);
+  });
+});
+
+describe('cupo diario de Brevo (BREVO_DAILY_LIMIT, todas las cuentas)', () => {
+  const OTHER = { id: 'u2', email: 'otra@correo.com' };
+  beforeEach(async () => {
+    await db.query('INSERT INTO users (id, name, email) VALUES ($1, $2, $3)', [OTHER.id, 'Otra', OTHER.email]);
+    deps = { ...deps, brevoDailyLimit: 2 };
+    // Otra cuenta gasta el cupo: un reto nuevo y un reenvío.
+    const view = await issueChallenge(deps, OTHER, 'VERIFY_EMAIL');
+    clock.set(later(61));
+    await resendChallenge(deps, view.id);
+    expect(email.sent).toHaveLength(2);
+  });
+
+  it('con el cupo gastado, crear da 503 EMAIL_QUOTA_EXHAUSTED sin correo ni reto, y lo registra sin datos personales', async () => {
+    await expectApiError(issueChallenge(deps, USER, 'LOGIN_2FA'), 503, 'EMAIL_QUOTA_EXHAUSTED');
+    expect(email.attempted).toHaveLength(2);
+    expect(await db.many('SELECT id FROM auth_challenges WHERE user_id = $1', [USER.id])).toEqual([]);
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(errorLog.mock.calls)).not.toMatch(/correo\.com|u1/);
+  });
+
+  it('con quiet: no lanza, no envía y devuelve un reto falso con la misma forma', async () => {
+    const view = await issueChallenge(deps, USER, 'RESET_PASSWORD', { quiet: true });
+    expect(view).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), purpose: 'RESET_PASSWORD', emailHint: 'u***@correo.com', resendAvailableAt: later(61 + 60).toISOString() });
+    expect(email.attempted).toHaveLength(2);
+    expect(await db.many('SELECT id FROM auth_challenges WHERE user_id = $1', [USER.id])).toEqual([]);
+    await expectApiError(verifyChallenge(deps, view.id, '123456'), 410, 'CHALLENGE_EXPIRED');
+    expect(errorLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('reenviar con el cupo gastado da 503 EMAIL_QUOTA_EXHAUSTED y el código anterior sigue valiendo', async () => {
+    deps = { ...deps, brevoDailyLimit: 3 };
+    const view = await issueChallenge(deps, USER, 'VERIFY_EMAIL');
+    const code = email.lastCodeTo(USER.email);
+    clock.set(later(122));
+    await expectApiError(resendChallenge(deps, view.id), 503, 'EMAIL_QUOTA_EXHAUSTED');
+    expect(email.attempted).toHaveLength(3);
+    expect(await verifyChallenge(deps, view.id, code)).toEqual({ userId: 'u1', purpose: 'VERIFY_EMAIL' });
+  });
+
+  it('el cupo cuenta los retos creados en las últimas 24 h', async () => {
+    clock.set(later(24 * 3600 + 1));
+    await issueChallenge(deps, USER, 'LOGIN_2FA');
+    expect(email.sent).toHaveLength(3);
   });
 });
 

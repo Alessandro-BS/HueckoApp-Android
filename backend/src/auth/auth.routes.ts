@@ -49,11 +49,12 @@ export function authRouter({
   registerRateLimit = REGISTER_RATE_LIMIT_DEFAULT,
   codeRateLimit = CODE_RATE_LIMIT_DEFAULT,
   twoFactorRateLimit = TWO_FACTOR_RATE_LIMIT_DEFAULT,
+  brevoDailyLimit,
 }: ResolvedDeps) {
   const router = Router();
   const users = usersRepository(db);
   const devices = devicesRepository(db);
-  const challengeDeps: ChallengeDeps = { db, email: emailClient, secret: jwtSecret, now };
+  const challengeDeps: ChallengeDeps = { db, email: emailClient, secret: jwtSecret, now, brevoDailyLimit };
   // Contadores separados (D10): crear cuentas no gasta los intentos de entrar, ni al revés. Los códigos (verificar y
   // reenviar) tienen el suyo.
   const loginLimiter = authLimiter(loginRateLimit);
@@ -156,8 +157,9 @@ export function authRouter({
     res.json(sessionFor(account));
   });
 
-  // Siempre 202 { challenge }, exista o no la cuenta, falle o no Brevo, se pase o no el límite diario: no delata qué
-  // correos tienen cuenta. Sin cuenta, el reto es falso (nada se guarda ni se envía): verificarlo da 410 y reenviarlo 204.
+  // Siempre 202 { challenge }, exista o no la cuenta, falle o no Brevo, se pase o no el límite diario (o el cupo de
+  // Brevo): no delata qué correos tienen cuenta. Sin cuenta (o si el correo no salió), el reto es falso: verificarlo da
+  // 410 y reenviarlo 204.
   router.post('/password/forgot', codeLimiter, async (req, res) => {
     const { email } = forgotPasswordSchema.parse(req.body);
     const found = await users.findByEmail(email);

@@ -97,6 +97,7 @@ async function main() {
     cronSecret: env.CRON_SECRET,
     email,
     codeRateLimit: env.CODE_RATE_LIMIT,
+    brevoDailyLimit: env.BREVO_DAILY_LIMIT,
     google: env.GOOGLE_WEB_CLIENT_ID ? createGoogleVerifier(env.GOOGLE_WEB_CLIENT_ID) : undefined,
   }).listen(env.PORT, (error?: NodeJS.ErrnoException) => {
     // Express 5 llama a este callback también si no puede escuchar (p. ej. un puerto ocupado): sin tratarlo aquí,

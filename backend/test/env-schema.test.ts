@@ -87,4 +87,12 @@ describe('Brevo, Google y CODE_RATE_LIMIT (cuentas)', () => {
     expect(parseEnv({ ...BASE, CODE_RATE_LIMIT: '5' }).CODE_RATE_LIMIT).toBe(5);
     expect(() => parseEnv({ ...BASE, CODE_RATE_LIMIT: '0' })).toThrow();
   });
+
+  it('BREVO_DAILY_LIMIT: 280 por defecto (y si está vacío); acepta otro entero positivo y rechaza 0', () => {
+    expect(parseEnv(BASE).BREVO_DAILY_LIMIT).toBe(280);
+    expect(parseEnv({ ...BASE, BREVO_DAILY_LIMIT: '' }).BREVO_DAILY_LIMIT).toBe(280);
+    expect(parseEnv({ ...BASE, BREVO_DAILY_LIMIT: '100' }).BREVO_DAILY_LIMIT).toBe(100);
+    expect(() => parseEnv({ ...BASE, BREVO_DAILY_LIMIT: '0' })).toThrow();
+    expect(() => parseEnv({ ...BASE, BREVO_DAILY_LIMIT: '2.5' })).toThrow();
+  });
 });

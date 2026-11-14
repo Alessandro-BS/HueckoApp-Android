@@ -63,12 +63,12 @@ export function challengesRepository(db: Db) {
       return r && toRow(r);
     },
 
-    /** Bloquea la fila hasta el final de la transacción: los intentos simultáneos hacen cola en vez de contar por separado. */
-    /** De quién es el reto, sin candado: para bloquear la cuenta antes que el reto. */
+    /** De quién es el reto (sin candado): para bloquear la cuenta antes que el reto. */
     async ownerOf(id: string): Promise<string | undefined> {
       return (await db.one<{ user_id: string }>('SELECT user_id FROM auth_challenges WHERE id = $1', [id]))?.user_id;
     },
 
+    /** Bloquea la fila hasta el final de la transacción: los intentos simultáneos hacen cola en vez de contar por separado. */
     async findForUpdate(id: string): Promise<ChallengeRow | undefined> {
       const r = await db.one<DbRow>(`${SELECT} WHERE c.id = $1 FOR UPDATE OF c`, [id]);
       return r && toRow(r);
@@ -79,9 +79,12 @@ export function challengesRepository(db: Db) {
       await db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
     },
 
-    /** Deshace el envío anotado de un reto cuyo correo no salió. */
+    /**
+     * El correo no salió: borra last_sent_at (se puede reenviar sin esperar) pero deja send_count, así el intento fallido
+     * sigue contando para el límite diario de la cuenta y el cupo de Brevo (con Brevo caído no hay códigos ilimitados).
+     */
     async markUnsent(id: string): Promise<void> {
-      await db.query('UPDATE auth_challenges SET send_count = 0, last_sent_at = NULL WHERE id = $1', [id]);
+      await db.query('UPDATE auth_challenges SET last_sent_at = NULL WHERE id = $1', [id]);
     },
 
     async consume(id: string, now: string): Promise<void> {
@@ -108,6 +111,12 @@ export function challengesRepository(db: Db) {
     /** Correos enviados a ese usuario desde `sinceIso` (suma de send_count de sus retos creados desde entonces). */
     async emailsSentSince(userId: string, sinceIso: string): Promise<number> {
       const r = await db.one<{ n: number }>('SELECT COALESCE(SUM(send_count), 0)::int AS n FROM auth_challenges WHERE user_id = $1 AND created_at >= $2', [userId, sinceIso]);
+      return r?.n ?? 0;
+    },
+
+    /** Correos enviados (o intentados) a TODAS las cuentas desde `sinceIso`: para el cupo diario de Brevo. */
+    async allEmailsSentSince(sinceIso: string): Promise<number> {
+      const r = await db.one<{ n: number }>('SELECT COALESCE(SUM(send_count), 0)::int AS n FROM auth_challenges WHERE created_at >= $1', [sinceIso]);
       return r?.n ?? 0;
     },
   };

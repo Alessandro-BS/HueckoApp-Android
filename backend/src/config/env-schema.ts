@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { THINKING_LEVELS } from '../ai/ai-client';
 import { LOGIN_RATE_LIMIT_DEFAULT, REGISTER_RATE_LIMIT_DEFAULT } from '../auth/auth.routes';
+import { BREVO_DAILY_LIMIT_DEFAULT } from '../auth/challenge-rules';
 import { EXPRESS_VOTE_MINUTES_DEFAULT } from '../proposals/express-rules';
 import { trustProxySchema } from './trust-proxy';
 
@@ -87,6 +88,8 @@ const envSchema = z.object({
   BREVO_SENDER_NAME: emptyAsUndefined(z.string().trim().default('HueckoApp')),
   GOOGLE_WEB_CLIENT_ID: emptyAsUndefined(z.string().trim().optional()),
   CODE_RATE_LIMIT: emptyAsUndefined(z.coerce.number().int().positive().default(30)),
+  // Freno al cupo de Brevo (300/día en el plan gratis): correos con código en 24 h entre todas las cuentas.
+  BREVO_DAILY_LIMIT: emptyAsUndefined(z.coerce.number().int().positive().default(BREVO_DAILY_LIMIT_DEFAULT)),
 }).superRefine((env, ctx) => {
   // En producción (Render) el disco es efímero: una base PGlite se perdería en cada despliegue.
   if (env.NODE_ENV === 'production' && env.DATABASE_URL === '') {

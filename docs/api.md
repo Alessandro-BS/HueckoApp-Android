@@ -37,7 +37,7 @@ Todos los errores tienen la misma forma:
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`), quitarle el rol al último organizador de un grupo (`LAST_ORGANIZER`), un bloque del horario que se solapa con otro (`TIME_BLOCK_OVERLAP`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
 | 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20), en `/auth/register` (10) o con los códigos (`/auth/password/forgot`, `/auth/challenges/:id/verify` y `/resend`, 30), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
-| 400/410/429/503 | Códigos por correo: `CODE_INVALID`, `CHALLENGE_EXPIRED`, `RESEND_TOO_SOON`, `EMAIL_DAILY_LIMIT`, `EMAIL_SEND_FAILED` (ver «Autenticación» → «Códigos por correo») |
+| 400/410/429/503 | Códigos por correo: `CODE_INVALID`, `CHALLENGE_EXPIRED`, `RESEND_TOO_SOON`, `EMAIL_DAILY_LIMIT`, `EMAIL_SEND_FAILED`, `EMAIL_QUOTA_EXHAUSTED` (ver «Autenticación» → «Códigos por correo») |
 | 500 | Error inesperado del servidor |
 | 502 | `AI_BAD_RESPONSE`: la IA respondió algo que no cumple el formato esperado |
 | 503 | `AI_UNAVAILABLE`: la IA no respondió (proveedor caído o más de 30 s) |
@@ -114,14 +114,14 @@ type ChallengePurpose = 'VERIFY_EMAIL' | 'LOGIN_2FA' | 'RESET_PASSWORD' | 'ENABL
 Crea la cuenta **sin verificar**, manda el código `VERIFY_EMAIL` y responde `201 { "challenge": Challenge }` (sin token). La cuenta nace siempre con `role: "USER"` (un `role` en el cuerpo se ignora).
 - Correo que ya existe **sin verificar y sin Google** → en vez de `409` se reemplazan el nombre y la contraseña, se anulan los códigos pendientes y se manda uno nuevo (otro `id`, aunque no hayan pasado 60 s): `201 { challenge }`. Así nadie se queda con un correo ajeno registrándolo primero, y el código que ya tenía la dueña del correo no confirma la cuenta con la contraseña de otra persona.
 - Correo ya verificado (o vinculado a Google) → `409 EMAIL_TAKEN`.
-- `503 EMAIL_SEND_FAILED` o `429 EMAIL_DAILY_LIMIT` (ver «Códigos por correo»): la cuenta queda creada sin verificar; volver a registrarse con el mismo correo lo reintenta.
+- `503 EMAIL_SEND_FAILED`, `503 EMAIL_QUOTA_EXHAUSTED` o `429 EMAIL_DAILY_LIMIT` (ver «Códigos por correo»): la cuenta queda creada sin verificar; volver a registrarse con el mismo correo lo reintenta.
 
 ### `POST /auth/login`
 ```json
 { "email": "ana@correo.com", "password": "..." }
 ```
 - Cuenta verificada → `200 { "token": "<jwt>", "user": CurrentUser }`.
-- Cuenta sin verificar (y contraseña correcta) → `200 { "challenge": Challenge }` con `purpose: "VERIFY_EMAIL"` y un código nuevo en el correo (o el mismo reto si se mandó hace menos de 60 s). Puede dar `503 EMAIL_SEND_FAILED` o `429 EMAIL_DAILY_LIMIT`.
+- Cuenta sin verificar (y contraseña correcta) → `200 { "challenge": Challenge }` con `purpose: "VERIFY_EMAIL"` y un código nuevo en el correo (o el mismo reto si se mandó hace menos de 60 s). Puede dar `503 EMAIL_SEND_FAILED`, `503 EMAIL_QUOTA_EXHAUSTED` o `429 EMAIL_DAILY_LIMIT`.
 - Cuenta verificada con **verificación en dos pasos** activa (y contraseña correcta, no suspendida) → `200 { "challenge": Challenge }` con `purpose: "LOGIN_2FA"` y el código en el correo, **sin `token`**. Con contraseña incorrecta es `401` y no se manda ningún correo. Mismos `503`/`429` que arriba.
 - `401 INVALID_CREDENTIALS` · `403 ACCOUNT_SUSPENDED`.
 
@@ -142,7 +142,7 @@ Entra (o crea la cuenta) con un idToken de Google verificado en el servidor cont
 ```json
 { "email": "ana@correo.com" }
 ```
-**Siempre** `202 { "challenge": Challenge }` con `purpose: "RESET_PASSWORD"` (nunca trae `token`), exista o no una cuenta con ese correo, falle o no el envío (Brevo) y se haya pasado o no el límite diario: no revela qué correos tienen cuenta. `emailHint` sale del correo escrito y `resendAvailableAt` es ahora + 60 s. Si hay cuenta (también la creada solo con Google o sin verificar) se manda el código; si no, el reto es falso: no se guarda ni se envía nada, `verify` de ese id da `410` y `resend` da `204`. Un correo mal escrito es `400 VALIDATION_ERROR`; comparte el límite por IP de los códigos (`429 TOO_MANY_REQUESTS`).
+**Siempre** `202 { "challenge": Challenge }` con `purpose: "RESET_PASSWORD"` (nunca trae `token`), exista o no una cuenta con ese correo, falle o no el envío (Brevo) y se haya pasado o no el límite diario (de la cuenta o el cupo de Brevo): no revela qué correos tienen cuenta. `emailHint` sale del correo escrito y `resendAvailableAt` es ahora + 60 s. Si hay cuenta (también la creada solo con Google o sin verificar) se manda el código; si no, el reto es falso: no se guarda ni se envía nada, `verify` de ese id da `410` y `resend` da `204`. También es falso si el correo no salió (el reto real se anula: un código que nadie recibió no se puede adivinar) o si se pasó un límite. Un correo mal escrito es `400 VALIDATION_ERROR`; comparte el límite por IP de los códigos (`429 TOO_MANY_REQUESTS`).
 
 ### `POST /auth/challenges/:id/verify`
 ```json
@@ -159,7 +159,7 @@ Entra (o crea la cuenta) con un idToken de Google verificado en el servidor cont
 
 ### `POST /auth/challenges/:id/resend`
 Sin cuerpo. Manda un código nuevo (el anterior deja de valer, los intentos vuelven a 0 y el vencimiento se extiende) → `204`.
-`429 RESEND_TOO_SOON` con `details: { "retryAfterSeconds": n }` · `429 EMAIL_DAILY_LIMIT` · `503 EMAIL_SEND_FAILED` · `410 CHALLENGE_EXPIRED` (vencido, usado o ya se reenvió 5 veces). Un id que no existe en la base responde `204` sin enviar nada (así un reto falso de `/auth/password/forgot` no se delata).
+`429 RESEND_TOO_SOON` con `details: { "retryAfterSeconds": n }` · `429 EMAIL_DAILY_LIMIT` · `503 EMAIL_SEND_FAILED` · `503 EMAIL_QUOTA_EXHAUSTED` · `410 CHALLENGE_EXPIRED` (vencido, usado o ya se reenvió 5 veces). Un id que no existe en la base responde `204` sin enviar nada (así un reto falso de `/auth/password/forgot` no se delata).
 
 ### `POST /auth/me/2fa/enable`
 Requiere token. `PasswordInput`:
@@ -167,7 +167,7 @@ Requiere token. `PasswordInput`:
 { "password": "la contraseña actual" }
 ```
 Cuenta con contraseña correcta → `200 { "challenge": Challenge }` con `purpose: "ENABLE_2FA"` y el código en el correo; la app lo confirma con `POST /auth/challenges/:id/verify` mandando también el token (ver arriba), y entonces `twoFactorEnabled` pasa a `true`.
-- `400 WRONG_PASSWORD` (contraseña incorrecta; nunca `401`) · `409 PASSWORD_REQUIRED` (cuenta sin contraseña, creada con Google: primero debe crear una con «¿Olvidaste tu contraseña?») · `503 EMAIL_SEND_FAILED` · `429 EMAIL_DAILY_LIMIT` · `409 TWO_FACTOR_ALREADY_ENABLED` («La verificación en dos pasos ya está activada.»; se comprueba después de la contraseña, sin reto ni correo) · `429 TOO_MANY_REQUESTS` (límite propio, ver abajo) · `400 VALIDATION_ERROR` (falta `password`).
+- `400 WRONG_PASSWORD` (contraseña incorrecta; nunca `401`) · `409 PASSWORD_REQUIRED` (cuenta sin contraseña, creada con Google: primero debe crear una con «¿Olvidaste tu contraseña?») · `503 EMAIL_SEND_FAILED` · `503 EMAIL_QUOTA_EXHAUSTED` · `429 EMAIL_DAILY_LIMIT` · `409 TWO_FACTOR_ALREADY_ENABLED` («La verificación en dos pasos ya está activada.»; se comprueba después de la contraseña, sin reto ni correo) · `429 TOO_MANY_REQUESTS` (límite propio, ver abajo) · `400 VALIDATION_ERROR` (falta `password`).
 - No cambia la versión de sesión: el token actual sigue valiendo.
 
 ### `POST /auth/me/2fa/disable`
@@ -180,7 +180,9 @@ Requiere token. Mismo cuerpo `PasswordInput`. Contraseña correcta → desactiva
 - Reenvío cada **60 s** como mucho, y como mucho **5 envíos** por reto.
 - Como mucho **10 correos por cuenta cada 24 h** (todos los propósitos) → `429 EMAIL_DAILY_LIMIT` («Ya te enviamos muchos códigos hoy. Inténtalo mañana.»).
 - Pedir un código otra vez al entrar (login) antes de 60 s reutiliza el reto vivo sin mandar otro correo. Registrarse otra vez sobre un correo sin verificar nunca lo reutiliza (ver `POST /auth/register`).
-- Si el correo no sale: `503 EMAIL_SEND_FAILED` («No pudimos enviar el correo. Intenta reenviar el código en un momento.»); el reto queda vivo y se puede reenviar sin esperar.
+- Si el correo no sale: `503 EMAIL_SEND_FAILED` («No pudimos enviar el correo. Intenta reenviar el código en un momento.»); el reto queda vivo y se puede reenviar sin esperar. El envío fallido **cuenta** para los 10 diarios de la cuenta y para el cupo de Brevo.
+- Cupo global: como mucho `BREVO_DAILY_LIMIT` correos (280 por defecto, bajo los 300/día del plan gratis de Brevo) **entre todas las cuentas** cada 24 h → `503 EMAIL_QUOTA_EXHAUSTED` («Hoy no podemos enviar más códigos. Inténtalo mañana.») al crear o reenviar un reto (en `forgot`, un reto falso con `202`). Con peticiones simultáneas puede pasarse por uno o dos correos.
+- Las 24 h (de ambos límites) se cuentan por la creación del reto: los reenvíos de un reto suman a la ventana del día en que se creó.
 - `forgot`, `verify` y `resend` comparten un límite por IP (`CODE_RATE_LIMIT`, 30 cada 15 min) → `429 TOO_MANY_REQUESTS`.
 
 ### `GET /auth/me`

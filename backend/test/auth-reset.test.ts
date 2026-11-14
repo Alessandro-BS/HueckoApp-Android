@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 
 import type { Db } from '../src/db/db';
@@ -130,6 +130,50 @@ describe('forgot no delata cuentas (Review Focus 3)', () => {
     const fake = await forgot(app, 'nadie@correo.com');
     expect(real.status).toBe(202);
     expect(shape(real.body)).toEqual({ ...shape(fake.body), emailHint: 'a***@correo.com' });
+  });
+
+  it('con Brevo caído, 11 forgots seguidos: ningún código que no llegó sirve (todo 410) y la cuenta llega a su límite diario', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { app, db, emails } = await makeTestApp({ now: () => NOW });
+      const { user } = await registerUser(app, { email: 'ana@correo.com' });
+      const sentBefore = await db.one<{ n: number }>('SELECT COALESCE(SUM(send_count), 0)::int AS n FROM auth_challenges WHERE user_id = $1', [user.id]);
+      emails.fail(true);
+      const attemptsBefore = emails.attempted.length;
+      for (let i = 0; i < 11; i++) {
+        const res = await forgot(app, 'ana@correo.com');
+        expect(res.status).toBe(202);
+        const attempted = emails.attempted.slice(attemptsBefore);
+        // El código que se intentó mandar en esta petición (si llegó a intentarse) no abre el reto devuelto.
+        const code = attempted.length > 0 ? attempted.at(-1)!.subject.match(/\d{6}/)![0] : '123456';
+        expect((await verify(app, res.body.challenge.id, { code, newPassword: 'contrasena-nueva' })).status).toBe(410);
+      }
+      // 1 correo del registro + 9 intentos fallidos = 10: el 11.º forgot ya ni intenta enviar.
+      expect(emails.attempted.length - attemptsBefore).toBe(10 - sentBefore!.n);
+      const total = await db.one<{ n: number }>('SELECT COALESCE(SUM(send_count), 0)::int AS n FROM auth_challenges WHERE user_id = $1', [user.id]);
+      expect(total!.n).toBe(10);
+      expect(await db.many("SELECT id FROM auth_challenges WHERE purpose = 'RESET_PASSWORD' AND consumed_at IS NULL")).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('con el cupo diario de Brevo gastado (todas las cuentas), forgot responde 202 con la misma forma y sin correo', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { app, emails } = await makeTestApp({ now: () => NOW, brevoDailyLimit: 1 });
+      await registerUser(app, { email: 'ana@correo.com' }); // gasta el único correo del día
+      const before = emails.attempted.length;
+      const real = await forgot(app, 'ana@correo.com');
+      const fake = await forgot(app, 'nadie@correo.com');
+      expect(real.status).toBe(202);
+      expect(emails.attempted.length).toBe(before);
+      expect(shape(real.body)).toEqual({ ...shape(fake.body), emailHint: 'a***@correo.com' });
+      expect((await verify(app, real.body.challenge.id, { code: '123456', newPassword: 'contrasena-nueva' })).status).toBe(410);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('con el límite diario agotado, el correo existente responde 202 con la misma forma', async () => {

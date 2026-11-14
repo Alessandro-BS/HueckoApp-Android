@@ -59,6 +59,8 @@ export type AppDeps = {
   twoFactorRateLimit?: number;
   // Verificador de idTokens de Google. Sin él (no hay GOOGLE_WEB_CLIENT_ID), POST /auth/google responde 503.
   google?: GoogleVerifier;
+  // Correos con código en 24 h entre todas las cuentas (BREVO_DAILY_LIMIT; 280 si se omite); las pruebas lo bajan.
+  brevoDailyLimit?: number;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
