@@ -108,3 +108,7 @@ jest.mock('expo-file-system', () => {
   }
   return { File: MockFile, Paths: { cache: { uri: 'file:///cache/' } }, __writes: mockWrites, __encodings: mockEncodings };
 });
+
+// TanStack Query avisa a los componentes en un setTimeout(0); en los tests, al momento, para que act() lo incluya.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require('@tanstack/react-query').notifyManager.setScheduler((callback: () => void) => callback());

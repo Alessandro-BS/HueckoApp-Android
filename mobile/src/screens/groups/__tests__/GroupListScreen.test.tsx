@@ -6,6 +6,7 @@ import * as groupsApi from '../../../api/groups';
 import { useRefreshOnFocus } from '../../../hooks/useRefreshOnFocus';
 import { showToast } from '../../../utils/toast';
 import { GroupListScreen } from '../GroupListScreen';
+import { withQueryClient } from '../../../testing/queryClient';
 
 jest.mock('../../../api/groups');
 jest.mock('../../../utils/toast', () => ({ showToast: jest.fn() }));
@@ -15,7 +16,7 @@ const mocked = groupsApi as jest.Mocked<typeof groupsApi>;
 const navigation = { navigate: jest.fn() } as any;
 const summary: GroupSummary = { id: 'g1', name: 'Proyecto Integrador', description: '', memberCount: 1, availabilityThreshold: 80 };
 const group = (over: Partial<Group>): Group => ({ ...summary, inviteCode: 'PROY2026', members: [], ...over });
-const renderScreen = () => render(<GroupListScreen navigation={navigation} route={{} as any} />);
+const renderScreen = () => render(<GroupListScreen navigation={navigation} route={{} as any} />, withQueryClient());
 
 beforeEach(() => jest.clearAllMocks());
 

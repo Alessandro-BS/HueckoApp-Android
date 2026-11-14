@@ -6,6 +6,7 @@ import * as groupsApi from '../../api/groups';
 import { useAvailability } from '../useAvailability';
 import { useGroup } from '../useGroup';
 import { useGroups } from '../useGroups';
+import { withQueryClient } from '../../testing/queryClient';
 
 jest.mock('../../api/groups');
 const mocked = groupsApi as jest.Mocked<typeof groupsApi>;
@@ -20,7 +21,7 @@ beforeEach(() => jest.clearAllMocks());
 describe('useGroups', () => {
   it('carga mis grupos', async () => {
     mocked.listGroups.mockResolvedValue([summary]);
-    const { result } = await renderHook(() => useGroups());
+    const { result } = await renderHook(() => useGroups(), withQueryClient());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.groups).toEqual([summary]);
   });
@@ -28,7 +29,7 @@ describe('useGroups', () => {
   it('loaded distingue «sin cargar» de «cargado y vacío»', async () => {
     let finish!: (groups: GroupSummary[]) => void;
     mocked.listGroups.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    const { result } = await renderHook(() => useGroups());
+    const { result } = await renderHook(() => useGroups(), withQueryClient());
     expect(result.current.loaded).toBe(false);
     await act(async () => finish([]));
     expect(result.current.groups).toEqual([]);
@@ -38,7 +39,7 @@ describe('useGroups', () => {
   it('create recorta el nombre, crea y añade el resumen a la lista', async () => {
     mocked.listGroups.mockResolvedValue([]);
     mocked.createGroup.mockResolvedValue(group({ id: 'g2', name: 'Estudio', memberCount: 1, members: [owner] }));
-    const { result } = await renderHook(() => useGroups());
+    const { result } = await renderHook(() => useGroups(), withQueryClient());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
@@ -55,7 +56,7 @@ describe('useGroups', () => {
     mocked.joinGroup
       .mockResolvedValueOnce(group())
       .mockRejectedValueOnce(new ApiError(409, 'ALREADY_MEMBER', 'Ya perteneces a este grupo.'));
-    const { result } = await renderHook(() => useGroups());
+    const { result } = await renderHook(() => useGroups(), withQueryClient());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
@@ -74,7 +75,7 @@ describe('useGroup', () => {
   it('setEssential actualiza solo a ese miembro', async () => {
     mocked.getGroup.mockResolvedValue(group());
     mocked.setMemberEssential.mockResolvedValue({ ...ana, isEssential: true });
-    const { result } = await renderHook(() => useGroup('g1'));
+    const { result } = await renderHook(() => useGroup('g1'), withQueryClient());
     await waitFor(() => expect(result.current.group).toBeDefined());
 
     await act(async () => result.current.setEssential('u2', true));
@@ -85,16 +86,29 @@ describe('useGroup', () => {
   it('leave llama a la API con el id del grupo', async () => {
     mocked.getGroup.mockResolvedValue(group());
     mocked.leaveGroup.mockResolvedValue();
-    const { result } = await renderHook(() => useGroup('g1'));
+    const { result } = await renderHook(() => useGroup('g1'), withQueryClient());
     await act(async () => result.current.leave());
     expect(mocked.leaveGroup).toHaveBeenCalledWith('g1');
+  });
+
+  it('al salir, el grupo desaparece de «Mis grupos» sin recargar la lista', async () => {
+    mocked.listGroups.mockResolvedValue([summary, { ...summary, id: 'g2', name: 'Estudio' }]);
+    mocked.getGroup.mockResolvedValue(group());
+    mocked.leaveGroup.mockResolvedValue();
+    const queries = withQueryClient();
+    const list = await renderHook(() => useGroups(), queries);
+    await waitFor(() => expect(list.result.current.groups).toHaveLength(2));
+    const detail = await renderHook(() => useGroup('g1'), queries);
+    await act(async () => detail.result.current.leave());
+    expect(list.result.current.groups.map((g) => g.id)).toEqual(['g2']);
+    expect(mocked.listGroups).toHaveBeenCalledTimes(1);
   });
 
   it('un setEssential que termina después de cambiar de grupo no toca el grupo nuevo', async () => {
     mocked.getGroup.mockImplementation(async (id) => group({ id }));
     let finishSetEssential!: (member: GroupMember) => void;
     mocked.setMemberEssential.mockReturnValue(new Promise((resolve) => (finishSetEssential = resolve)));
-    const { result, rerender } = await renderHook(({ id }: { id: string }) => useGroup(id), { initialProps: { id: 'g1' } });
+    const { result, rerender } = await renderHook(({ id }: { id: string }) => useGroup(id), { initialProps: { id: 'g1' }, ...withQueryClient() });
     await waitFor(() => expect(result.current.group?.id).toBe('g1'));
 
     let pending!: Promise<void>;
@@ -114,7 +128,7 @@ describe('useGroup', () => {
 
   it('vuelve a cargar si cambia el id', async () => {
     mocked.getGroup.mockImplementation(async (id) => group({ id }));
-    const { result, rerender } = await renderHook(({ id }: { id: string }) => useGroup(id), { initialProps: { id: 'g1' } });
+    const { result, rerender } = await renderHook(({ id }: { id: string }) => useGroup(id), { initialProps: { id: 'g1' }, ...withQueryClient() });
     await waitFor(() => expect(result.current.group?.id).toBe('g1'));
     await rerender({ id: 'g2' });
     await waitFor(() => expect(result.current.group?.id).toBe('g2'));

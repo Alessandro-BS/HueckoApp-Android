@@ -11,6 +11,7 @@ import { dashboardCache } from '../../../storage/appStorage';
 import { makeDashboard, makeProposal } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { DashboardScreen } from '../DashboardScreen';
+import { withQueryClient } from '../../../testing/queryClient';
 
 jest.mock('../../../api/dashboard');
 jest.mock('../../../api/groups');
@@ -39,7 +40,7 @@ const SEED_BLOCKS = [
   block({ id: 'b1', label: 'Clase de Android', dayOfWeek: 1 }),
   block({ id: 'b2', label: 'Trabajo Part-time', dayOfWeek: 3, startTime: '14:00', endTime: '16:00' }),
 ];
-const renderScreen = () => render(<DashboardScreen navigation={navigation} route={{} as any} />);
+const renderScreen = () => render(<DashboardScreen navigation={navigation} route={{} as any} />, withQueryClient());
 
 beforeEach(async () => {
   jest.clearAllMocks();

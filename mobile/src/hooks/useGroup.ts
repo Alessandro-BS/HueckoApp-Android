@@ -1,12 +1,16 @@
+import type { GroupSummary } from '@hueckoapp/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { getGroup, leaveGroup, setMemberEssential } from '../api/groups';
-import { useResource } from './useResource';
+import { queryKeys } from '../api/queryClient';
+import { useApiQuery } from './useApiQuery';
 
 // Detalle de un grupo con sus miembros.
 export function useGroup(groupId: string) {
   const load = useCallback(() => getGroup(groupId), [groupId]);
-  const { data, loading, refreshing, error, reload, mutate } = useResource(load);
+  const queryClient = useQueryClient();
+  const { data, loading, refreshing, error, reload, mutate } = useApiQuery(queryKeys.group(groupId), load);
 
   // Lanza si falla.
   const setEssential = useCallback(
@@ -17,7 +21,11 @@ export function useGroup(groupId: string) {
     [groupId, mutate],
   );
 
-  const leave = useCallback(() => leaveGroup(groupId), [groupId]);
+  // Lanza si falla. Si sale bien, el grupo desaparece ya de «Mis grupos» (sin esperar a recargar la lista).
+  const leave = useCallback(async () => {
+    await leaveGroup(groupId);
+    queryClient.setQueryData<GroupSummary[]>(queryKeys.groups, (prev) => prev?.filter((g) => g.id !== groupId));
+  }, [groupId, queryClient]);
 
   return { group: data, loading, refreshing, error, reload, setEssential, leave };
 }
