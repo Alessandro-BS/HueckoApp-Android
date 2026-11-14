@@ -6,7 +6,8 @@ import { loginRequest, meRequest, registerRequest, type AuthResponse } from '../
 import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
 import { queryClient } from '../api/queryClient';
 import { tokenStorage } from '../auth/tokenStorage';
-import { dashboardCache, lastEmailStorage, sessionUserStorage } from '../storage/appStorage';
+import { registerDevice, unregisterDevice } from '../notifications/registration';
+import { dashboardCache, lastEmailStorage, notificationsPreference, pushTokenStorage, sessionUserStorage } from '../storage/appStorage';
 import { showToast } from '../utils/toast';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
@@ -19,6 +20,11 @@ type AuthContextValue = {
   logout: () => Promise<void>;
 };
 
+// Registra el celular para los avisos si la persona no los apagó en Perfil (la preferencia es del celular).
+const registerIfEnabled = async () => {
+  if (await notificationsPreference.get()) await registerDevice();
+};
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -26,11 +32,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
 
   const logout = useCallback(async () => {
+    // Antes de soltar el JWT: el DELETE lo necesita. Si la sesión ya venció (401), falla y se ignora.
+    await unregisterDevice().catch(() => undefined);
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');
     queryClient.clear(); // la caché de TanStack Query es de esta cuenta
-    await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll()]);
+    await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll(), pushTokenStorage.clear()]);
   }, []);
 
   const startSession = useCallback(async ({ token, user }: AuthResponse) => {
@@ -39,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(token);
     setUser(user);
     setStatus('signedIn');
+    void registerIfEnabled();
   }, []);
 
   // Al abrir la app: si hay token guardado, comprobar que siga siendo válido.
@@ -57,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(me);
           setStatus('signedIn');
           void sessionUserStorage.set(me);
+          void registerIfEnabled();
         }
       } catch (e) {
         if (cancelled) return;
