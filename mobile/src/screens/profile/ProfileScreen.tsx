@@ -2,18 +2,61 @@ import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { Avatar, HueckoCard, SecondaryButton } from '../../components';
+import { disable2faRequest, enable2faRequest } from '../../api/auth';
+import { ApiError, errorMessage } from '../../api/client';
+import { AppDialog, Avatar, HueckoCard, SecondaryButton, TextField } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useAppActive } from '../../hooks/useAppActive';
+import type { DrawerScreen } from '../../navigation/types';
 import { isExpoGo, registerDevice, unregisterDevice } from '../../notifications/registration';
 import { notificationsPreference } from '../../storage/appStorage';
 import { categoryColor, colors, typography } from '../../theme';
+import { showToast } from '../../utils/toast';
 
-export function ProfileScreen() {
-  const { user, logout } = useAuth();
+export function ProfileScreen({ navigation }: DrawerScreen<'Profile'>) {
+  const { user, logout, refreshUser } = useAuth();
   const expoGo = isExpoGo();
   const [enabled, setEnabled] = useState(false);
   const [denied, setDenied] = useState(false);
+
+  // Verificación en dos pasos: activar o desactivar pide la contraseña en un diálogo.
+  const [twoFactorDialog, setTwoFactorDialog] = useState<'enable' | 'disable' | null>(null);
+  const [password, setPassword] = useState('');
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [dialogLoading, setDialogLoading] = useState(false);
+
+  const closeDialog = () => {
+    setTwoFactorDialog(null);
+    setPassword('');
+    setDialogError(null);
+  };
+
+  const confirmTwoFactor = async () => {
+    if (!twoFactorDialog || dialogLoading) return;
+    setDialogError(null);
+    setDialogLoading(true);
+    try {
+      if (twoFactorDialog === 'enable') {
+        const { challenge } = await enable2faRequest(password);
+        closeDialog();
+        navigation.navigate('EnableTwoFactor', { challenge });
+      } else {
+        await disable2faRequest(password);
+        closeDialog();
+        await refreshUser().catch(() => undefined);
+        showToast('Verificación en dos pasos desactivada.');
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'TWO_FACTOR_ALREADY_ENABLED') {
+        closeDialog();
+        await refreshUser().catch(() => undefined);
+      } else {
+        setDialogError(errorMessage(e));
+      }
+    } finally {
+      setDialogLoading(false);
+    }
+  };
 
   const active = useAppActive();
 
@@ -93,6 +136,52 @@ export function ProfileScreen() {
           </>
         ) : null}
       </HueckoCard>
+      <HueckoCard>
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <Text style={[typography.titleMedium, { color: colors.onSurface }]}>Verificación en dos pasos</Text>
+            <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
+              {user?.hasPassword
+                ? 'Al iniciar sesión te pedimos un código que enviamos a tu correo.'
+                : 'Para activarla, primero crea una contraseña con «¿Olvidaste tu contraseña?».'}
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Verificación en dos pasos"
+            value={user?.twoFactorEnabled ?? false}
+            disabled={!user?.hasPassword}
+            onValueChange={(value) => setTwoFactorDialog(value ? 'enable' : 'disable')}
+          />
+        </View>
+      </HueckoCard>
+      {twoFactorDialog ? (
+        <AppDialog
+          title={twoFactorDialog === 'enable' ? 'Activar verificación en dos pasos' : 'Desactivar verificación en dos pasos'}
+          confirmLabel={twoFactorDialog === 'enable' ? 'Continuar' : 'Desactivar'}
+          confirmDisabled={password.length === 0}
+          loading={dialogLoading}
+          onConfirm={() => void confirmTwoFactor()}
+          onDismiss={closeDialog}
+        >
+          <TextField
+            label="Contraseña"
+            value={password}
+            onChangeText={(t) => {
+              setPassword(t);
+              setDialogError(null);
+            }}
+            placeholder="Tu contraseña actual"
+            leadingIcon="lock-outline"
+            error={dialogError ?? undefined}
+            secureToggle
+            autoCapitalize="none"
+            autoComplete="password"
+            textContentType="password"
+            returnKeyType="done"
+            onSubmitEditing={() => void confirmTwoFactor()}
+          />
+        </AppDialog>
+      ) : null}
       <HueckoCard containerColor={colors.surfaceContainer} borderColor={colors.surfaceContainer}>
         <Text style={[typography.titleMedium, { color: colors.onSurface }]}>Próximamente</Text>
         <View style={{ height: 6 }} />

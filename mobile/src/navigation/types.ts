@@ -43,6 +43,8 @@ export type AppStackParamList = {
   // Administración (solo rol ADMIN): detalles que se abren desde las pestañas Usuarios y Grupos.
   AdminUserDetail: { userId: string; name: string };
   AdminGroupDetail: { groupId: string; name: string };
+  // Código del correo para activar la verificación en dos pasos (se abre desde Perfil).
+  EnableTwoFactor: { challenge: Challenge };
 };
 
 // Pestañas del detalle de grupo.

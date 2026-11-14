@@ -51,9 +51,11 @@
         }
       ],
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
+      "googleWebClientId": "",
       "eas": {
         "projectId": "daa0c4c3-0ec4-4a5c-86d8-28fd2605fc3d"
       }

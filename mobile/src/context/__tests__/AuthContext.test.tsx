@@ -7,12 +7,14 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import * as authApi from '../../api/auth';
 import { api, ApiError } from '../../api/client';
+import * as googleSignIn from '../../auth/googleSignIn';
 import { dashboardCache, lastEmailStorage, notificationsPreference, pushTokenStorage, sessionUserStorage } from '../../storage/appStorage';
 import { showToast } from '../../utils/toast';
 import { makeDashboard } from '../../testing/fixtures';
 import { AuthProvider, useAuth } from '../AuthContext';
 
 jest.mock('../../api/auth');
+jest.mock('../../auth/googleSignIn', () => ({ getGoogleIdToken: jest.fn(), signOutGoogle: jest.fn(async () => undefined) }));
 jest.mock('../../utils/toast', () => ({ showToast: jest.fn() }));
 jest.mock('../../notifications/registration', () => ({
   registerDevice: jest.fn(async () => 'registered'),
@@ -355,4 +357,56 @@ it('completeChallenge guarda el token e inicia sesión', async () => {
   expect(mocked.verifyChallengeRequest).toHaveBeenCalledWith('c1', '123456', undefined);
   expect(result.current.status).toBe('signedIn');
   expect(await SecureStore.getItemAsync('hueckoapp.token')).toBe('tok-codigo');
+});
+
+it('logout cierra la cuenta de Google sin esperar a que termine', async () => {
+  mocked.loginRequest.mockResolvedValue({ token: 'nuevo', user: ana });
+  jest.mocked(googleSignIn.signOutGoogle).mockReturnValue(new Promise(() => undefined)); // nunca termina
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedOut'));
+  await act(() => result.current.login('ana@correo.com', 'contrasena-segura'));
+  await act(() => result.current.logout());
+  expect(googleSignIn.signOutGoogle).toHaveBeenCalled();
+  expect(result.current.status).toBe('signedOut');
+});
+
+describe('loginWithGoogle', () => {
+  it('con idToken llama a googleRequest e inicia sesión', async () => {
+    jest.mocked(googleSignIn.getGoogleIdToken).mockResolvedValue('idt');
+    mocked.googleRequest.mockResolvedValue({ token: 'tok-google', user: ana });
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.loginWithGoogle();
+    });
+    expect(ok).toBe(true);
+    expect(mocked.googleRequest).toHaveBeenCalledWith('idt');
+    expect(result.current.status).toBe('signedIn');
+    expect(await SecureStore.getItemAsync('hueckoapp.token')).toBe('tok-google');
+  });
+
+  it('si se cancela devuelve false y no llama al servidor', async () => {
+    jest.mocked(googleSignIn.getGoogleIdToken).mockResolvedValue(null);
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('signedOut'));
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.loginWithGoogle();
+    });
+    expect(ok).toBe(false);
+    expect(mocked.googleRequest).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('signedOut');
+  });
+});
+
+it('refreshUser vuelve a pedir el usuario y lo guarda', async () => {
+  await SecureStore.setItemAsync('hueckoapp.token', 'tok');
+  mocked.meRequest.mockResolvedValue(ana);
+  const { result } = await renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.status).toBe('signedIn'));
+  mocked.meRequest.mockResolvedValue({ ...ana, twoFactorEnabled: true });
+  await act(() => result.current.refreshUser());
+  expect(result.current.user?.twoFactorEnabled).toBe(true);
+  expect((await sessionUserStorage.get())?.twoFactorEnabled).toBe(true);
 });

@@ -2,9 +2,10 @@ import type { Challenge, CurrentUser } from '@hueckoapp/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
-import { loginRequest, meRequest, registerRequest, verifyChallengeRequest, type AuthResponse, type AuthResult } from '../api/auth';
+import { googleRequest, loginRequest, meRequest, registerRequest, verifyChallengeRequest, type AuthResponse, type AuthResult } from '../api/auth';
 import { ApiError, setAuthToken, setNotAdminHandler, setUnauthorizedHandler } from '../api/client';
 import { queryClient } from '../api/queryClient';
+import { getGoogleIdToken, signOutGoogle } from '../auth/googleSignIn';
 import { tokenStorage } from '../auth/tokenStorage';
 import { registerDevice, unregisterDevice } from '../notifications/registration';
 import { dashboardCache, lastEmailStorage, notificationsPreference, pushTokenStorage, sessionUserStorage } from '../storage/appStorage';
@@ -20,6 +21,10 @@ type AuthContextValue = {
   register: (name: string, email: string, password: string) => Promise<Challenge | null>;
   /** Confirma el código del correo e inicia la sesión con la respuesta. */
   completeChallenge: (id: string, code: string, newPassword?: string) => Promise<void>;
+  /** Entra con Google. false si la persona canceló (sin error visible); lanza si algo falla. */
+  loginWithGoogle: () => Promise<boolean>;
+  /** Vuelve a pedir el usuario al servidor (p. ej. tras activar o desactivar el 2FA). */
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -45,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');
+    void signOutGoogle(); // sin esperar: nunca bloquea el cierre de sesión
     queryClient.clear(); // la caché de TanStack Query es de esta cuenta
     await Promise.all([tokenStorage.clear(), sessionUserStorage.clear(), dashboardCache.clearAll(), pushTokenStorage.clear()]);
   }, []);
@@ -157,6 +163,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeChallenge: async (id, code, newPassword) => {
         const session = await verifyChallengeRequest(id, code, newPassword);
         if (session) await startSession(session);
+      },
+      loginWithGoogle: async () => {
+        const idToken = await getGoogleIdToken();
+        if (!idToken) return false;
+        await startSession(await googleRequest(idToken));
+        return true;
+      },
+      refreshUser: async () => {
+        const me = await meRequest();
+        setUser(me);
+        await sessionUserStorage.set(me);
       },
       logout,
     }),

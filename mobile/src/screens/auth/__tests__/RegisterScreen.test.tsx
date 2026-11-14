@@ -1,9 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
+import { ApiError } from '../../../api/client';
+import * as googleSignIn from '../../../auth/googleSignIn';
 import { RegisterScreen } from '../RegisterScreen';
 
 const mockRegister = jest.fn();
-jest.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ register: mockRegister }) }));
+const mockLoginWithGoogle = jest.fn();
+jest.mock('../../../auth/googleSignIn', () => ({ isGoogleSignInAvailable: jest.fn(() => true) }));
+const googleAvailable = jest.mocked(googleSignIn.isGoogleSignInAvailable);
+jest.mock('../../../context/AuthContext', () => ({ useAuth: () => ({ register: mockRegister, loginWithGoogle: mockLoginWithGoogle }) }));
 const navigation = { goBack: jest.fn() } as any;
 
 it('valida nombre, correo y contraseña', async () => {
@@ -41,4 +46,38 @@ it('si el servidor pide verificar el correo navega a VerifyCode con el reto', as
   await fireEvent.changeText(screen.getByPlaceholderText('Al menos 8 caracteres'), 'contrasena-segura');
   await fireEvent.press(screen.getByText('Registrarme'));
   await waitFor(() => expect(nav.navigate).toHaveBeenCalledWith('VerifyCode', { challenge }));
+});
+
+describe('Continuar con Google', () => {
+  beforeEach(() => {
+    mockLoginWithGoogle.mockReset();
+    googleAvailable.mockReturnValue(true);
+  });
+
+  it('el botón se ve solo si Google está disponible', async () => {
+    await render(<RegisterScreen navigation={navigation} route={{} as any} />);
+    expect(screen.getByText('Continuar con Google')).toBeTruthy();
+    await screen.unmount();
+    googleAvailable.mockReturnValue(false);
+    await render(<RegisterScreen navigation={navigation} route={{} as any} />);
+    expect(screen.queryByText('Continuar con Google')).toBeNull();
+  });
+
+  it('tocarlo llama a loginWithGoogle', async () => {
+    mockLoginWithGoogle.mockResolvedValue(true);
+    await render(<RegisterScreen navigation={navigation} route={{} as any} />);
+    await fireEvent.press(screen.getByText('Continuar con Google'));
+    await waitFor(() => expect(mockLoginWithGoogle).toHaveBeenCalledTimes(1));
+  });
+
+  it('cancelar no muestra error y un error del servidor sí', async () => {
+    mockLoginWithGoogle.mockResolvedValueOnce(false);
+    await render(<RegisterScreen navigation={navigation} route={{} as any} />);
+    await fireEvent.press(screen.getByText('Continuar con Google'));
+    await waitFor(() => expect(mockLoginWithGoogle).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert')).toBeNull();
+    mockLoginWithGoogle.mockRejectedValueOnce(new ApiError(503, 'GOOGLE_NOT_CONFIGURED', 'Google no está configurado.'));
+    await fireEvent.press(screen.getByText('Continuar con Google'));
+    expect(await screen.findByText('Google no está configurado.')).toBeTruthy();
+  });
 });

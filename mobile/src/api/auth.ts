@@ -27,3 +27,14 @@ export const forgotPasswordRequest = async (email: string) =>
   (await api.post<{ challenge: Challenge }>('/auth/password/forgot', { email })).data;
 
 export const meRequest = async () => (await api.get<CurrentUser>('/auth/me')).data;
+
+/** Entra (o crea la cuenta) con el idToken de Google. */
+export const googleRequest = async (idToken: string) => (await api.post<AuthResponse>('/auth/google', { idToken })).data;
+
+/** Pide la contraseña y envía el código para activar la verificación en dos pasos (reto ENABLE_2FA). */
+export const enable2faRequest = async (password: string) =>
+  (await api.post<{ challenge: Challenge }>('/auth/me/2fa/enable', { password })).data;
+
+export const disable2faRequest = async (password: string) => {
+  await api.post('/auth/me/2fa/disable', { password });
+};
