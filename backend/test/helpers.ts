@@ -8,6 +8,7 @@ import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
 import { addDays } from '../src/common/zone';
 import type { Db, SqlParam } from '../src/db/db';
+import { type EmailClient, type EmailMessage, EmailSendError } from '../src/email/email-client';
 import { type PushClient, type PushMessage, type PushTicket, PushTransportError } from '../src/notifications/push-client';
 import { openTestDatabase } from './db';
 
@@ -42,8 +43,11 @@ export async function makeTestApp(options?: {
   onBackgroundTask?: (task: Promise<void>) => void;
   push?: PushClient;
   cronSecret?: string;
-}): Promise<{ app: Express; db: Db }> {
+  email?: EmailClient;
+  codeRateLimit?: number;
+}): Promise<{ app: Express; db: Db; emails: FakeEmail }> {
   const db = await makeTestDb();
+  const emails = fakeEmail();
   const app = createApp({
     db,
     jwtSecret: TEST_SECRET,
@@ -60,8 +64,11 @@ export async function makeTestApp(options?: {
     // Sin `push` no se envía nada en segundo plano (la mayoría de los tests).
     push: options?.push,
     cronSecret: options?.cronSecret,
+    // Sin `email`, el correo falso de `emails` (nunca se llama a Brevo).
+    email: options?.email ?? emails,
+    codeRateLimit: options?.codeRateLimit ?? 10_000,
   });
-  return { app, db };
+  return { app, db, emails };
 }
 
 /**
@@ -161,6 +168,33 @@ export function fakePush(behaviour: FakePushBehaviour = 'ok'): FakePush {
         }
         return { status: 'error', message: `"${m.to}" is not a registered push notification recipient`, details: { error: 'DeviceNotRegistered' } };
       });
+    },
+  };
+}
+
+export type FakeEmail = EmailClient & { sent: EmailMessage[]; fail(next: boolean): void; lastCodeTo(email: string): string };
+
+/**
+ * Correo falso, sin red: guarda cada mensaje en `sent`; con `fail(true)` los envíos lanzan EmailSendError (Brevo caído)
+ * hasta `fail(false)`. `lastCodeTo` saca el código de 6 dígitos del asunto del último correo a ese destinatario.
+ */
+export function fakeEmail(): FakeEmail {
+  const sent: EmailMessage[] = [];
+  let failing = false;
+  return {
+    sent,
+    fail(next) {
+      failing = next;
+    },
+    async send(message) {
+      if (failing) throw new EmailSendError('Brevo respondió 503');
+      sent.push(message);
+    },
+    lastCodeTo(email) {
+      const last = [...sent].reverse().find((m) => m.to === email);
+      const code = last?.subject.match(/\b(\d{6})\b/)?.[1];
+      if (!code) throw new Error(`no hay un correo con código para ${email}`);
+      return code;
     },
   };
 }

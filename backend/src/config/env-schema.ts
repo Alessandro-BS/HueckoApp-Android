@@ -37,6 +37,9 @@ const databaseUrlSchema = z
     return url === null || LOCAL_HOSTS.has(url.hostname) || TLS_MODES.has(url.searchParams.get('sslmode') ?? '');
   }, 'DATABASE_URL apunta a otro servidor sin TLS: añade ?sslmode=verify-full (Neon lo exige).');
 
+// Cadena vacía (o solo espacios) = variable sin configurar.
+const emptyAsUndefined = <T extends z.ZodType>(schema: T) => z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), schema);
+
 // Valida las variables de entorno al arrancar: si falta algo, el servidor
 // no levanta y el error dice qué falta, en vez de fallar más tarde.
 const envSchema = z.object({
@@ -77,10 +80,24 @@ const envSchema = z.object({
     (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
     z.string().trim().optional(),
   ),
+  // Cuentas (Fase 6): correo por Brevo (códigos de verificación), Google y límite por IP de los intentos con código.
+  // Vacío = sin configurar (Render deja las variables sin valor como cadena vacía).
+  BREVO_API_KEY: emptyAsUndefined(z.string().trim().optional()),
+  BREVO_SENDER_EMAIL: emptyAsUndefined(z.string().trim().optional()),
+  BREVO_SENDER_NAME: z.string().trim().min(1, 'BREVO_SENDER_NAME no puede estar vacío').default('HueckoApp'),
+  GOOGLE_WEB_CLIENT_ID: emptyAsUndefined(z.string().trim().optional()),
+  CODE_RATE_LIMIT: z.coerce.number().int().positive().default(30),
 }).superRefine((env, ctx) => {
   // En producción (Render) el disco es efímero: una base PGlite se perdería en cada despliegue.
   if (env.NODE_ENV === 'production' && env.DATABASE_URL === '') {
     ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: 'En producción DATABASE_URL es obligatoria (Neon): PGlite es solo para desarrollo.' });
+  }
+  if (env.NODE_ENV === 'production' && (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['BREVO_API_KEY'],
+      message: 'En producción BREVO_API_KEY y BREVO_SENDER_EMAIL son obligatorias: sin ellas nadie puede verificar su correo.',
+    });
   }
 });
 

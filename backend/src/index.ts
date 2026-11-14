@@ -6,6 +6,8 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { databaseConfig, openDatabase } from './db/connect';
 import type { Db } from './db/db';
+import { createBrevoEmailClient } from './email/brevo-client';
+import { createConsoleEmailClient } from './email/email-client';
 import { createExpoPushClient } from './notifications/push-client';
 import { tick } from './notifications/tick';
 
@@ -20,6 +22,13 @@ const ai = env.GEMINI_API_KEY
     })
   : createMockAiClient();
 if (ai.provider === 'mock') console.warn('GEMINI_API_KEY está vacía: Huecko IA responde con datos de demostración.');
+
+// Sin clave de Brevo (desarrollo), los códigos de verificación se escriben en el log en vez de enviarse por correo.
+const email =
+  env.BREVO_API_KEY && env.BREVO_SENDER_EMAIL
+    ? createBrevoEmailClient({ apiKey: env.BREVO_API_KEY, senderEmail: env.BREVO_SENDER_EMAIL, senderName: env.BREVO_SENDER_NAME })
+    : createConsoleEmailClient();
+if (!env.BREVO_API_KEY) console.warn('BREVO_API_KEY está vacía: los códigos se escriben en este log en vez de enviarse por correo.');
 
 if (env.TRUST_PROXY === true) {
   console.warn('TRUST_PROXY=true confía en cualquier X-Forwarded-For: usa el número de proxies (p. ej. TRUST_PROXY=1).');
@@ -85,6 +94,8 @@ async function main() {
     expressVoteMinutes: env.EXPRESS_VOTE_MINUTES,
     push,
     cronSecret: env.CRON_SECRET,
+    email,
+    codeRateLimit: env.CODE_RATE_LIMIT,
   }).listen(env.PORT, (error?: NodeJS.ErrnoException) => {
     // Express 5 llama a este callback también si no puede escuchar (p. ej. un puerto ocupado): sin tratarlo aquí,
     // el servidor diría que escucha y la base quedaría sin cerrar.

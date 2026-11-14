@@ -277,4 +277,26 @@ export const migrations: string[] = [
      last_error TEXT COLLATE "C"
    );
    CREATE INDEX notifications_pending_idx ON notifications (seq) WHERE sent_at IS NULL;`,
+
+  // 13 — Cuentas: correo verificado, Google, 2FA y retos con código.
+  `ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+   ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT false;
+   UPDATE users SET email_verified = true;
+   ALTER TABLE users ADD COLUMN google_sub TEXT COLLATE "C" UNIQUE;
+   ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;
+   CREATE TABLE auth_challenges (
+     id           TEXT COLLATE "C" PRIMARY KEY,
+     user_id      TEXT COLLATE "C" NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     purpose      TEXT COLLATE "C" NOT NULL CHECK (purpose IN ('VERIFY_EMAIL', 'LOGIN_2FA', 'RESET_PASSWORD', 'ENABLE_2FA')),
+     code_hash    TEXT COLLATE "C" NOT NULL,
+     attempts     INTEGER NOT NULL DEFAULT 0,
+     send_count   INTEGER NOT NULL DEFAULT 0,
+     created_at   TEXT COLLATE "C" NOT NULL,
+     expires_at   TEXT COLLATE "C" NOT NULL,
+     last_sent_at TEXT COLLATE "C",
+     consumed_at  TEXT COLLATE "C"
+   );
+   CREATE UNIQUE INDEX auth_challenges_one_live ON auth_challenges (user_id, purpose) WHERE consumed_at IS NULL;
+   CREATE INDEX auth_challenges_user_created_idx ON auth_challenges (user_id, created_at);`,
 ];
