@@ -119,7 +119,7 @@ Ejecútalas en el *SQL Editor* de Neon sobre la base de producción. Cada una de
 
 Los PR están apilados: cada uno parte del anterior.
 
-- [ ] Integra, **en este orden**, a `develop`: **#43 → #44 → #45 → #46 → #47 → #48 → #49 → #50**; el último es el PR de esta fase (#50). Cuando uno entra y se borra su rama, GitHub cambia la base del siguiente a `develop`; espera a que lo haga y a que el CI esté en verde antes de integrar el siguiente.
+- [ ] Integra, **en este orden**, a `develop`: **#43 → #44 → #45 → #46 → #47 → #48 → #49 → #50 → #51**; #50 es la fase de cuentas y #51 arregla los hallazgos de Sourcery en #43. Cuando uno entra y se borra su rama, GitHub cambia la base del siguiente a `develop`; espera a que lo haga y a que el CI esté en verde antes de integrar el siguiente.
 - [ ] Crea `release/3.0.0` desde `develop` y ábrele un PR a `main`. Al integrarlo, pon el tag `v3.0.0` y vuelve a integrar la release en `develop` (git flow, ver [README](../README.md#-flujo-de-trabajo-git-flow)).
 - [ ] Comprueba en el panel de Render qué rama despliega el servicio y cámbiala a `main` (`render.yaml` ya dice `branch: main`).
 - [ ] Borra la rama remota `wip/votacion-expres-task3` (`git push origin --delete wip/votacion-expres-task3`).
