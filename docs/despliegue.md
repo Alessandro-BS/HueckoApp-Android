@@ -1,6 +1,8 @@
 # ☁️ Despliegue en producción
 
 > 📦 **v3.0.0:** backend en Render + Neon y la app como **APK** con EAS Build. Orden: 1) Neon, 2) Render, 3) APK.
+>
+> 🧰 **Antes de empezar, sigue la [guía de puesta en marcha](puesta-en-marcha.md):** reúne Firebase, Google, Brevo, las variables de Render y GitHub, las consultas de Neon y el orden de los PR. Este documento es la referencia de cada pieza.
 
 ## 🐘 Base de datos (Neon)
 
@@ -39,11 +41,13 @@
 | `GEMINI_API_KEY` | Tu clave | IA (opcional) |
 | `CRON_SECRET` | Valor largo y aleatorio (mínimo 32 caracteres) | ⏰ Protege `POST /api/internal/tick`, que llama el despertador de GitHub Actions. Vacío = sin ese endpoint |
 | `EXPO_ACCESS_TOKEN` | Token de Expo (opcional) | Solo si activaste «Enhanced Security» en tu cuenta de Expo |
+| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | Clave de Brevo, remitente verificado y nombre (`HueckoApp`) | 📧 Códigos por correo. Con `NODE_ENV=production` el servidor **no arranca** sin las dos primeras. Ver [guía](puesta-en-marcha.md) |
+| `GOOGLE_WEB_CLIENT_ID` | ID de cliente Web de Google (no es secreto) | Sin él, «Continuar con Google» responde `503 GOOGLE_NOT_CONFIGURED`. Ver [guía](puesta-en-marcha.md) |
 
 ### 🚀 Crear el servicio con el Blueprint
 
 1. En [Render](https://dashboard.render.com): **New → Blueprint** y elige este repositorio. Render lee [`render.yaml`](../render.yaml), que ya trae todo lo de la tabla: `NODE_ENV`, `TZ`, `TRUST_PROXY` y un `JWT_SECRET` aleatorio.
-2. Te pide los dos valores que no van en el repo: `DATABASE_URL` (la de Neon) y `GEMINI_API_KEY` (vacía = modo demostración).
+2. Te pide los valores que no van en el repo: `DATABASE_URL` (la de Neon), `GEMINI_API_KEY` (vacía = modo demostración), `CRON_SECRET`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` y `GOOGLE_WEB_CLIENT_ID`.
 3. Despliega rama `main`. Cuando termine, abre `https://<tu-servicio>.onrender.com/api/health`: debe responder `{"status":"ok"}`.
 4. Si la URL no es `https://hueckoapp-api.onrender.com` (Render añade un sufijo si el nombre está ocupado), cámbiala en `mobile/eas.json` antes de generar el APK.
 

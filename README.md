@@ -14,12 +14,13 @@
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1662%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1836%20%E2%9C%94-2EA44F)
 
 [🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
 [🚀 Instalación](#-instalación-paso-a-paso) ·
 [🧭 Cómo se usa](#-cómo-se-usa) ·
 [🤖 Huecko IA](#-huecko-ia) ·
+[🧰 Puesta en marcha](docs/puesta-en-marcha.md) ·
 [🩺 Problemas comunes](#-solución-de-problemas) ·
 [🗺️ Hoja de ruta](#️-hoja-de-ruta) ·
 [📝 Cambios](CHANGELOG.md)
@@ -49,6 +50,7 @@ flowchart LR
 | ⚠️ | **Imprevistos** | Si alguien no puede ir, **decide el grupo** con una **votación exprés** (cancelar, reagendar o mantener) que cierra sola; si gana reagendar, quien gestiona el plan propone franjas nuevas y una fecha límite nueva |
 | 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
 | 🔔 | **Avisos push** | Notificaciones al celular (nueva propuesta, plan confirmado o cancelado, votación exprés y recordatorios); al tocarlas se abre Votar o el detalle del plan. Se activan en Perfil y requieren la app instalada (no Expo Go) con Firebase configurado: ver [despliegue](docs/despliegue.md) |
+| 🔐 | **Cuentas seguras** | Registro con **código de 6 dígitos por correo** (Brevo), **verificación en dos pasos** opcional (se activa en Perfil), **recuperar la contraseña** desde el login y **Continuar con Google** (en el APK, no en Expo Go). Sin código no hay sesión. Configuración en la [guía de puesta en marcha](docs/puesta-en-marcha.md) |
 | 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
 | 🛡️ | **Administración** | Estadísticas, gráficos, informes PDF/CSV, usuarios, grupos y registro de acciones |
 
@@ -387,6 +389,9 @@ npm run make-admin -w backend -- correo@ejemplo.com --revoke   # ➖ quitarlo
 | `TZ` | `America/Lima` | Zona horaria con la que se agendan los planes confirmados |
 | `GEMINI_*`, `AI_RATE_LIMIT` | ver [Huecko IA](#-huecko-ia) | IA |
 | `LOGIN_RATE_LIMIT` / `REGISTER_RATE_LIMIT` | `20` / `10` | Intentos por IP cada 15 min |
+| `CODE_RATE_LIMIT` | `30` | Intentos por IP cada 15 min al verificar, reenviar código y «¿Olvidaste tu contraseña?» |
+| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | — / — / `HueckoApp` | Correos con el código. Sin clave, en desarrollo los códigos salen en el log del backend; en producción son obligatorias las dos primeras |
+| `GOOGLE_WEB_CLIENT_ID` | vacía | ID de cliente Web de Google (no es secreto). Vacío = sin «Continuar con Google» |
 | `TRUST_PROXY` | `false` | Proxies delante del servidor (solo en producción) |
 
 ### `mobile/.env` (copia de [`mobile/.env.example`](mobile/.env.example))
@@ -413,7 +418,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 | | Qué | Cómo |
 |---|---|---|
-| ✅ | **1662 tests** | 955 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 707 de la app (Jest + Testing Library) |
+| ✅ | **1836 tests** | 1061 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 775 de la app (Jest + Testing Library) |
 | 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
 | 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
 | 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |
@@ -463,17 +468,17 @@ Dentro de `mobile/`: `npx expo install <paquete>` para agregar librerías compat
 |---|---|---|
 | 🏷️ **v1.0.0** | ✅ Publicada | App nativa en Kotlin + Jetpack Compose ([`legacy-android/`](legacy-android/)) |
 | 🏷️ **v2.0.0** | ✅ Esta versión | App Expo + backend Express + PostgreSQL + Huecko IA + administración + Async Storage |
-| 📦 **v3.0.0** | 🚧 En curso | **APK** instalable con EAS Build y backend en Render + Neon ([guía](docs/despliegue.md)) |
+| 📦 **v3.0.0** | 🚧 En curso | **APK** instalable con EAS Build y backend en Render + Neon ([despliegue](docs/despliegue.md)), push, cuentas con código por correo y Google. Pasos que faltan: [🧰 puesta en marcha](docs/puesta-en-marcha.md) |
 
 ### 🎓 Requisitos de la tercera entrega (v3.0.0)
 
 | Requisito | Estado | Cómo se cumple |
 |---|---|---|
 | 🌐 **Retrofit** (equivalente en React Native) | ✅ Integrado | **axios**: instancia con URL base e interceptores (token, errores) en [`client.ts`](mobile/src/api/client.ts) y una función tipada por endpoint en [`src/api/`](mobile/src/api/), como una interfaz de Retrofit |
-| 🌐 **Volley** (equivalente en React Native) | ✅ Integrado | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio y Grupos. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
+| 🌐 **Volley** (equivalente en React Native) | ✅ Integrado (PR #43) | **TanStack Query** (`@tanstack/react-query`): caché por consulta, reintentos y deduplicación en [`queryClient.ts`](mobile/src/api/queryClient.ts) y [`useApiQuery`](mobile/src/hooks/useApiQuery.ts), usado en Inicio y Grupos. Sin respuesta o con un 5xx reintenta 3 veces (2 s, 4 s, 8 s), lo que cubre el ~1 min que tarda Render en despertar |
 | 📷 **Cámara del dispositivo** | ✅ Integrado | Foto del horario para leerlo con Huecko IA: `launchCameraAsync` con su permiso en [`scheduleImage.ts`](mobile/src/utils/scheduleImage.ts) (`expo-image-picker`; permiso de cámara en [`app.json`](mobile/app.json)) |
-| 📡 **Sensor de proximidad** | 🚧 Pendiente de probar en dos celulares | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go; el módulo Kotlin aún no se ha compilado en un build |
-| 🌀 **Giroscopio** | 🚧 Pendiente de probar en dos celulares | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
+| 📡 **Sensor de proximidad** | ✅ Integrado (PR #44); 🚧 falta probarlo en dos celulares | **Unirse a un grupo acercando el celular** (ver abajo). `expo-sensors` no lo trae: módulo nativo propio en Kotlin (Expo Modules, `SensorManager`). Se prueba con un *development build*, no en Expo Go; el módulo Kotlin aún no se ha compilado en un build |
+| 🌀 **Giroscopio** | ✅ Integrado (PR #44); 🚧 falta probarlo en dos celulares | `expo-sensors` (`Gyroscope`, funciona en Expo Go) en `useStillness`: confirmar que los dos celulares están quietos al juntarse, para evitar falsos positivos |
 | 🧭 Magnetómetro (opcional) | ❌ Falta | `expo-sensors` (`Magnetometer`) |
 | 💡 Sensor de luz (opcional) | ❌ Falta | `expo-sensors` (`LightSensor`, solo Android) |
 
