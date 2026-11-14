@@ -4,6 +4,7 @@ import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { buildDashboard, upcomingPlans } from '../dashboard/dashboard';
 import { groupsRepository } from '../groups/groups.repository';
+import { expressVotesRepository } from '../proposals/express-votes.repository';
 import { proposalsRepository } from '../proposals/proposals.repository';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
 
@@ -13,15 +14,19 @@ export function meRouter({ db, now }: ResolvedDeps) {
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);
   const blocks = timeBlocksRepository(db);
+  const expressVotes = expressVotesRepository(db);
 
   router.get('/upcoming-plans', async (_req, res) => {
     const userId = getUserId(res);
+    // Cierre perezoso: las votaciones exprés vencidas de mis grupos se cierran antes de leer (nunca lanza).
+    await expressVotes.closeDueInScope({ userId }, now());
     res.json(upcomingPlans(await proposals.listForUser(userId), now()));
   });
 
   router.get('/dashboard', async (_req, res) => {
     const userId = getUserId(res);
     const at = now();
+    await expressVotes.closeDueInScope({ userId }, at);
     const myGroups = await groups.listForUser(userId);
     const myProposals = await proposals.listForUser(userId);
     const totalBlocks = (await blocks.listByUser(userId)).length;

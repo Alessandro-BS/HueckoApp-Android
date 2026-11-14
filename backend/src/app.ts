@@ -14,6 +14,7 @@ import type { Db } from './db/db';
 import { groupsRouter } from './groups/groups.routes';
 import { meRouter } from './me/me.routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { EXPRESS_VOTE_MINUTES_DEFAULT } from './proposals/express-rules';
 import { groupProposalsRouter, proposalsRouter } from './proposals/proposals.routes';
 import { proximityRouter } from './proximity/proximity.routes';
 import { timeBlocksRouter } from './schedule/time-blocks.routes';
@@ -35,11 +36,15 @@ export type AppDeps = {
   aiRateLimit?: number;
   // Avisos de proximidad (invite + join) por usuario y minuto (10 si se omite); las pruebas lo suben.
   proximityRateLimit?: number;
+  // Minutos que dura una votación exprés (EXPRESS_VOTE_MINUTES; 60 si se omite).
+  expressVoteMinutes?: number;
+  // Recibe las tareas que siguen tras responder (p. ej. la recomendación de la IA) para que los tests las esperen.
+  onBackgroundTask?: (task: Promise<void>) => void;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.
 export const systemClock = (): Date => new Date();
-export type ResolvedDeps = AppDeps & { now: () => Date; ai: AiClient; aiLimiter: RequestHandler };
+export type ResolvedDeps = AppDeps & { now: () => Date; ai: AiClient; aiLimiter: RequestHandler; expressVoteMinutes: number };
 
 // La app se crea aparte de index.ts para poder probarla sin abrir un puerto
 // y con una base de datos en memoria.
@@ -50,6 +55,7 @@ export function createApp(appDeps: AppDeps) {
     ai: appDeps.ai ?? createMockAiClient(),
     // Una sola instancia: todas las rutas de IA cuentan contra el mismo límite.
     aiLimiter: aiRateLimiter(appDeps.aiRateLimit ?? AI_RATE_LIMIT_DEFAULT),
+    expressVoteMinutes: appDeps.expressVoteMinutes ?? EXPRESS_VOTE_MINUTES_DEFAULT,
   };
   const app = express();
   // Con un proxy delante, req.ip (y por tanto los límites por IP) sale de X-Forwarded-For solo si se confía en él.

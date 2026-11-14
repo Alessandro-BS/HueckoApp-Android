@@ -1,4 +1,4 @@
-import type { Criticality, Incidence, IncidenceType, Proposal, ProposalState, TimeWindow } from '@hueckoapp/shared';
+import type { Criticality, IncidenceType, Proposal, ProposalState, TimeWindow } from '@hueckoapp/shared';
 
 import { colors } from '../theme';
 import { formatDateLabel, formatDateTime } from './days';
@@ -59,10 +59,4 @@ export function scheduleLabel(p: Pick<Proposal, 'scheduledDate' | 'chosenWindowI
   const chosen = p.windows.find((w) => w.id === p.chosenWindowId);
   if (!p.scheduledDate || !chosen) return null;
   return `${formatDateLabel(p.scheduledDate)} · ${chosen.startTime} - ${chosen.endTime}`;
-}
-
-/** La incidencia sin resolver que se muestra en la alerta: la ALTA o, si no hay, la más antigua. */
-export function openIncidence(p: Pick<Proposal, 'incidences'>): Incidence | null {
-  const pending = p.incidences.filter((i) => !i.resolved);
-  return pending.find((i) => i.criticality === 'ALTA') ?? pending[0] ?? null;
 }

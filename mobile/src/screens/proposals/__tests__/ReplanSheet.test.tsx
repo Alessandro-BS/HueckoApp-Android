@@ -70,3 +70,16 @@ it('muestra el error del servidor y deja reintentar', async () => {
   await fireEvent.press(screen.getByLabelText('Abrir nueva votación'));
   expect(await screen.findByText('La propuesta ya no está en votación.')).toBeTruthy();
 });
+
+it('un plazo que ya pasó se señala («La fecha límite debe ser futura») y no deja enviar', async () => {
+  await renderSheet();
+  await pickDeadline(new Date(2026, 8, 29, 9, 0));
+  await addWindow('Vie', '18:00', '19:00');
+  await addWindow('Sáb', '10:00', '11:00');
+  expect(screen.getByText('La fecha límite debe ser futura')).toBeTruthy();
+  expect(submitDisabled()).toBe(true);
+  // Control positivo: con un plazo futuro el aviso desaparece y ya se puede enviar.
+  await pickDeadline(new Date(2026, 8, 29, 17, 0));
+  expect(screen.queryByText('La fecha límite debe ser futura')).toBeNull();
+  expect(submitDisabled()).toBeFalsy();
+});

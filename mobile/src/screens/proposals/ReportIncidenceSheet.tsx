@@ -1,9 +1,10 @@
-import type { IncidenceInput, IncidenceType } from '@hueckoapp/shared';
+import type { IncidenceInput, IncidenceType, Proposal } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BottomSheet, ChoiceChip, ErrorBanner, PrimaryButton, TextField } from '../../components';
 import { useAction } from '../../hooks/useAction';
+import { showToast } from '../../utils/toast';
 
 // Cómo lo dice quien reporta (en primera persona).
 const TYPE_OPTIONS: { value: IncidenceType; label: string }[] = [
@@ -12,10 +13,17 @@ const TYPE_OPTIONS: { value: IncidenceType; label: string }[] = [
   { value: 'IMPREVISTO', label: 'Otro imprevisto' },
 ];
 
-type Props = { onReport: (input: IncidenceInput) => Promise<unknown>; onDone: () => void; onDismiss: () => void };
+type Props = {
+  /** Id de la votación exprés que ya estaba abierta antes de reportar (si había): reportar no abre otra. */
+  openVoteId: string | null;
+  onReport: (input: IncidenceInput) => Promise<Proposal>;
+  onDone: () => void;
+  onDismiss: () => void;
+};
 
-// C4: motivo obligatorio; una tardanza lleva minutos (1–600). La criticidad la pone el servidor (G6).
-export function ReportIncidenceSheet({ onReport, onDone, onDismiss }: Props) {
+// C4: motivo obligatorio; una tardanza lleva minutos (1–600). La criticidad la pone el servidor (G6): una ausencia
+// crítica abre una votación exprés del grupo (la respuesta la trae ABIERTA y es nueva); si no, solo se avisa al grupo.
+export function ReportIncidenceSheet({ openVoteId, onReport, onDone, onDismiss }: Props) {
   const [type, setType] = useState<IncidenceType>('FALTA');
   const [reason, setReason] = useState('');
   const [minutes, setMinutes] = useState('');
@@ -28,7 +36,11 @@ export function ReportIncidenceSheet({ onReport, onDone, onDismiss }: Props) {
   const submit = async () => {
     if (!valid || action.loading) return;
     const result = await action.run({ type, reason: reason.trim(), delayMinutes: type === 'TARDANZA' ? delay : null });
-    if (result.ok) onDone();
+    if (!result.ok) return;
+    const vote = result.value.expressVote;
+    const opened = vote?.status === 'ABIERTA' && vote.id !== openVoteId;
+    showToast(opened ? 'Se abrió una votación del grupo.' : 'Avisamos al grupo.');
+    onDone();
   };
 
   return (

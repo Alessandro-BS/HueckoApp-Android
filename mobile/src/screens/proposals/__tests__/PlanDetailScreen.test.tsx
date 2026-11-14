@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Alert, Linking } from 'react-native';
 
+import { ApiError } from '../../../api/client';
 import * as proposalsApi from '../../../api/proposals';
-import { makeConfirmed, makeProposal, TEST_USER } from '../../../testing/fixtures';
+import { makeConfirmed, makeExpressVote, makeProposal, TEST_USER } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { PlanDetailScreen } from '../PlanDetailScreen';
 
@@ -109,36 +110,115 @@ it('reportar una tardanza exige los minutos (guarda por el teclado y control pos
 
   await fireEvent.changeText(screen.getByLabelText('Minutos de retraso'), '20');
   await fireEvent(screen.getByLabelText('Minutos de retraso'), 'submitEditing');
-  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Imprevisto reportado.'));
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Avisamos al grupo.'));
   expect(mocked.reportIncidence).toHaveBeenCalledWith('prop_1', { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 20 });
 });
 
-it('quien gestiona el plan resuelve el aviso desde el detalle', async () => {
-  const confirmed = makeConfirmed();
-  mocked.getProposal.mockResolvedValue(confirmed);
-  mocked.resolveIncidences.mockResolvedValue(makeConfirmed({ incidences: [{ ...confirmed.incidences[0], resolved: true }] }));
+it('reportar una ausencia crítica muestra la votación que se abrió', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ incidences: [] }));
+  mocked.reportIncidence.mockResolvedValue(makeConfirmed({ expressVote: makeExpressVote({ reportedBy: TEST_USER, canVote: false }) }));
   await renderScreen();
-  expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
-  await fireEvent.press(screen.getByText('Mantener'));
-  await waitFor(() => expect(screen.queryByText('Aviso de imprevisto')).toBeNull());
-  expect(mocked.resolveIncidences).toHaveBeenCalledWith('prop_1', { newState: 'CONFIRMADO' });
-  expect(screen.getByText('Resuelto')).toBeTruthy();
+  await fireEvent.press(await screen.findByText('Reportar imprevisto'));
+  await fireEvent.changeText(screen.getByLabelText('¿Qué pasó?'), 'Me surgió un viaje familiar.');
+  await fireEvent.press(screen.getByText('Reportar'));
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Se abrió una votación del grupo.'));
+  expect(screen.getByText('Votación exprés')).toBeTruthy();
+  expect(screen.getByText('Usuario de Prueba no podrá asistir')).toBeTruthy();
+});
+
+it('un miembro vota «Reagendar» en la votación exprés del plan', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ id: 'p1', expressVote: makeExpressVote() }));
+  mocked.voteExpress.mockResolvedValue(
+    makeConfirmed({ id: 'p1', expressVote: makeExpressVote({ myVote: 'REAGENDAR', counts: { CANCELAR: 0, REAGENDAR: 2, MANTENER: 0 } }) }),
+  );
+  await renderScreen('p1');
+  expect(await screen.findByText('Votación exprés')).toBeTruthy();
+  expect(screen.getByText('Cierra en 42 min')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Reagendar'));
+  await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
+  expect(mocked.voteExpress).toHaveBeenCalledWith('p1', 'REAGENDAR');
+  expect(screen.getByLabelText('Reagendar, 2 votos').props.accessibilityState.selected).toBe(true);
+});
+
+it('si el voto exprés llega tarde (409 VOTING_CLOSED), recarga el plan y muestra la votación cerrada', async () => {
+  mocked.getProposal
+    .mockResolvedValueOnce(makeConfirmed({ id: 'p1', expressVote: makeExpressVote() }))
+    .mockResolvedValue(
+      makeConfirmed({ id: 'p1', expressVote: makeExpressVote({ status: 'CERRADA', result: 'CANCELAR', resultByDefault: false, canVote: false }) }),
+    );
+  mocked.voteExpress.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
+  await renderScreen('p1');
+  await fireEvent.press(await screen.findByText('Mantener'));
+  expect(await screen.findByText('El grupo decidió: Cancelar')).toBeTruthy();
+  expect(mocked.getProposal).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText('¿Qué hacemos con el plan?')).toBeNull();
+});
+
+it('con la votación abierta, quien gestiona conserva «Cancelar plan»', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ expressVote: makeExpressVote() }));
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés')).toBeTruthy();
+  expect(screen.getByText('Cancelar plan')).toBeTruthy();
+});
+
+it('en recoordinación quien gestiona propone franjas desde el detalle', async () => {
+  const replanning = makeConfirmed({
+    state: 'EN_RECOORDINACION', chosenWindowId: null, scheduledAt: null, scheduledDate: null,
+    expressVote: makeExpressVote({ status: 'CERRADA', result: 'REAGENDAR', resultByDefault: false, canVote: false }),
+  });
+  mocked.getProposal.mockResolvedValue(replanning);
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió: Reagendar')).toBeTruthy();
+  // En recoordinación no hay fecha a la que faltar: no se reporta.
+  expect(screen.queryByText('Reportar imprevisto')).toBeNull();
+  await fireEvent.press(screen.getByText('Proponer franjas'));
+  expect(screen.getByText('Proponer franjas nuevas')).toBeTruthy();
+});
+
+it('en recoordinación quien no gestiona no ve «Proponer franjas»', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ state: 'EN_RECOORDINACION', canManage: false, scheduledAt: null, scheduledDate: null }));
+  await renderScreen();
+  expect(await screen.findByText('Plan en recoordinación')).toBeTruthy();
+  expect(screen.queryByText('Proponer franjas')).toBeNull();
+});
+
+it('en recoordinación con la fecha vieja ya pasada (regla anterior), quien gestiona aún propone franjas', async () => {
+  // Hoy es martes 29 a las 10:00; la regla vieja dejó el plan en recoordinación con su fecha del lunes 28.
+  const atascado = makeConfirmed({
+    state: 'EN_RECOORDINACION', expressVote: null, scheduledAt: new Date(2026, 8, 28, 11, 0).toISOString(), scheduledDate: '2026-09-28',
+  });
+  mocked.getProposal.mockResolvedValue(atascado);
+  await renderScreen();
+  expect(await screen.findByText('Plan en recoordinación')).toBeTruthy();
+  expect(screen.queryByText('Reportar imprevisto')).toBeNull();
+  await fireEvent.press(screen.getByText('Proponer franjas'));
+  expect(screen.getByText('Proponer franjas nuevas')).toBeTruthy();
+});
+
+it('un aviso que no es crítico se ve en «Imprevistos», sin votación', async () => {
+  mocked.getProposal.mockResolvedValue(makeConfirmed());
+  await renderScreen();
+  expect(await screen.findByText('Ana · Imprevisto')).toBeTruthy();
+  expect(screen.queryByText('Votación exprés')).toBeNull();
+  expect(screen.queryByText('Mantener')).toBeNull();
 });
 
 it('un plan confirmado que ya pasó no muestra la votación exprés ni «Reportar imprevisto» (D3)', async () => {
   // Control positivo: el mismo plan, aún por ocurrir (fixture: miércoles 30), sí los muestra.
-  mocked.getProposal.mockResolvedValue(makeConfirmed());
+  mocked.getProposal.mockResolvedValue(makeConfirmed({ expressVote: makeExpressVote() }));
   const first = await renderScreen();
-  expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
+  expect(await screen.findByText('Votación exprés')).toBeTruthy();
   expect(screen.getByText('Reportar imprevisto')).toBeTruthy();
   await first.unmount();
 
   // Hoy es martes 29 a las 10:00: el plan del lunes 28 ya ocurrió.
-  mocked.getProposal.mockResolvedValue(makeConfirmed({ scheduledAt: new Date(2026, 8, 28, 11, 0).toISOString(), scheduledDate: '2026-09-28' }));
+  mocked.getProposal.mockResolvedValue(
+    makeConfirmed({ expressVote: makeExpressVote(), scheduledAt: new Date(2026, 8, 28, 11, 0).toISOString(), scheduledDate: '2026-09-28' }),
+  );
   await renderScreen();
   expect(await screen.findByText('Reunión de avance del proyecto')).toBeTruthy();
   expect(screen.getByText('Ana · Imprevisto')).toBeTruthy();
-  expect(screen.queryByText('Aviso de imprevisto')).toBeNull();
+  expect(screen.queryByText('Votación exprés')).toBeNull();
   expect(screen.queryByText('Reportar imprevisto')).toBeNull();
 });
 
@@ -168,12 +248,4 @@ it('los botones de gestión siguen a canManage, no a quién creó el plan (D1)',
   expect(await screen.findByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.queryByText('Confirmar plan')).toBeNull();
   expect(screen.queryByText('Cancelar plan')).toBeNull();
-});
-
-it('aviso de imprevisto sin permiso de gestión: sin botones y con el texto genérico', async () => {
-  mocked.getProposal.mockResolvedValue(makeConfirmed({ canManage: false }));
-  await renderScreen();
-  expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
-  expect(screen.queryByText('Mantener')).toBeNull();
-  expect(screen.getByText('Solo quien organiza el plan puede decidir qué hacer con él.')).toBeTruthy();
 });

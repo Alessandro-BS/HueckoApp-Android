@@ -185,12 +185,10 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
     const { app, admin, yo, ana, group } = await setupGroups();
     const confirmed = await confirmedPlan(app, yo, ana, group.id, 'Confirmado');
     const recoordinating = await confirmedPlan(app, yo, ana, group.id, 'Re-coordinando');
-    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true }).expect(200);
-    const report = await request(app)
-      .post(`/api/proposals/${recoordinating.id}/incidences`)
-      .set(bearer(ana.token))
-      .send({ type: 'FALTA', reason: 'Enferma' });
-    expect(report.body.state).toBe('EN_RECOORDINACION'); // control del escenario
+    // Yo (quien lo propuso) no puede ir: Ana, la única que vota, elige REAGENDAR y el plan queda EN_RECOORDINACION.
+    await request(app).post(`/api/proposals/${recoordinating.id}/incidences`).set(bearer(yo.token)).send({ type: 'FALTA', reason: 'Enfermo' }).expect(201);
+    const reagendar = await request(app).put(`/api/proposals/${recoordinating.id}/express-vote`).set(bearer(ana.token)).send({ option: 'REAGENDAR' });
+    expect(reagendar.body.state).toBe('EN_RECOORDINACION'); // control del escenario
     for (const plan of [confirmed, recoordinating]) {
       const res = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
       expect(res.status).toBe(200);

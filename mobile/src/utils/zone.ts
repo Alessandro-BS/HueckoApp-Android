@@ -55,3 +55,12 @@ export function shortDate(date: string): string {
   if (month < 1 || month > 12 || Number.isNaN(utcMidnight(date).getTime())) return date;
   return `${DAY_SHORT[isoDay(date) - 1]} ${Number(match[3])} ${MONTH_SHORT[month - 1]}`;
 }
+
+/**
+ * «Cierra en 42 min»: los minutos que faltan hasta `iso`, redondeando hacia arriba (no depende de la zona). Si ya venció
+ * (o la fecha no es válida), «Cerrando la votación…»: el servidor la cierra al volver a consultar.
+ */
+export function closesInLabel(iso: string, now: Date): string {
+  const ms = new Date(iso).getTime() - now.getTime();
+  return ms > 0 ? `Cierra en ${Math.ceil(ms / 60_000)} min` : 'Cerrando la votación…';
+}

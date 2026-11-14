@@ -5,6 +5,8 @@ import type { Criticality, GroupMember, Incidence, IncidenceType, Location, Prop
 import { isoDay } from '../common/zone';
 import type { Db } from '../db/db';
 import { MEMBER_ORDER } from '../groups/groups.repository';
+import { expiresAtFor } from './express-rules';
+import { expressVotesRepository } from './express-votes.repository';
 import { canManageProposal, type ManagerCandidate } from './permissions';
 
 type ProposalRow = {
@@ -46,6 +48,7 @@ type IncidenceRow = {
   delay_minutes: number | null;
   criticality: Criticality;
   resolved: boolean;
+  critical_reason: string | null;
   created_at: string;
 };
 type MyVoteRow = { proposal_id: string; window_id: string };
@@ -59,6 +62,8 @@ export type NewIncidence = {
   reason: string;
   delayMinutes: number | null;
   criticality: Criticality;
+  // Por qué es crítica (abre la votación exprés); null si no lo es.
+  criticalReason: string | null;
   // ISO del reloj de la app, explícito como en las demás tablas.
   createdAt: string;
 };
@@ -74,9 +79,6 @@ export type NewProposal = {
 };
 
 // Una fila de proposals con el nombre del grupo y los datos de quien la creó.
-// Un plan activo: confirmado o re-coordinándose (sus incidencias se pueden resolver).
-const ACTIVE_STATES: readonly ProposalState[] = ['CONFIRMADO', 'EN_RECOORDINACION'];
-
 const SELECT_PROPOSAL = `
   SELECT p.*, g.name AS group_name, u.name AS creator_name, u.email AS creator_email
   FROM proposals p
@@ -117,6 +119,7 @@ const toIncidence = (r: IncidenceRow): Incidence => ({
   delayMinutes: r.delay_minutes,
   criticality: r.criticality,
   resolved: r.resolved,
+  criticalReason: r.critical_reason,
   createdAt: r.created_at,
 });
 
@@ -175,6 +178,7 @@ export function proposalsRepository(db: Db) {
       (r) => r.group_id,
       (r): ManagerCandidate => ({ id: r.id, role: r.role }),
     );
+    const expressVotes = await expressVotesRepository(db).latestFor(ids, viewerId);
     return rows.map((row) => ({
       id: row.id,
       groupId: row.group_id,
@@ -190,6 +194,7 @@ export function proposalsRepository(db: Db) {
       scheduledAt: row.scheduled_at,
       scheduledDate: row.scheduled_date,
       incidences: incidences.get(row.id) ?? [],
+      expressVote: expressVotes.get(row.id) ?? null,
       createdAt: row.created_at,
     }));
   };
@@ -251,15 +256,29 @@ export function proposalsRepository(db: Db) {
       });
     },
 
-    // Replantear: igual que replaceWindows, pero solo si la propuesta sigue en PROPUESTO (false si otra petición la
-    // confirmó o canceló mientras tanto; entonces no se toca nada).
-    async replanWindows(proposalId: string, windows: NewWindow[], votingDeadline: string): Promise<boolean> {
+    // Replantear: igual que replaceWindows, pero solo si el plan sigue en uno de los estados admitidos (false si otra
+    // petición lo confirmó o canceló mientras tanto; entonces no se toca nada). Pasa a PROPUESTO. Solo desde
+    // EN_RECOORDINACION (lo que deja una votación exprés con resultado REAGENDAR) se limpia también lo de la ausencia:
+    // sus incidencias y sus votaciones cerradas, en la misma transacción. Desde PROPUESTO se conservan: un plan que el
+    // flujo viejo de /resolve reprogramó sigue PROPUESTO con sus incidencias resueltas, y son su historial.
+    // El estado previo se lee bloqueando la fila (FOR UPDATE) para que nadie lo cambie antes del UPDATE.
+    async replanWindows(
+      proposalId: string,
+      windows: NewWindow[],
+      votingDeadline: string,
+      fromStates: ProposalState[] = ['PROPUESTO'],
+    ): Promise<boolean> {
       return db.transaction(async () => {
+        const previous = await db.one<{ state: ProposalState }>('SELECT state FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
         const { rowCount } = await db.query(
-          "UPDATE proposals SET voting_deadline = $1 WHERE id = $2 AND state = 'PROPUESTO'",
-          [votingDeadline, proposalId],
+          "UPDATE proposals SET voting_deadline = $1, state = 'PROPUESTO' WHERE id = $2 AND state = ANY($3)",
+          [votingDeadline, proposalId, fromStates],
         );
         if (rowCount === 0) return false;
+        if (previous?.state === 'EN_RECOORDINACION') {
+          await db.query('DELETE FROM incidences WHERE proposal_id = $1', [proposalId]);
+          await expressVotesRepository(db).deleteClosedFor(proposalId);
+        }
         await this.replaceWindows(proposalId, windows, votingDeadline);
         return true;
       });
@@ -306,47 +325,48 @@ export function proposalsRepository(db: Db) {
       return rowCount > 0;
     },
 
-    // La incidencia y, si falta un imprescindible (`escalate`), el paso a EN_RECOORDINACION si el plan está CONFIRMADO
-    // (según el estado bloqueado): todo o nada.
-    // Solo sobre un plan activo; false, sin guardar nada, si otra petición lo canceló (o resolvió) mientras tanto.
-    reportIncidence(proposalId: string, input: NewIncidence, escalate: boolean): Promise<boolean> {
+    /**
+     * Guarda la incidencia y, si es crítica (`criticalReason`), abre la votación exprés del grupo: todo o nada, con el
+     * plan bloqueado. Solo sobre un plan CONFIRMADO (según el estado bloqueado); `saved: false`, sin guardar nada, si
+     * otra petición lo canceló o lo mandó a recoordinar mientras tanto. No abre otra si ya hay una ABIERTA (la
+     * incidencia se guarda igual) ni si nadie más del grupo puede votar. `openedVoteId`: la votación que abrió, si abrió.
+     */
+    reportIncidence(proposalId: string, input: NewIncidence, expressVoteMinutes: number): Promise<{ saved: boolean; openedVoteId: string | null }> {
       return db.transaction(async () => {
-        // Bloquea el plan hasta el final: una cancelación o una votación exprés a la vez espera a que la incidencia
-        // quede guardada (y la ve); si llegó antes, aquí se ve el plan ya cancelado y no se guarda nada.
-        const row = await db.one<{ state: ProposalState }>('SELECT state FROM proposals WHERE id = $1 FOR UPDATE', [proposalId]);
-        if (!row || !ACTIVE_STATES.includes(row.state)) return false;
-        await db.query(
-          `INSERT INTO incidences (id, proposal_id, user_id, type, reason, delay_minutes, criticality, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [randomUUID(), proposalId, input.userId, input.type, input.reason, input.delayMinutes, input.criticality, input.createdAt],
+        // Bloquea el plan hasta el final: una cancelación o un cierre de votación a la vez espera a que la incidencia
+        // (y su votación) quede guardada; si llegó antes, aquí se ve el plan ya cambiado y no se guarda nada. También
+        // ordena dos reportes a la vez: el segundo ve la votación que abrió el primero.
+        const row = await db.one<{ state: ProposalState; scheduled_at: string | null; group_id: string }>(
+          'SELECT state, scheduled_at, group_id FROM proposals WHERE id = $1 FOR UPDATE',
+          [proposalId],
         );
-        if (escalate) await db.query("UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1 AND state = 'CONFIRMADO'", [proposalId]);
-        return true;
-      });
-    },
-
-    // Votación exprés (G4): todas las incidencias quedan resueltas; reprogramar abre una votación nueva. Solo sobre un
-    // plan activo (CONFIRMADO o EN_RECOORDINACION); false, sin tocar nada, si ya no lo es.
-    resolveIncidences(
-      id: string,
-      newState: 'CONFIRMADO' | 'CANCELADO' | 'PROPUESTO',
-      votingDeadline: string | null,
-      windows: NewWindow[] | null = null,
-    ): Promise<boolean> {
-      return db.transaction(async () => {
-        const { rowCount } =
-          newState === 'PROPUESTO'
-            ? await db.query(
-                `UPDATE proposals SET state = 'PROPUESTO', chosen_window_id = NULL, scheduled_at = NULL, scheduled_date = NULL, voting_deadline = $1
-                 WHERE id = $2 AND state = ANY($3::text[])`,
-                [votingDeadline, id, ACTIVE_STATES],
-              )
-            : await db.query('UPDATE proposals SET state = $1 WHERE id = $2 AND state = ANY($3::text[])', [newState, id, ACTIVE_STATES]);
-        if (rowCount === 0) return false;
-        // Reprogramar: franjas nuevas (borra las viejas con sus votos). Reentrante: va dentro de esta transacción.
-        if (newState === 'PROPUESTO') await this.replaceWindows(id, windows ?? [], votingDeadline!);
-        await db.query('UPDATE incidences SET resolved = TRUE WHERE proposal_id = $1', [id]);
-        return true;
+        if (!row || row.state !== 'CONFIRMADO') return { saved: false, openedVoteId: null };
+        await db.query(
+          `INSERT INTO incidences (id, proposal_id, user_id, type, reason, delay_minutes, criticality, critical_reason, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [randomUUID(), proposalId, input.userId, input.type, input.reason, input.delayMinutes, input.criticality, input.criticalReason, input.createdAt],
+        );
+        if (input.criticalReason === null) return { saved: true, openedVoteId: null };
+        const votes = expressVotesRepository(db);
+        // Con el plan bloqueado nadie más abre una a la vez: se comprueba antes en vez de dejar que salte el índice
+        // único (un error de la base dentro de esta transacción la desharía entera).
+        if (await votes.findOpen(proposalId)) return { saved: true, openedVoteId: null };
+        // Votan los miembros de ahora menos quien avisa; si no queda nadie, solo se informa.
+        const voterIds = (
+          await db.many<{ user_id: string }>('SELECT user_id FROM group_members WHERE group_id = $1 AND user_id <> $2', [row.group_id, input.userId])
+        ).map((r) => r.user_id);
+        if (voterIds.length === 0) return { saved: true, openedVoteId: null };
+        const openedVoteId = await votes.open({
+          proposalId,
+          reporterId: input.userId,
+          reason: input.reason,
+          criticalReason: input.criticalReason,
+          voterIds,
+          openedAt: input.createdAt,
+          // scheduled_at del plan CONFIRMADO bloqueado (siempre lo tiene; null solo si faltara: entonces no se acota).
+          expiresAt: expiresAtFor(new Date(input.createdAt), row.scheduled_at, expressVoteMinutes),
+        });
+        return { saved: true, openedVoteId };
       });
     },
 

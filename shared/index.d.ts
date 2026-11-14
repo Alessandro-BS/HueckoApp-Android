@@ -83,7 +83,30 @@ export type Incidence = {
   delayMinutes: number | null;
   criticality: Criticality;
   resolved: boolean;
+  criticalReason: string | null;   // por qué la incidencia es crítica (abre votación exprés); null si no lo es
   createdAt: string;
+};
+
+export type ExpressOption = 'CANCELAR' | 'REAGENDAR' | 'MANTENER';
+
+// Votación exprés grupal: una ausencia crítica en un plan confirmado abre una votación corta (docs/api.md, «Votación exprés»).
+export type ExpressVote = {
+  id: string;
+  status: 'ABIERTA' | 'CERRADA';
+  reportedBy: User;
+  reason: string;
+  criticalReason: string;
+  openedAt: string;
+  expiresAt: string;
+  closedAt: string | null;
+  counts: Record<ExpressOption, number>;
+  myVote: ExpressOption | null;
+  canVote: boolean;
+  eligibleVoters: number;
+  quorum: number;
+  result: ExpressOption | null;
+  resultByDefault: boolean | null;
+  recommendation: { option: ExpressOption; reason: string } | null;
 };
 
 export type Proposal = {
@@ -96,11 +119,12 @@ export type Proposal = {
   state: ProposalState;
   windows: TimeWindow[];           // ordenadas por fecha y hora
   myVoteWindowId: string | null;   // ventana que votó el usuario actual
-  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
+  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar o replantear (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
   scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
   scheduledDate: string | null;    // "YYYY-MM-DD": la fecha de la franja elegida (para mostrarla sin depender de la zona del teléfono)
   incidences: Incidence[];
+  expressVote: ExpressVote | null; // la votación exprés más reciente del plan (abierta o cerrada), si hay
   createdAt: string;               // ISO; GET /groups/:id/proposals ordena por aquí (más recientes primero)
 };
 
@@ -121,9 +145,8 @@ export type ProposalInput = {
 
 export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes?: number | null };
 
-export type ResolveIncidencesInput =
-  | { newState: 'CONFIRMADO' | 'CANCELADO' }
-  | { newState: 'PROPUESTO'; votingDeadline: string; windows: TimeWindowInput[] };
+// Voto en la votación exprés (PUT /proposals/:id/express-vote); se puede cambiar mientras siga abierta.
+export type ExpressVoteInput = { option: ExpressOption };
 
 // Replantear una propuesta en votación: franjas (2 a 5) y plazo nuevos; se borran los votos.
 export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };
@@ -143,9 +166,11 @@ export type ExpressAlert = {
   groupName: string;
   who: string;                          // nombre de quien reportó la incidencia
   reason: string;
-  kind: 'RECOORDINACION' | 'AVISO';     // EN_RECOORDINACION, o CONFIRMADO con incidencias sin resolver
+  kind: 'VOTACION' | 'RECOORDINACION' | 'AVISO'; // votación exprés abierta; plan EN_RECOORDINACION; o CONFIRMADO con incidencias sin resolver
   canResolve: boolean;                  // = canManage del plan para el usuario actual
+  canVote: boolean;                     // solo en VOTACION: el canVote de la votación abierta; false en los demás
   createdBy: User;
+  expiresAt: string | null;             // ISO: cuándo vence la votación; solo en VOTACION, null en los demás
 };
 
 export type DashboardGroup = {
@@ -173,7 +198,7 @@ export type AiProvider = 'gemini' | 'mock';
 export type AiStatus = { provider: AiProvider };
 
 // Función de la app que llamó a la IA (estadísticas de administración, `ai_calls`).
-export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary';
+export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary' | 'express-recommendation';
 
 // Respuesta de POST /ai/schedule-ocr: bloques SIN guardar, para revisarlos y guardarlos con /me/time-blocks/bulk.
 export type ScheduleOcrResult = { blocks: TimeBlockInput[] };

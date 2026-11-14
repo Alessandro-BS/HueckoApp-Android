@@ -1,4 +1,4 @@
-import { addDays, dateFor, hasStarted, isoDay, limaToday, mondayOf, shortDate, weekOptions } from '../zone';
+import { addDays, closesInLabel, dateFor, hasStarted, isoDay, limaToday, mondayOf, shortDate, weekOptions } from '../zone';
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -59,4 +59,14 @@ it('shortDate: «Jue 20 nov» con nombres propios', () => {
   expect(shortDate('2026-11-19')).toBe('Jue 19 nov');
   expect(shortDate('2026-01-05')).toBe('Lun 5 ene');
   expect(shortDate('basura')).toBe('basura');
+});
+
+it('closesInLabel: minutos que faltan, redondeando hacia arriba', () => {
+  const now = new Date('2026-11-16T15:00:00Z');
+  expect(closesInLabel('2026-11-16T15:42:00Z', now)).toBe('Cierra en 42 min');
+  expect(closesInLabel('2026-11-16T15:41:30Z', now)).toBe('Cierra en 42 min');
+  expect(closesInLabel('2026-11-16T15:00:01Z', now)).toBe('Cierra en 1 min');
+  // Vencida pero aún sin cerrar (se cierra al volver a consultar).
+  expect(closesInLabel('2026-11-16T15:00:00Z', now)).toBe('Cerrando la votación…');
+  expect(closesInLabel('no es fecha', now)).toBe('Cerrando la votación…');
 });

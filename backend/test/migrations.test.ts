@@ -351,3 +351,66 @@ describe('esquema: intentos por proximidad', () => {
     expect(await count(db, 'proximity_requests')).toBe(0);
   });
 });
+
+describe('esquema: votación exprés', () => {
+  const seed = async () => {
+    const db = await openTestDatabase();
+    await db.exec(`
+      INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Ana', 'ana@correo.com', 'x'), ('u2', 'Beto', 'beto@correo.com', 'x');
+      INSERT INTO groups (id, name, invite_code) VALUES ('g1', 'Grupo', 'ABCDEFGH');
+      INSERT INTO proposals (id, group_id, title, created_by, voting_deadline, state, created_at)
+        VALUES ('p1', 'g1', 'Plan', 'u1', '2026-10-03T20:00:00.000Z', 'CONFIRMADO', '2026-09-29T15:00:00.000Z');
+    `);
+    return db;
+  };
+  const openVote = (db: Db, id: string, status: string) =>
+    db.query(
+      `INSERT INTO express_votes (id, proposal_id, reporter_id, reason, critical_reason, status, opened_at, expires_at)
+       VALUES ($1, 'p1', 'u1', 'Enfermo', 'propuso este plan', $2, '2026-10-01T10:00:00.000Z', '2026-10-01T11:00:00.000Z')`,
+      [id, status],
+    );
+
+  it('existen incidences.critical_reason y las tablas de la votación', async () => {
+    const db = await openTestDatabase();
+    expect(await db.one("SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_name = 'incidences' AND column_name = 'critical_reason'")).toEqual({ n: 1 });
+    expect(await count(db, 'express_votes')).toBe(0);
+    expect(await count(db, 'express_vote_voters')).toBe(0);
+  });
+
+  it('solo una ABIERTA por plan; las CERRADAS no limitan', async () => {
+    const db = await seed();
+    await openVote(db, 'v1', 'ABIERTA');
+    await expect(openVote(db, 'v2', 'ABIERTA')).rejects.toMatchObject({ code: '23505', constraint: 'express_votes_one_open' });
+    await openVote(db, 'v3', 'CERRADA');
+    await openVote(db, 'v4', 'CERRADA');
+    await failsWith(openVote(db, 'v5', 'OTRA'), '23514');
+  });
+
+  it('las opciones solo admiten CANCELAR, REAGENDAR o MANTENER y los votantes se borran con la votación', async () => {
+    const db = await seed();
+    await openVote(db, 'v1', 'ABIERTA');
+    const voter = (option: string | null) => db.query('INSERT INTO express_vote_voters (vote_id, user_id, option) VALUES ($1, $2, $3)', ['v1', 'u2', option]);
+    await failsWith(voter('QUIZAS'), '23514');
+    await voter('MANTENER');
+    await failsWith(voter(null), '23505');
+    await db.query("DELETE FROM proposals WHERE id = 'p1'");
+    expect(await count(db, 'express_votes')).toBe(0);
+    expect(await count(db, 'express_vote_voters')).toBe(0);
+  });
+});
+
+describe('migración 9: ai_calls admite la recomendación exprés', () => {
+  const insertCall = (db: Db, task: string) =>
+    db.query("INSERT INTO ai_calls (user_id, task, ok, duration_ms, created_at) VALUES (NULL, $1, TRUE, 10, '2026-11-13T10:00:00.000Z')", [task]);
+
+  it('acepta express-recommendation, conserva las filas anteriores y sigue rechazando tareas desconocidas', async () => {
+    const db = await openEmptyDatabase();
+    await migrate(db, migrations.slice(0, 8));
+    await insertCall(db, 'voting-summary');
+    await failsWith(insertCall(db, 'express-recommendation'), '23514'); // control: antes de la 9 no existe
+    await migrate(db);
+    await insertCall(db, 'express-recommendation');
+    await failsWith(insertCall(db, 'otra-tarea'), '23514');
+    expect(await count(db, 'ai_calls')).toBe(2);
+  });
+});

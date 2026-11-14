@@ -1,6 +1,8 @@
-import type { Group, Proposal, TimeWindowInput } from '@hueckoapp/shared';
+import type { Group, Proposal, ProposalState, TimeWindowInput } from '@hueckoapp/shared';
 import { Router } from 'express';
 
+import { aiCallRecorder, aiCallsRepository } from '../ai/ai-calls.repository';
+import { recommendExpressVote } from '../ai/express-recommendation';
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
 import { groupWeekWindows, windowAvailability } from '../availability/group-availability';
@@ -10,15 +12,17 @@ import { groupNotFound, loadGroupForMember } from '../groups/group-access';
 import { groupsRepository } from '../groups/groups.repository';
 import { ApiError } from '../middleware/errors';
 import { timeBlocksRepository } from '../schedule/time-blocks.repository';
+import { criticalReasonFor } from './express-rules';
+import { type CloseScope, expressVotesRepository, logCloseError } from './express-votes.repository';
 import { proposalsRepository } from './proposals.repository';
 import {
   assertDeadlineBeforeWindows,
   confirmSchema,
   createProposalSchema,
+  expressVoteInputSchema,
   incidenceInputSchema,
   overlaps,
   replanSchema,
-  resolveIncidencesSchema,
   timeWindowInputSchema,
   validationError,
   voteSchema,
@@ -27,17 +31,38 @@ import {
 import { bestWindows, canCancel, criticalityFor, isVotingOpen, pickWinner, scheduleFor } from './rules';
 
 // Repositorios, reloj y comprobaciones de acceso que comparten los dos routers.
-function proposalsContext({ db, now }: ResolvedDeps) {
+function proposalsContext({ db, now, expressVoteMinutes, ai, onBackgroundTask }: ResolvedDeps) {
   const groups = groupsRepository(db);
   const proposals = proposalsRepository(db);
   const blocks = timeBlocksRepository(db);
+  const expressVotes = expressVotesRepository(db);
+  const aiCalls = aiCallsRepository(db);
+
+  // Cierre perezoso de la votación exprés: antes de leer, se cierran las vencidas del alcance (nunca lanza).
+  const closeDue = (scope: CloseScope) => expressVotes.closeDueInScope(scope, now());
+
+  const proposalNotFound = () => new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
 
   // 404 si la propuesta no existe; 403 si no soy miembro de su grupo.
   const loadForMember = async (proposalId: string, userId: string) => {
     const proposal = await proposals.findById(proposalId, userId);
-    if (!proposal) throw new ApiError(404, 'PROPOSAL_NOT_FOUND', 'Propuesta no encontrada.');
+    if (!proposal) throw proposalNotFound();
     const { group, me } = await loadGroupForMember(groups, proposal.groupId, userId);
     return { proposal, group, me };
+  };
+
+  // Como loadForMember, pero si su votación exprés ya venció la cierra (y aplica su resultado) antes de devolver el
+  // plan, que se vuelve a leer. Primero el acceso: quien no es miembro no dispara nada. Un cierre que falla se anota y
+  // la petición sigue con la votación aún abierta (la siguiente lectura lo reintenta).
+  const loadForMemberClosingDue = async (proposalId: string, userId: string) => {
+    const loaded = await loadForMember(proposalId, userId);
+    const vote = loaded.proposal.expressVote;
+    const at = now();
+    if (vote?.status !== 'ABIERTA' || new Date(vote.expiresAt).getTime() > at.getTime()) return loaded;
+    await expressVotes.closeDue(proposalId, at).catch((error: unknown) => logCloseError(proposalId, error));
+    const proposal = await proposals.findById(proposalId, userId);
+    if (!proposal) throw proposalNotFound();
+    return { ...loaded, proposal };
   };
 
   // % de cada franja con los horarios actuales del grupo: los recurrentes de su día y los puntuales de su fecha.
@@ -58,7 +83,9 @@ function proposalsContext({ db, now }: ResolvedDeps) {
     if (!isVotingOpen(proposal, now())) throw new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.');
   };
 
-  return { groups, proposals, blocks, now, loadForMember, withAvailability, assertVotingOpen };
+  return {
+    groups, proposals, blocks, expressVotes, aiCalls, ai, onBackgroundTask, expressVoteMinutes, now, closeDue, loadForMember, loadForMemberClosingDue, withAvailability, assertVotingOpen,
+  };
 }
 
 // Montado en /api/groups detrás de requireAuth (junto a groupsRouter).
@@ -69,6 +96,7 @@ export function groupProposalsRouter(deps: ResolvedDeps) {
   router.get('/:id/proposals', async (req, res) => {
     const userId = getUserId(res);
     const { group } = await loadGroupForMember(ctx.groups, req.params.id, userId);
+    await ctx.closeDue({ groupId: group.id });
     res.json(await ctx.proposals.listByGroup(group.id, userId));
   });
 
@@ -118,7 +146,7 @@ export function proposalsRouter(deps: ResolvedDeps) {
   const ctx = proposalsContext(deps);
 
   router.get('/:id', async (req, res) => {
-    res.json((await ctx.loadForMember(req.params.id, getUserId(res))).proposal);
+    res.json((await ctx.loadForMemberClosingDue(req.params.id, getUserId(res))).proposal);
   });
 
   router.put('/:id/vote', async (req, res) => {
@@ -169,7 +197,6 @@ export function proposalsRouter(deps: ResolvedDeps) {
     return loaded;
   };
   const invalidState = () => new ApiError(409, 'INVALID_STATE', 'El plan no admite esta acción en su estado actual.');
-  const isActivePlan = (p: Proposal) => p.state === 'CONFIRMADO' || p.state === 'EN_RECOORDINACION';
 
   router.post('/:id/confirm', async (req, res) => {
     const userId = getUserId(res);
@@ -196,48 +223,85 @@ export function proposalsRouter(deps: ResolvedDeps) {
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
+  // Una franja confirmada que ya terminó: no hay plan al que faltar.
+  const hasEnded = (p: Proposal) => {
+    const chosen = p.windows.find((w) => w.id === p.chosenWindowId);
+    return chosen !== undefined && instant(chosen.date, chosen.endTime).getTime() <= ctx.now().getTime();
+  };
+
   router.post('/:id/incidences', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal, me } = await ctx.loadForMember(req.params.id, userId);
+    // Primero se cierra una votación vencida: su resultado puede haber cambiado el estado del plan.
+    const { proposal, me } = await ctx.loadForMemberClosingDue(req.params.id, userId);
     const input = incidenceInputSchema.parse(req.body);
-    const notActive = () => new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
-    if (!isActivePlan(proposal)) throw notActive();
-    // Contrato + G5: si falta un imprescindible, el plan confirmado pasa a re-coordinarse. Si está CONFIRMADO lo
-    // decide reportIncidence con el plan bloqueado, no esta lectura (otra petición pudo cambiarlo mientras tanto).
-    const escalate = input.type === 'FALTA' && me.isEssential;
-    const saved = await ctx.proposals.reportIncidence(
+    const notConfirmed = () => new ApiError(409, 'INVALID_STATE', 'Solo se pueden reportar imprevistos de un plan confirmado.');
+    if (proposal.state !== 'CONFIRMADO' || hasEnded(proposal)) throw notConfirmed();
+    // Ausencia crítica (quien propuso el plan, imprescindible u organizador): ALTA y abre la votación del grupo.
+    const criticalReason = criticalReasonFor({
+      type: input.type, reporterId: userId, createdById: proposal.createdBy.id, isEssential: me.isEssential, role: me.role,
+    });
+    const criticality = criticalReason !== null ? 'ALTA' : criticalityFor(input.type, me.isEssential, input.delayMinutes);
+    // El estado se vuelve a comprobar con el plan bloqueado (otra petición pudo cambiarlo mientras tanto).
+    const { saved, openedVoteId } = await ctx.proposals.reportIncidence(
       proposal.id,
-      { userId, ...input, criticality: criticalityFor(input.type, me.isEssential, input.delayMinutes), createdAt: ctx.now().toISOString() },
-      escalate,
+      { userId, ...input, criticality, criticalReason, createdAt: ctx.now().toISOString() },
+      ctx.expressVoteMinutes,
     );
-    // Otra petición lo canceló (o resolvió) entre la comprobación y el guardado.
-    if (!saved) throw notActive();
-    res.status(201).json(await ctx.proposals.findById(proposal.id, userId));
+    if (!saved) throw notConfirmed();
+    const body = await ctx.proposals.findById(proposal.id, userId);
+    res.status(201).json(body);
+    // Ausencia crítica con votación abierta: la IA recomienda qué votar, sin esperar (nunca lanza ni retrasa la respuesta).
+    if (openedVoteId !== null && body?.expressVote) {
+      const at = ctx.now();
+      const startsAt = body.scheduledAt ?? proposal.scheduledAt ?? '';
+      const task = recommendExpressVote(
+        { ai: ctx.ai, record: aiCallRecorder(ctx.aiCalls, userId, at), votes: ctx.expressVotes },
+        {
+          voteId: openedVoteId,
+          planTitle: body.title,
+          location: body.location?.name ?? null,
+          startsAt,
+          hoursLeft: startsAt ? Math.max(0, Math.round(((new Date(startsAt).getTime() - at.getTime()) / 3_600_000) * 10) / 10) : 0,
+          reason: body.expressVote.reason,
+          criticalReason: body.expressVote.criticalReason,
+          eligibleVoters: body.expressVote.eligibleVoters,
+          defaultResult: 'MANTENER',
+        },
+      );
+      ctx.onBackgroundTask?.(task);
+    }
   });
 
-  router.post('/:id/incidences/resolve', async (req, res) => {
+  // Votación exprés: un voto por votante, se puede cambiar mientras siga abierta. Si con él ya votaron todos, cierra.
+  router.put('/:id/express-vote', async (req, res) => {
     const userId = getUserId(res);
-    const { proposal, group } = await loadForManager(req.params.id, userId);
-    const input = resolveIncidencesSchema(ctx.now()).parse(req.body);
-    if (!isActivePlan(proposal)) throw invalidState();
-    let windows = null;
-    if (input.newState === 'PROPUESTO') {
-      assertDeadlineBeforeWindows(input.votingDeadline!, input.windows!);
-      windows = await ctx.withAvailability(group, input.windows!);
-    }
-    if (!(await ctx.proposals.resolveIncidences(proposal.id, input.newState, input.votingDeadline, windows))) throw invalidState();
+    const { proposal } = await ctx.loadForMemberClosingDue(req.params.id, userId);
+    const { option } = expressVoteInputSchema.parse(req.body);
+    const vote = proposal.expressVote;
+    const closed = () => new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.');
+    // Sin votación abierta, o vencida (si su cierre falló arriba, sigue ABIERTA pero ya no admite votos).
+    if (!vote || vote.status !== 'ABIERTA' || new Date(vote.expiresAt).getTime() <= ctx.now().getTime()) throw closed();
+    // canVote: está en la lista fijada al abrir (quien avisó no) y sigue en el grupo.
+    if (!vote.canVote) throw new ApiError(403, 'NOT_A_VOTER', 'No puedes votar en esta votación.');
+    if (!(await ctx.expressVotes.castVoteIfOpen(vote.id, userId, option, ctx.now()))) throw closed();
+    // Cierre anticipado; si falla, el voto ya quedó guardado y la votación se cierra al vencer.
+    await ctx.expressVotes.closeDue(proposal.id, ctx.now()).catch((error: unknown) => logCloseError(proposal.id, error));
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 
-  // Replantear: con la propuesta en votación, quien la gestiona la reemplaza por franjas y plazo nuevos (se borran los votos).
+  // Replantear: con la propuesta en votación (o en recoordinación tras una votación exprés), quien la gestiona la
+  // reemplaza por franjas y plazo nuevos y vuelve a PROPUESTO (se borran los votos). Sin cierre perezoso: una votación
+  // exprés solo se abre con el plan CONFIRMADO, así que en estos estados no puede haber una ABIERTA.
+  const REPLANNABLE: ProposalState[] = ['PROPUESTO', 'EN_RECOORDINACION'];
   router.post('/:id/replan', async (req, res) => {
     const userId = getUserId(res);
     const { proposal, group } = await loadForManager(req.params.id, userId);
     const input = replanSchema(ctx.now()).parse(req.body);
-    if (proposal.state !== 'PROPUESTO') throw invalidState();
+    if (!REPLANNABLE.includes(proposal.state)) throw invalidState();
     assertDeadlineBeforeWindows(input.votingDeadline, input.windows);
     const windows = await ctx.withAvailability(group, input.windows);
-    if (!(await ctx.proposals.replanWindows(proposal.id, windows, new Date(input.votingDeadline).toISOString()))) throw invalidState();
+    const deadline = new Date(input.votingDeadline).toISOString();
+    if (!(await ctx.proposals.replanWindows(proposal.id, windows, deadline, REPLANNABLE))) throw invalidState();
     res.json(await ctx.proposals.findById(proposal.id, userId));
   });
 

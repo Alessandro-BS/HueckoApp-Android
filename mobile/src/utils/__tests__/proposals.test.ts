@@ -1,6 +1,6 @@
 import { makeConfirmed, makeProposal, makeWindow } from '../../testing/fixtures';
 import {
-  availabilityLabel, deadlineLabel, isUpcoming, isVotingOpen, openIncidence, scheduleLabel, STATE_BADGE, voteCountLabel, windowLabel,
+  availabilityLabel, deadlineLabel, isUpcoming, isVotingOpen, scheduleLabel, STATE_BADGE, voteCountLabel, windowLabel,
 } from '../proposals';
 
 const NOW = new Date(2026, 8, 29, 10, 0);
@@ -50,12 +50,4 @@ it('scheduleLabel (F10): usa scheduledDate del servidor, no scheduledAt en la zo
   // si la etiqueta saliera de scheduledAt diría «Sáb 3 oct»; sale de scheduledDate, «Mié 30 sep».
   const p = makeConfirmed({ scheduledAt: new Date(2026, 9, 3, 11, 0).toISOString(), scheduledDate: '2026-09-30' });
   expect(scheduleLabel(p)).toBe('Mié 30 sep · 11:00 - 13:00');
-});
-
-it('openIncidence: la ALTA sin resolver o, si no, la primera sin resolver', () => {
-  const base = makeConfirmed().incidences[0];
-  expect(openIncidence(makeConfirmed())?.id).toBe('inc_1');
-  const alta = { ...base, id: 'alta', criticality: 'ALTA' as const };
-  expect(openIncidence(makeConfirmed({ incidences: [base, alta] }))?.id).toBe('alta');
-  expect(openIncidence(makeConfirmed({ incidences: [{ ...base, resolved: true }] }))).toBeNull();
 });

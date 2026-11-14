@@ -14,7 +14,7 @@
 ![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-PGlite%20%2B%20Neon-4169E1?logo=postgresql&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1296%20%E2%9C%94-2EA44F)
+![Tests](https://img.shields.io/badge/tests-1385%20%E2%9C%94-2EA44F)
 
 [🎓 Requisitos de la entrega](#-requisitos-de-la-segunda-entrega) ·
 [🚀 Instalación](#-instalación-paso-a-paso) ·
@@ -46,7 +46,7 @@ flowchart LR
 | 👥 | **Grupos** | Código de invitación y roles: dueño, miembro y miembro **imprescindible** |
 | 🔍 | **Huecos en común** | El servidor cruza las agendas de 08:00 a 20:00 de la semana que elijas (hora de Lima) y muestra el % del grupo libre |
 | 🗳️ | **Propuestas y votación** | Franjas con fecha (de 2 a 5, en la semana que elijas), fecha límite, lugar con tu ubicación, un voto por persona y **replantear** la propuesta en votación (franjas y plazo nuevos) |
-| ⚠️ | **Imprevistos** | Si alguien no puede ir, el responsable decide si el plan sigue o se reprograma con franjas nuevas y una fecha límite nueva |
+| ⚠️ | **Imprevistos** | Si alguien no puede ir, **decide el grupo** con una **votación exprés** (cancelar, reagendar o mantener) que cierra sola; si gana reagendar, quien gestiona el plan propone franjas nuevas y una fecha límite nueva |
 | 🤖 | **Huecko IA** | Escaneo de horarios, borrador de plan desde una frase, ideas de plan y resumen de la votación |
 | 💾 | **Funciona sin conexión** | Recuerda tu sesión y muestra la última copia de Inicio si no hay red |
 | 🛡️ | **Administración** | Estadísticas, gráficos, informes PDF/CSV, usuarios, grupos y registro de acciones |
@@ -313,8 +313,8 @@ La app tiene que saber dónde está el backend. Se configura en `EXPO_PUBLIC_API
 | 5️⃣ | ✨ **Propón un plan con IA** | **Planes → Crear propuesta → Describe tu plan**: escribe *«reunión de 2 horas el viernes en la tarde»* y toca **Rellenar con IA**. Cada franja queda con su fecha: revisa, cambia la semana, el día o las horas si hace falta, y crea la propuesta |
 | 6️⃣ | 📍 **Pon el lugar** | **Usar mi ubicación actual** o escríbelo a mano |
 | 7️⃣ | 🗳️ **Vota y confirma** | Cada uno toca **Votar**. En **Ver detalles**, **Resumir votación** pide a la IA un resumen y el responsable toca **Confirmar plan** |
-| 8️⃣ | ⚠️ **Resuelve imprevistos** | **Reportar imprevisto** en el plan. El dueño puede marcar a alguien **imprescindible** en **Miembros**: si esa persona falta, el plan se reprograma: se eligen franjas nuevas con fecha (de 2 a 5) y un plazo nuevo |
-| 9️⃣ | 🏠 **Sigue todo en Inicio** | Próximo plan, grupos, votaciones abiertas y avisos de imprevistos |
+| 8️⃣ | ⚠️ **Resuelve imprevistos** | **Reportar imprevisto** en el plan. El dueño puede marcar a alguien **imprescindible** en **Miembros**: si esa persona falta, el grupo **vota** (cancelar, reagendar o mantener) y la IA recomienda qué votar; si gana reagendar, quien gestiona el plan elige franjas nuevas con fecha (de 2 a 5) y un plazo nuevo |
+| 9️⃣ | 🏠 **Sigue todo en Inicio** | Próximo plan, grupos, votaciones abiertas y avisos de imprevistos (con la votación exprés y cuánto falta para que cierre) |
 
 > 📆 **Las franjas tienen fecha.** Al proponer eliges la semana (esta o hasta 3 más), el día y las horas, así que cada franja es un día concreto. No se pueden elegir días pasados ni franjas que ya empezaron, y al confirmar el plan se agenda en la fecha de la franja ganadora. Un horario puntual cuenta solo en su fecha. Si la franja que quieres confirmar ya empezó, la app te ofrece **Replantear** la propuesta.
 
@@ -412,7 +412,7 @@ En desarrollo, con `DATABASE_URL` vacía, el backend guarda todo en **PostgreSQL
 
 | | Qué | Cómo |
 |---|---|---|
-| ✅ | **1296 tests** | 686 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 610 de la app (Jest + Testing Library) |
+| ✅ | **1385 tests** | 754 del backend (Vitest + Supertest, cada test con su base PGlite en memoria) y 631 de la app (Jest + Testing Library) |
 | 🔎 | **Tipos estrictos** | `npm run typecheck` en backend y app |
 | 🤖 | **CI** | [GitHub Actions](.github/workflows/ci.yml) corre `npm ci`, `npm run typecheck` y `npm test` con Node 22 en cada PR y push a `develop` y `main` |
 | 📱 | **Pruebas en celular** | Recorrido completo con la IA real en la [🧪 Guía de pruebas](docs/guia-de-pruebas.md) |

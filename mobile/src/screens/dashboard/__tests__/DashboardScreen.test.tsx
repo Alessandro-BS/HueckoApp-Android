@@ -54,10 +54,10 @@ it('pinta los valores de la semilla (domain spec §2.2, UI spec §2.3)', async (
   expect(await screen.findByText('Buenos días, Usuario')).toBeTruthy();
   expect(screen.getByText('Martes, 29 de septiembre')).toBeTruthy();
   expect(screen.getByText('Esto es lo que pasa hoy en tus grupos y horarios.')).toBeTruthy();
-  // Alerta (G5, aviso): quien gestiona el plan puede decidir.
+  // Alerta (G5, aviso): lleva al plan.
   expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
   expect(screen.getByText('Ana reportó un imprevisto en «Reunión de avance del proyecto»')).toBeTruthy();
-  expect(screen.getByText('Mantener')).toBeTruthy();
+  expect(screen.getByText('Ver plan')).toBeTruthy();
   // Métricas.
   expect(screen.getByText('Grupos activos')).toBeTruthy();
   expect(screen.getByText('Votaciones abiertas')).toBeTruthy();
@@ -181,13 +181,55 @@ it('las tarjetas y accesos navegan a Grupos, Horario, el plan y el grupo', async
   expect(navigation.navigate).toHaveBeenLastCalledWith('GroupDetail', { groupId: 'g1', name: 'Proyecto Integrador' });
 });
 
-it('«Mantener» en la alerta resuelve y recarga Inicio', async () => {
-  proposals.resolveIncidences.mockResolvedValue(makeProposal());
+it('alerta AVISO: «Ver plan» abre el plan', async () => {
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Mantener'));
-  await waitFor(() => expect(dashboard.getDashboard).toHaveBeenCalledTimes(2));
-  expect(proposals.resolveIncidences).toHaveBeenCalledWith('prop_1', { newState: 'CONFIRMADO' });
-  expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: mantener.');
+  await fireEvent.press(await screen.findByText('Ver plan'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta VOTACION: quién no puede ir, cuánto falta y «Votar» abre el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', canVote: true, expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
+  expect(screen.getByText('Cierra en 42 min')).toBeTruthy();
+  expect(screen.getByText('Cruce con un examen de laboratorio a última hora.')).toBeTruthy();
+  expect(screen.queryByText('Ver plan')).toBeNull();
+  await fireEvent.press(screen.getByText('Votar'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta VOTACION para quien no vota (quien avisó, o entró después): «Ver votación» en vez de «Votar», y abre el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', canVote: false, expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
+  expect(screen.queryByText('Votar')).toBeNull();
+  await fireEvent.press(screen.getByText('Ver votación'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta RECOORDINACION: «Proponer franjas» solo si puede gestionar el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(makeDashboard({ expressAlert: { ...base, kind: 'RECOORDINACION', canResolve: true } }));
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió reagendar')).toBeTruthy();
+  expect(screen.getByText('Ana no puede ir a «Reunión de avance del proyecto»')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Proponer franjas'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta RECOORDINACION sin permiso de gestión: solo informa, sin botón', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(makeDashboard({ expressAlert: { ...base, kind: 'RECOORDINACION', canResolve: false } }));
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió reagendar')).toBeTruthy();
+  expect(screen.queryByText('Proponer franjas')).toBeNull();
+  expect(screen.queryByText('Votar')).toBeNull();
 });
 
 it('si la primera carga falla muestra el error con «Reintentar»', async () => {
