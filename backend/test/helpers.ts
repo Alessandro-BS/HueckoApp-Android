@@ -51,6 +51,7 @@ export async function makeTestApp(options?: {
   cronSecret?: string;
   email?: EmailClient;
   codeRateLimit?: number;
+  twoFactorRateLimit?: number;
   google?: GoogleVerifier;
 }): Promise<{ app: Express; db: Db; emails: FakeEmail }> {
   const db = options?.db ?? (await makeTestDb());
@@ -74,6 +75,7 @@ export async function makeTestApp(options?: {
     // Sin `email`, el correo falso de `emails` (nunca se llama a Brevo).
     email: options?.email ?? emails,
     codeRateLimit: options?.codeRateLimit ?? 10_000,
+    twoFactorRateLimit: options?.twoFactorRateLimit,
     google: options?.google,
   });
   const client = options?.email ?? emails;

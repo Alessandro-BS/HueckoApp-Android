@@ -78,6 +78,52 @@ describe('activar la verificación en dos pasos', () => {
   });
 });
 
+describe('activar: casos extra', () => {
+  it('con el 2FA ya activo: 409 TWO_FACTOR_ALREADY_ENABLED sin reto ni correo; con contraseña mala sigue siendo 400', async () => {
+    const ctx = await setup();
+    await enable2fa(ctx);
+    const before = ctx.emails.sent.length;
+    const res = await request(ctx.app).post('/api/auth/me/2fa/enable').set(bearer(ctx.token)).send({ password: ctx.password });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('TWO_FACTOR_ALREADY_ENABLED');
+    expect(ctx.emails.sent.length).toBe(before);
+    const bad = await request(ctx.app).post('/api/auth/me/2fa/enable').set(bearer(ctx.token)).send({ password: 'mala-mala-mala' });
+    expect(bad.status).toBe(400);
+  });
+
+  it.each([
+    ['sv vencida', 'UPDATE users SET session_version = session_version + 1 WHERE email = $1'],
+    ['dueña suspendida', "UPDATE users SET status = 'SUSPENDED' WHERE email = $1"],
+  ])('verify de ENABLE_2FA con un JWT de %s: 410 sin gastar intento', async (_name, sql) => {
+    const ctx = await setup();
+    const res = await request(ctx.app).post('/api/auth/me/2fa/enable').set(bearer(ctx.token)).send({ password: ctx.password });
+    const challenge = res.body.challenge as Challenge;
+    const code = ctx.emails.lastCodeTo(ctx.email);
+    await ctx.db.query(sql, [ctx.email]);
+    const out = await request(ctx.app).post(`/api/auth/challenges/${challenge.id}/verify`).set(bearer(ctx.token)).send({ code });
+    expect(out.status).toBe(410);
+    expect(out.body.error.code).toBe('CHALLENGE_EXPIRED');
+    expect(await ctx.db.one('SELECT attempts, consumed_at FROM auth_challenges WHERE id = $1', [challenge.id])).toEqual({ attempts: 0, consumed_at: null });
+  });
+});
+
+describe('límite de enable/disable por cuenta', () => {
+  it('el 6.º intento de A da 429; B desde la misma IP no se bloquea', async () => {
+    const ctx = await makeTestApp({ twoFactorRateLimit: 5 });
+    const a = await registerUser(ctx.app, { password: 'contrasena-segura' });
+    const b = await registerUser(ctx.app, { password: 'contrasena-segura' });
+    for (let i = 0; i < 5; i++) {
+      const r = await request(ctx.app).post(i % 2 ? '/api/auth/me/2fa/disable' : '/api/auth/me/2fa/enable').set(bearer(a.token)).send({ password: 'mala-mala-mala' });
+      expect(r.status).toBe(400);
+    }
+    const sixth = await request(ctx.app).post('/api/auth/me/2fa/enable').set(bearer(a.token)).send({ password: 'mala-mala-mala' });
+    expect(sixth.status).toBe(429);
+    expect(sixth.body.error.code).toBe('TOO_MANY_REQUESTS');
+    const other = await request(ctx.app).post('/api/auth/me/2fa/enable').set(bearer(b.token)).send({ password: 'mala-mala-mala' });
+    expect(other.status).toBe(400);
+  });
+});
+
 describe('login con verificación en dos pasos', () => {
   it('contraseña buena: { challenge } LOGIN_2FA sin token; verify da { token, user }', async () => {
     const ctx = await setup();

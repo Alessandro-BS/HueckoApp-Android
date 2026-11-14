@@ -55,6 +55,8 @@ export type AppDeps = {
   email?: EmailClient;
   // Intentos por IP cada 15 min en verify/resend/forgot (CODE_RATE_LIMIT; 30 si se omite); las pruebas lo suben.
   codeRateLimit?: number;
+  // Intentos por cuenta cada 15 min entre activar y desactivar el 2FA (5 si se omite): frena adivinar la contraseña con un token robado.
+  twoFactorRateLimit?: number;
   // Verificador de idTokens de Google. Sin él (no hay GOOGLE_WEB_CLIENT_ID), POST /auth/google responde 503.
   google?: GoogleVerifier;
 };

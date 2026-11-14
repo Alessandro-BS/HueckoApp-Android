@@ -20,6 +20,7 @@ import { signToken } from './tokens';
 export const LOGIN_RATE_LIMIT_DEFAULT = 20;
 export const REGISTER_RATE_LIMIT_DEFAULT = 10;
 export const CODE_RATE_LIMIT_DEFAULT = 30;
+export const TWO_FACTOR_RATE_LIMIT_DEFAULT = 5;
 
 // Propósitos que /challenges/:id/verify sabe aplicar. Uno que no esté aquí responde 410 como un reto inexistente, sin
 // gastar intento.
@@ -47,6 +48,7 @@ export function authRouter({
   loginRateLimit = LOGIN_RATE_LIMIT_DEFAULT,
   registerRateLimit = REGISTER_RATE_LIMIT_DEFAULT,
   codeRateLimit = CODE_RATE_LIMIT_DEFAULT,
+  twoFactorRateLimit = TWO_FACTOR_RATE_LIMIT_DEFAULT,
 }: ResolvedDeps) {
   const router = Router();
   const users = usersRepository(db);
@@ -57,6 +59,16 @@ export function authRouter({
   const loginLimiter = authLimiter(loginRateLimit);
   const registerLimiter = authLimiter(registerRateLimit);
   const codeLimiter = authLimiter(codeRateLimit);
+  // Activar y desactivar el 2FA comparten un cupo POR CUENTA (no por IP: con un token robado se rotan IP, y detrás de un NAT
+  // la gente se bloquearía entre sí). Va después de requireAuth: la clave es el usuario autenticado.
+  const twoFactorLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: twoFactorRateLimit,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (_req, res) => getUserId(res),
+    handler: (_req, _res, next) => next(new ApiError(429, 'TOO_MANY_REQUESTS', 'Demasiados intentos. Espera unos minutos.')),
+  });
 
   // La sesión: el JWT lleva la versión de sesión de la cuenta (sv), que requireAuth compara en cada petición.
   const sessionFor = (account: Account): AuthResponse => ({
@@ -226,16 +238,17 @@ export function authRouter({
     return id;
   };
 
-  router.post('/me/2fa/enable', codeLimiter, requireAuth(db, jwtSecret), async (req, res) => {
+  router.post('/me/2fa/enable', requireAuth(db, jwtSecret), twoFactorLimiter, async (req, res) => {
     const { password } = passwordInputSchema.parse(req.body);
     const id = await checkPassword(res, password);
     const account = await users.findById(id);
     if (!account) throw new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró. Inicia sesión de nuevo.');
+    if (account.twoFactorEnabled) throw new ApiError(409, 'TWO_FACTOR_ALREADY_ENABLED', 'La verificación en dos pasos ya está activada.');
     const body: AuthResult = { challenge: await issueChallenge(challengeDeps, account, 'ENABLE_2FA') };
     res.json(body);
   });
 
-  router.post('/me/2fa/disable', codeLimiter, requireAuth(db, jwtSecret), async (req, res) => {
+  router.post('/me/2fa/disable', requireAuth(db, jwtSecret), twoFactorLimiter, async (req, res) => {
     const { password } = passwordInputSchema.parse(req.body);
     const id = await checkPassword(res, password);
     await users.setTwoFactor(id, false);

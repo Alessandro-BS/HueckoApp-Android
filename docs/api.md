@@ -167,11 +167,13 @@ Requiere token. `PasswordInput`:
 { "password": "la contraseña actual" }
 ```
 Cuenta con contraseña correcta → `200 { "challenge": Challenge }` con `purpose: "ENABLE_2FA"` y el código en el correo; la app lo confirma con `POST /auth/challenges/:id/verify` mandando también el token (ver arriba), y entonces `twoFactorEnabled` pasa a `true`.
-- `400 WRONG_PASSWORD` (contraseña incorrecta; nunca `401`) · `409 PASSWORD_REQUIRED` (cuenta sin contraseña, creada con Google: primero debe crear una con «¿Olvidaste tu contraseña?») · `503 EMAIL_SEND_FAILED` · `429 EMAIL_DAILY_LIMIT` · `429 TOO_MANY_REQUESTS` (comparte el límite por IP de los códigos) · `400 VALIDATION_ERROR` (falta `password`).
+- `400 WRONG_PASSWORD` (contraseña incorrecta; nunca `401`) · `409 PASSWORD_REQUIRED` (cuenta sin contraseña, creada con Google: primero debe crear una con «¿Olvidaste tu contraseña?») · `503 EMAIL_SEND_FAILED` · `429 EMAIL_DAILY_LIMIT` · `409 TWO_FACTOR_ALREADY_ENABLED` («La verificación en dos pasos ya está activada.»; se comprueba después de la contraseña, sin reto ni correo) · `429 TOO_MANY_REQUESTS` (límite propio, ver abajo) · `400 VALIDATION_ERROR` (falta `password`).
 - No cambia la versión de sesión: el token actual sigue valiendo.
 
 ### `POST /auth/me/2fa/disable`
 Requiere token. Mismo cuerpo `PasswordInput`. Contraseña correcta → desactiva la verificación en dos pasos y responde `204`; después `/auth/login` vuelve a dar el token directo. Mismos errores `400 WRONG_PASSWORD`, `409 PASSWORD_REQUIRED` y `429 TOO_MANY_REQUESTS`. No cambia la versión de sesión.
+
+**Límite de `enable` y `disable`:** comparten un cupo de **5 intentos cada 15 min por cuenta** (no por IP; se cuenta tras validar el token) → `429 TOO_MANY_REQUESTS`; otra cuenta en la misma IP no se ve afectada.
 
 ### Códigos por correo
 - 6 dígitos, valen **15 minutos**, **5 intentos** (el quinto fallo quema el reto).
