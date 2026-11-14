@@ -27,7 +27,7 @@ export const makeAdminProposal = (over: Partial<AdminProposalSummary> = {}): Adm
 });
 
 export const makeGroupSummary = (over: Partial<AdminGroupSummary> = {}): AdminGroupSummary => ({
-  id: 'g1', name: 'Proyecto Integrador', description: 'Entrega final', memberCount: 2, proposalCount: 1, owner: TEST_USER,
+  id: 'g1', name: 'Proyecto Integrador', description: 'Entrega final', memberCount: 2, proposalCount: 1, organizers: [TEST_USER],
   createdAt: '2026-09-01T15:00:00.000Z', ...over,
 });
 
@@ -35,7 +35,7 @@ export const makeGroupDetail = (over: Partial<AdminGroupDetail> = {}): AdminGrou
   ...makeGroupSummary(),
   inviteCode: 'PROY2026',
   availabilityThreshold: 80,
-  members: [{ ...TEST_USER, role: 'OWNER', isEssential: false }, { ...ANA, role: 'MEMBER', isEssential: true }],
+  members: [{ ...TEST_USER, role: 'ORGANIZER', isEssential: false }, { ...ANA, role: 'MEMBER', isEssential: true }],
   proposals: [makeAdminProposal()],
   ...over,
 });

@@ -11,7 +11,7 @@ import { withQueryClient } from '../../testing/queryClient';
 jest.mock('../../api/groups');
 const mocked = groupsApi as jest.Mocked<typeof groupsApi>;
 
-const owner: GroupMember = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'OWNER', isEssential: false };
+const owner: GroupMember = { id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'ORGANIZER', isEssential: false };
 const ana: GroupMember = { id: 'u2', name: 'Ana', email: 'ana@test.com', role: 'MEMBER', isEssential: false };
 const summary: GroupSummary = { id: 'g1', name: 'Proyecto Integrador', description: '', memberCount: 2, availabilityThreshold: 80 };
 const group = (over: Partial<Group> = {}): Group => ({ ...summary, inviteCode: 'PROY2026', members: [owner, ana], ...over });
@@ -74,13 +74,24 @@ describe('useGroups', () => {
 describe('useGroup', () => {
   it('setEssential actualiza solo a ese miembro', async () => {
     mocked.getGroup.mockResolvedValue(group());
-    mocked.setMemberEssential.mockResolvedValue({ ...ana, isEssential: true });
+    mocked.updateMember.mockResolvedValue({ ...ana, isEssential: true });
     const { result } = await renderHook(() => useGroup('g1'), withQueryClient());
     await waitFor(() => expect(result.current.group).toBeDefined());
 
     await act(async () => result.current.setEssential('u2', true));
-    expect(mocked.setMemberEssential).toHaveBeenCalledWith('g1', 'u2', true);
+    expect(mocked.updateMember).toHaveBeenCalledWith("g1", "u2", { isEssential: true });
     expect(result.current.group!.members).toEqual([owner, { ...ana, isEssential: true }]);
+  });
+
+  it('setMemberRole envía { role } y deja al miembro con el rol nuevo', async () => {
+    mocked.getGroup.mockResolvedValue(group());
+    mocked.updateMember.mockResolvedValue({ ...ana, role: 'ORGANIZER' });
+    const { result } = await renderHook(() => useGroup('g1'), withQueryClient());
+    await waitFor(() => expect(result.current.group).toBeDefined());
+
+    await act(async () => result.current.setMemberRole('u2', 'ORGANIZER'));
+    expect(mocked.updateMember).toHaveBeenCalledWith('g1', 'u2', { role: 'ORGANIZER' });
+    expect(result.current.group!.members).toEqual([owner, { ...ana, role: 'ORGANIZER' }]);
   });
 
   it('leave llama a la API con el id del grupo', async () => {
@@ -107,7 +118,7 @@ describe('useGroup', () => {
   it('un setEssential que termina después de cambiar de grupo no toca el grupo nuevo', async () => {
     mocked.getGroup.mockImplementation(async (id) => group({ id }));
     let finishSetEssential!: (member: GroupMember) => void;
-    mocked.setMemberEssential.mockReturnValue(new Promise((resolve) => (finishSetEssential = resolve)));
+    mocked.updateMember.mockReturnValue(new Promise((resolve) => (finishSetEssential = resolve)));
     const { result, rerender } = await renderHook(({ id }: { id: string }) => useGroup(id), { initialProps: { id: 'g1' }, ...withQueryClient() });
     await waitFor(() => expect(result.current.group?.id).toBe('g1'));
 
@@ -122,7 +133,7 @@ describe('useGroup', () => {
       finishSetEssential({ ...ana, isEssential: true });
       await pending;
     });
-    expect(mocked.setMemberEssential).toHaveBeenCalledWith('g1', 'u2', true);
+    expect(mocked.updateMember).toHaveBeenCalledWith("g1", "u2", { isEssential: true });
     expect(result.current.group!.members).toEqual([owner, ana]);
   });
 

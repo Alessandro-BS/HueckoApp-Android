@@ -12,7 +12,7 @@ import { showToast } from '../../utils/toast';
 import { JoinGroupDialog } from './GroupDialogs';
 import { ProximityStatusView, useAcceptable } from './ProximityStatusView';
 
-// «Unirse acercando»: se junta el celular con el del dueño del grupo y se espera a que acepte.
+// «Unirse acercando»: se junta el celular con el de quien invita (cualquier miembro del grupo) y se espera a que acepte.
 export function ProximityJoinScreen({ navigation }: AppStackScreen<'ProximityJoin'>) {
   const client = useQueryClient();
   const session = useProximitySession({ role: 'JOIN' });

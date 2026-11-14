@@ -10,7 +10,7 @@ import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp,
 async function setupGroups() {
   const { app, db } = await makeTestApp({ now: () => NOW });
   const admin = await registerAdmin(app, db, { email: 'admin@correo.com' });
-  const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es OWNER, Ana MEMBER
+  const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es ORGANIZER, Ana MEMBER
   return { app, db, admin, yo, ana, group };
 }
 
@@ -32,7 +32,7 @@ async function confirmedPlan(app: Express, yo: Session, ana: Session, groupId: s
 }
 
 describe('GET /api/admin/groups', () => {
-  it('cada grupo con miembros, propuestas y OWNER; busca por nombre o por código', async () => {
+  it('cada grupo con miembros, propuestas y ORGANIZER; busca por nombre o por código', async () => {
     const { app, db, admin, yo, group } = await setupGroups();
     await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
     const other = await insertGroup(db, { name: 'Amigos de la Uni', inviteCode: 'HUECKO123' });
@@ -40,12 +40,24 @@ describe('GET /api/admin/groups', () => {
     expect(all.body).toMatchObject({ page: 1, pageSize: 20, total: 2 });
     const byId = new Map(all.body.items.map((g: { id: string }) => [g.id, g]));
     expect(byId.get(group.id)).toEqual({
-      id: group.id, name: 'Proyecto Integrador', description: '', memberCount: 2, proposalCount: 1, owner: yo.user, createdAt: expect.any(String),
+      id: group.id, name: 'Proyecto Integrador', description: '', memberCount: 2, proposalCount: 1, organizers: [yo.user], createdAt: expect.any(String),
     });
-    expect(byId.get(other)).toMatchObject({ memberCount: 0, proposalCount: 0, owner: null });
+    expect(byId.get(other)).toMatchObject({ memberCount: 0, proposalCount: 0, organizers: [] });
     const search = async (q: string) => names((await request(app).get('/api/admin/groups').query({ search: q }).set(bearer(admin.token))).body);
     expect(await search('huecko1')).toEqual(['Amigos de la Uni']);
     expect(await search('INTEGRADOR')).toEqual(['Proyecto Integrador']);
+  });
+
+  it('con varios organizadores los devuelve por antigüedad, en la lista y en el detalle', async () => {
+    const { app, db, admin, yo, ana, group } = await setupGroups();
+    const other = await insertGroup(db, { name: 'Otro', ownerId: yo.user.id });
+    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ role: 'ORGANIZER' }).expect(200);
+    const list = await request(app).get('/api/admin/groups').set(bearer(admin.token));
+    const byId = new Map<string, { organizers: unknown[] }>(list.body.items.map((g: { id: string }) => [g.id, g]));
+    expect(byId.get(group.id)!.organizers).toEqual([yo.user, ana.user]);
+    expect(byId.get(other)!.organizers).toEqual([yo.user]);
+    const detail = await request(app).get(`/api/admin/groups/${group.id}`).set(bearer(admin.token));
+    expect(detail.body.organizers).toEqual([yo.user, ana.user]);
   });
 
   it('% y _ se buscan literalmente, no como comodines', async () => {
@@ -82,10 +94,10 @@ describe('GET /api/admin/groups/:id', () => {
     const res = await request(app).get(`/api/admin/groups/${group.id}`).set(bearer(admin.token));
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      id: group.id, name: 'Proyecto Integrador', inviteCode: group.inviteCode, availabilityThreshold: 80, memberCount: 2, proposalCount: 1, owner: yo.user,
+      id: group.id, name: 'Proyecto Integrador', inviteCode: group.inviteCode, availabilityThreshold: 80, memberCount: 2, proposalCount: 1, organizers: [yo.user],
     });
     expect(res.body.members.map((m: { name: string; role: string }) => [m.name, m.role])).toEqual([
-      ['Usuario de Prueba', 'OWNER'],
+      ['Usuario de Prueba', 'ORGANIZER'],
       ['Ana', 'MEMBER'],
     ]);
     expect(res.body.proposals).toEqual([
@@ -131,7 +143,7 @@ describe('DELETE /api/admin/groups/:id', () => {
     });
   });
 
-  it('solo ADMIN: el OWNER del grupo recibe 403 NOT_ADMIN y el grupo sigue', async () => {
+  it('solo ADMIN: el ORGANIZER del grupo recibe 403 NOT_ADMIN y el grupo sigue', async () => {
     const { app, admin, yo, group } = await setupGroups();
     const denied = await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(yo.token));
     expect(denied.status).toBe(403);

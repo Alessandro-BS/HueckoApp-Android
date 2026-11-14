@@ -28,14 +28,15 @@ const USERS = [
 ] as const;
 type UserKey = (typeof USERS)[number]['key'];
 
-const GROUPS: { name: string; inviteCode: string; members: { user: UserKey; role: 'OWNER' | 'MEMBER' }[] }[] = [
+const GROUPS: { name: string; inviteCode: string; members: { user: UserKey; role: 'ORGANIZER' | 'MEMBER' }[] }[] = [
   {
     name: 'Proyecto Integrador',
     inviteCode: 'PROY2026',
-    members: [{ user: 'test', role: 'OWNER' }, { user: 'ana', role: 'MEMBER' }],
+    // Dos organizadores, para probar desde la app que un grupo puede tener varios.
+    members: [{ user: 'test', role: 'ORGANIZER' }, { user: 'ana', role: 'ORGANIZER' }],
   },
   // Solo Carlos: así test@test.com puede probar «Unirme» con HUECKO123 (y una segunda vez da 409).
-  { name: 'Amigos de la Uni', inviteCode: 'HUECKO123', members: [{ user: 'carlos', role: 'OWNER' }] },
+  { name: 'Amigos de la Uni', inviteCode: 'HUECKO123', members: [{ user: 'carlos', role: 'ORGANIZER' }] },
 ];
 
 const BLOCKS: { user: UserKey; label: string; type: BlockType; dayOfWeek: number; startTime: string; endTime: string }[] = [
@@ -153,12 +154,13 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<S
         ]);
         created.groups++;
       }
-      // Quien salió del grupo desde la app vuelve a entrar; como MEMBER si el grupo ya tiene OWNER (nunca dos).
+      // Quien salió del grupo desde la app vuelve a entrar con su rol de la semilla (puede haber varios organizadores).
+      // A quien sigue dentro se le sube a ORGANIZER si la semilla lo es (una base de antes de «varios organizadores»
+      // tenía a Ana como MEMBER), pero nunca se degrada a nadie.
       for (const m of g.members) {
         await db.query(
-          `INSERT INTO group_members (group_id, user_id, role)
-           VALUES ($1, $2, CASE WHEN EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND role = 'OWNER') THEN 'MEMBER' ELSE $3 END)
-           ON CONFLICT (group_id, user_id) DO NOTHING`,
+          `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)
+           ON CONFLICT (group_id, user_id) DO UPDATE SET role = 'ORGANIZER' WHERE EXCLUDED.role = 'ORGANIZER'`,
           [group.id, ids[m.user], m.role],
         );
       }

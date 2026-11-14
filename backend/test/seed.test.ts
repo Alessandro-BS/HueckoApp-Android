@@ -119,9 +119,42 @@ describe('semilla de datos de ejemplo (D8)', () => {
     expect((await proposalsRepository(db).findById(mine, anaId))?.id).toBe(mine);
     expect((await proposalsRepository(db).findById(mine, anaId))?.title).toBe('Plan propio');
     expect(await count(db, 'proposals')).toBe(3);
+    // Vuelve con su rol de la semilla (un grupo puede tener varios organizadores).
     expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
-      ['Usuario de Prueba', 'OWNER'],
-      ['Ana', 'MEMBER'],
+      ['Usuario de Prueba', 'ORGANIZER'],
+      ['Ana', 'ORGANIZER'],
+    ]);
+  });
+
+  it('«Proyecto Integrador» tiene dos organizadores (test y ana) y «Amigos de la Uni» uno (carlos)', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, HASH, NOW);
+    const organizers = (code: string) =>
+      column(
+        db,
+        `SELECT u.email AS v FROM group_members m JOIN users u ON u.id = m.user_id JOIN groups g ON g.id = m.group_id
+         WHERE g.invite_code = '${code}' AND m.role = 'ORGANIZER' ORDER BY m.joined_at, m.seq`,
+      );
+    expect(await organizers('PROY2026')).toEqual(['test@test.com', 'ana@test.com']);
+    expect(await organizers('HUECKO123')).toEqual(['carlos@test.com']);
+  });
+
+  it('sembrar otra vez sobre una base donde Ana es MEMBER la deja ORGANIZER, sin degradar a nadie', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, HASH, NOW);
+    const groupId = (await db.one<{ id: string }>('SELECT id FROM groups WHERE invite_code = $1', ['PROY2026']))!.id;
+    const anaId = await userId(db, 'ana@test.com');
+    await db.query("UPDATE group_members SET role = 'MEMBER' WHERE group_id = $1 AND user_id = $2", [groupId, anaId]);
+    // Carlos entra a mano como MEMBER: la semilla no le toca el rol.
+    const carlosId = await userId(db, 'carlos@test.com');
+    await groupsRepository(db).addMember(groupId, carlosId);
+
+    await seedDemoData(db, HASH, NOW);
+    await seedDemoData(db, HASH, NOW);
+    expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
+      ['Usuario de Prueba', 'ORGANIZER'],
+      ['Ana', 'ORGANIZER'],
+      ['Carlos', 'MEMBER'],
     ]);
   });
 

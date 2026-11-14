@@ -19,7 +19,7 @@ const Tabs = createMaterialTopTabNavigator<GroupTabsParamList>();
 export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDetail'>) {
   const { groupId } = route.params;
   const { user } = useAuth();
-  const { group, loading, error, reload, setEssential, leave } = useGroup(groupId);
+  const { group, loading, error, reload, setEssential, setMemberRole, leave } = useGroup(groupId);
 
   // La cabecera arranca con el nombre recibido y se actualiza si cambió en el servidor.
   // Depende solo del nombre (no de `group`): mutar un miembro no vuelve a tocar la cabecera.
@@ -81,7 +81,7 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
         </Tabs.Screen>
         <Tabs.Screen name="Members" options={{ title: 'Miembros' }}>
           {() => (
-            <MembersTab group={group} currentUserId={user?.id ?? ''} onToggleEssential={setEssential} onLeave={handleLeave} />
+            <MembersTab group={group} currentUserId={user?.id ?? ''} onToggleEssential={setEssential} onSetRole={setMemberRole} onLeave={handleLeave} />
           )}
         </Tabs.Screen>
       </Tabs.Navigator>

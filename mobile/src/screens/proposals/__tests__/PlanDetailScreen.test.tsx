@@ -235,7 +235,7 @@ it('ofrece el resumen con IA salvo en un plan cancelado', async () => {
 });
 
 it('los botones de gestión siguen a canManage, no a quién creó el plan (D1)', async () => {
-  // Ana creó el plan y se fue del grupo: lo gestiona el usuario actual (OWNER).
+  // Ana creó el plan y se fue del grupo: lo gestiona el usuario actual (ORGANIZER).
   mocked.getProposal.mockResolvedValue(makeProposal({ canManage: true }));
   const first = await renderScreen('prop_2');
   expect(await screen.findByText('Confirmar plan')).toBeTruthy();

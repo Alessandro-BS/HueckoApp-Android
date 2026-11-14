@@ -166,7 +166,7 @@ export function proposalsRepository(db: Db) {
         (r) => [r.proposal_id, r.window_id] as const,
       ),
     );
-    // Miembros actuales de los grupos de estas propuestas, en orden de llegada (D3): deciden canManage.
+    // Miembros actuales de los grupos de estas propuestas: deciden canManage (el creador mientras siga en el grupo o cualquier organizador).
     const members = groupBy(
       await db.many<MemberRow>(
         `SELECT m.group_id, m.user_id AS id, m.role

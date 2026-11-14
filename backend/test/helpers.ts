@@ -176,7 +176,7 @@ export async function addWeeklyBlock(app: Express, token: string, dayOfWeek: num
   if (res.status !== 201) throw new Error(`crear bloque falló: ${res.status} ${JSON.stringify(res.body)}`);
 }
 
-// Escenario de la semilla (domain spec §3.1) montado por la API: «Usuario de Prueba» (OWNER) y Ana
+// Escenario de la semilla (domain spec §3.1) montado por la API: «Usuario de Prueba» (ORGANIZER) y Ana
 // en un grupo, cada uno con sus bloques. Con él, el cruce del grupo es exactamente el ejemplo E3.
 export async function setupSeedGroup(app: Express) {
   const yo = await registerUser(app, { name: 'Usuario de Prueba' });

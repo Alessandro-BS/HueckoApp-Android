@@ -18,12 +18,12 @@ export function criticalReasonFor(i: {
   reporterId: string;
   createdById: string;
   isEssential: boolean;
-  role: 'OWNER' | 'MEMBER';
+  role: 'ORGANIZER' | 'MEMBER';
 }): string | null {
   if (i.type === 'TARDANZA') return null;
   if (i.reporterId === i.createdById) return 'propuso este plan';
   if (i.isEssential) return 'el grupo lo marcó como imprescindible';
-  if (i.role === 'OWNER') return 'es organizador del grupo';
+  if (i.role === 'ORGANIZER') return 'es organizador del grupo';
   return null;
 }
 

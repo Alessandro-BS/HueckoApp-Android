@@ -137,7 +137,7 @@ En el formulario de la propuesta de estudio:
 |---|---|---|---|
 | 1 | **Planes → Ver detalles** de la propuesta | Tarjeta **«Resumen con Huecko IA»** | — |
 | 2 | **Resumir votación** | «Votaron 2 de 3…», una **recomendación** (p. ej. Confirmar) y su motivo | La IA **solo sugiere**: nunca cambia el plan |
-| 3 | **Confirmar plan** | El plan pasa a confirmado | Confirmar siempre lo decide una persona |
+| 3 | **Confirmar plan** | El plan pasa a confirmado | Lo decide quien gestiona el plan: quien lo creó o un organizador |
 
 ## 1️⃣2️⃣ Imprevisto (Ana) y resumen de nuevo
 
@@ -146,8 +146,10 @@ En el formulario de la propuesta de estudio:
 | 1 | `ana@test.com` → plan confirmado → **Reportar imprevisto** → «¿Qué pasó?»: `Cruce de examen` → **Reportar** | — | — |
 | 2 | `test@test.com` → **Inicio** | Aviso del imprevisto de Ana | Quien organiza se entera al instante |
 | 3 | **Ver detalles → Actualizar resumen** | Sigue recomendando **Confirmar** | Ana no es imprescindible y 2 de 3 sí pueden ir |
-| 4 | **Grupos → Prueba IA → Miembros**: activa **Imprescindible** en Ana | — | Solo el dueño del grupo puede marcarlo |
+| 4 | **Grupos → Prueba IA → Miembros**: activa **Imprescindible** en Ana | — | Solo un organizador del grupo puede marcarlo |
 | 5 | **Ver detalles → Actualizar resumen** | Ahora debería recomendar **Reprogramar** (la IA sigue la regla, pero no es 100 % determinista) | Regla del servidor: si un imprescindible no puede ir, se reprograma ([`voting-summary.ts`](../backend/src/ai/voting-summary.ts)) |
+| 6 | `test@test.com` → **Grupos → Proyecto Integrador → Miembros** | Dos organizadores (tú y Ana) con **Quitar organizador**; Carlos u otros miembros, con **Hacer organizador** | Un grupo puede tener varios organizadores (en la semilla, Ana también lo es) |
+| 7 | Pulsa **Hacer organizador** en un miembro y luego **Quitar organizador** en el mismo; deja a un solo organizador y prueba a quitarle el rol | «El grupo necesita al menos un organizador.» y el rol no cambia | Un grupo nunca se queda sin organizadores |
 
 ## 1️⃣3️⃣ Administración (`admin@test.com`)
 

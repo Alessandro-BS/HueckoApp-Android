@@ -6,14 +6,14 @@ const base = { type: 'FALTA', reporterId: 'u1', createdById: 'u2', isEssential: 
 
 describe('reglas de la votación exprés', () => {
   describe('criticalReasonFor', () => {
-    it('el creador gana aunque también sea imprescindible y OWNER', () => {
-      expect(criticalReasonFor({ ...base, createdById: 'u1', isEssential: true, role: 'OWNER' })).toBe('propuso este plan');
+    it('el creador gana aunque también sea imprescindible y ORGANIZER', () => {
+      expect(criticalReasonFor({ ...base, createdById: 'u1', isEssential: true, role: 'ORGANIZER' })).toBe('propuso este plan');
     });
     it('imprescindible', () => {
-      expect(criticalReasonFor({ ...base, isEssential: true, role: 'OWNER' })).toBe('el grupo lo marcó como imprescindible');
+      expect(criticalReasonFor({ ...base, isEssential: true, role: 'ORGANIZER' })).toBe('el grupo lo marcó como imprescindible');
     });
     it('organizador', () => {
-      expect(criticalReasonFor({ ...base, role: 'OWNER' })).toBe('es organizador del grupo');
+      expect(criticalReasonFor({ ...base, role: 'ORGANIZER' })).toBe('es organizador del grupo');
     });
     it('ninguno', () => {
       expect(criticalReasonFor(base)).toBeNull();

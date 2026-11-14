@@ -124,6 +124,16 @@ describe('POST /api/proposals/:id/incidences: ausencias críticas', () => {
     expect(imprescindible.body.incidences[1]).toMatchObject({ criticality: 'ALTA', criticalReason: 'el grupo lo marcó como imprescindible' });
   });
 
+  it('la FALTA de un segundo organizador (no creó el plan ni es imprescindible) es ALTA y abre la votación', async () => {
+    // Carlos pasa a organizador directamente en la base (aún no hay endpoint para nombrarlo).
+    await db.query("UPDATE group_members SET role = 'ORGANIZER' WHERE group_id = $1 AND user_id = $2", [group.id, carlos.user.id]);
+    const p = await confirmedPlan(ana);
+    const res = await report(p, carlos.token, { type: 'FALTA', reason: 'Viaje' });
+    expect(res.status).toBe(201);
+    expect(res.body.incidences[0]).toMatchObject({ criticality: 'ALTA', criticalReason: 'es organizador del grupo' });
+    expect(res.body.expressVote).toMatchObject({ status: 'ABIERTA', criticalReason: 'es organizador del grupo' });
+  });
+
   it('segunda ausencia crítica con una votación abierta: se guarda (201) y sigue habiendo una sola votación', async () => {
     const p = await planWithVote();
     await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true }).expect(200);

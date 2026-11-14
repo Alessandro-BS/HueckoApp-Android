@@ -6,11 +6,11 @@ import { GroupDetailScreen } from '../GroupDetailScreen';
 
 const mockGroup: Group = {
   id: 'g1', name: 'Proyecto Integrador', description: '', memberCount: 2, availabilityThreshold: 80, inviteCode: 'PROY2026',
-  members: [{ id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'OWNER', isEssential: false }],
+  members: [{ id: 'u1', name: 'Usuario de Prueba', email: 'test@test.com', role: 'ORGANIZER', isEssential: false }],
 };
 
 jest.mock('../../../hooks/useGroup', () => ({
-  useGroup: () => ({ group: mockGroup, loading: false, refreshing: false, error: null, reload: jest.fn(), setEssential: jest.fn(), leave: jest.fn() }),
+  useGroup: () => ({ group: mockGroup, loading: false, refreshing: false, error: null, reload: jest.fn(), setEssential: jest.fn(), setMemberRole: jest.fn(), leave: jest.fn() }),
 }));
 jest.mock('../../../hooks/useAvailability', () => ({
   useAvailability: () => ({ windows: [], loaded: true, loading: false, refreshing: false, error: null, reload: jest.fn() }),

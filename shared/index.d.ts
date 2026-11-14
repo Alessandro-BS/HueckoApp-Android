@@ -30,7 +30,10 @@ export type TimeBlock = {
 // Cuerpo de POST /me/time-blocks (y de cada elemento de /bulk): el servidor pone id y userId.
 export type TimeBlockInput = Omit<TimeBlock, 'id' | 'userId'>;
 
-export type GroupMember = User & { role: 'OWNER' | 'MEMBER'; isEssential: boolean };
+export type GroupMember = User & { role: 'ORGANIZER' | 'MEMBER'; isEssential: boolean };
+
+// Cuerpo de PATCH /groups/:id/members/:userId: al menos uno de los dos campos.
+export type UpdateMemberInput = { isEssential?: boolean; role?: GroupMember['role'] };
 
 export type GroupSummary = {
   id: string;
@@ -290,7 +293,7 @@ export type AdminGroupSummary = {
   description: string;
   memberCount: number;
   proposalCount: number;
-  owner: User | null;              // OWNER actual; null si el grupo no tiene miembros
+  organizers: User[];              // quienes organizan el grupo, del más antiguo al más nuevo; [] si no hay miembros
   createdAt: string;
 };
 

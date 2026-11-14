@@ -8,7 +8,7 @@ import { NOW } from './helpers';
 const test: User = { id: 'u-test', name: 'Usuario de Prueba', email: 'test@test.com' };
 const ana: User = { id: 'u-ana', name: 'Ana', email: 'ana@test.com' };
 const members: GroupMember[] = [
-  { ...test, role: 'OWNER', isEssential: false },
+  { ...test, role: 'ORGANIZER', isEssential: false },
   { ...ana, role: 'MEMBER', isEssential: false },
 ];
 const groups: GroupSummary[] = [{ id: 'g1', name: 'Proyecto Integrador', description: '', memberCount: 2, availabilityThreshold: 80 }];
@@ -104,7 +104,7 @@ describe('alerta exprés (G5)', () => {
       ],
     });
     expect(build([aviso, recoordinacion]).expressAlert).toMatchObject({ proposalId: 'prop_3', kind: 'RECOORDINACION', who: 'Ana', reason: 'Enferma', canResolve: false });
-    // Control positivo: el mismo plan, gestionable por quien pregunta (p. ej. el OWNER si quien lo creó se fue).
+    // Control positivo: el mismo plan, gestionable por quien pregunta (p. ej. el ORGANIZER si quien lo creó se fue).
     expect(build([aviso, { ...recoordinacion, canManage: true }]).expressAlert?.canResolve).toBe(true);
   });
 
