@@ -5,49 +5,345 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HueckoApp</title>
   <meta name="description" content="HueckoApp: encuentra los huecos libres en común de tu grupo y organiza planes votando el mejor horario.">
-  <link rel="stylesheet" href="estilo.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&family=Raleway:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --morado: #6750a4;
+      --morado-oscuro: #4f378b;
+      --morado-noche: #21005d;
+      --lila: #eaddff;
+      --tinta: #1d1b20;
+      --texto: #3b3740;
+      --suave: #79747e;
+      --gris: #f3f2f5;
+      --linea: #e7e0ec;
+      --barra: #252229;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: #fff; color: var(--texto); font: 16px/1.65 Raleway, system-ui, sans-serif; }
+    h1, h2, h3, .titulo { font-family: "Josefin Sans", system-ui, sans-serif; color: var(--tinta); }
+    a { color: inherit; }
+
+    /* Barra superior */
+    .barra { background: var(--barra); position: sticky; top: 0; z-index: 10; }
+    .barra .ancho { display: flex; align-items: center; justify-content: space-between; min-height: 72px; gap: 16px; }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-marca {
+      display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px;
+      background: var(--lila); color: var(--morado); font: 700 22px/1 "Josefin Sans", sans-serif; padding-top: 4px;
+    }
+    .logo-nombre { color: #fff; font: 600 15px/1.15 "Josefin Sans", sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .logo-nombre small { display: block; color: #d0bcff; font-size: 11px; letter-spacing: .12em; }
+    .menu { display: flex; flex-wrap: wrap; }
+    .menu a {
+      color: #fff; text-decoration: none; font: 600 13px "Josefin Sans", sans-serif; letter-spacing: .08em; text-transform: uppercase;
+      padding: 26px 18px; border-left: 1px solid rgba(255,255,255,.12);
+    }
+    .menu a:first-child { border-left: 0; }
+    .menu a:hover { color: #d0bcff; }
+
+    .ancho { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* Franja de la ruta */
+    .ruta { background: var(--gris); }
+    .ruta .ancho { display: flex; align-items: center; justify-content: space-between; min-height: 84px; }
+    .ruta h1 { margin: 0; font-weight: 300; font-size: 28px; color: var(--suave); }
+    .ruta nav { color: var(--suave); font-size: 14px; }
+    .ruta nav span { margin: 0 14px; }
+
+    /* Presentación */
+    .presentacion { text-align: center; padding: 64px 0 56px; }
+    .presentacion h2 { margin: 0; font-size: 40px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+    .presentacion .sub { margin: 4px 0 0; font: 400 26px "Josefin Sans", sans-serif; color: var(--tinta); }
+    .adorno { display: block; margin: 18px auto 24px; width: 200px; height: 20px; color: var(--morado); }
+    .presentacion p.texto { max-width: 560px; margin: 0 auto 14px; font-size: 16px; }
+    .botones { margin-top: 28px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .boton {
+      display: inline-block; padding: 12px 26px; border-radius: 4px; text-decoration: none;
+      font: 600 13px "Josefin Sans", sans-serif; letter-spacing: .08em; text-transform: uppercase;
+      background: var(--morado); color: #fff; border: 2px solid var(--morado);
+    }
+    .boton.claro { background: transparent; color: var(--morado); }
+    .boton:hover { background: var(--morado-oscuro); border-color: var(--morado-oscuro); color: #fff; }
+
+    /* Línea de tiempo */
+    .hitos { padding: 24px 0 88px; }
+    .hitos-titulo { text-align: center; margin: 0 0 48px; font-size: 30px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+    .linea { position: relative; }
+    .linea::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--linea); }
+    .hito { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; margin-bottom: 64px; }
+    .hito:last-child { margin-bottom: 0; }
+    .hito::before {
+      content: ""; position: absolute; left: 50%; top: 22px; width: 14px; height: 14px; margin-left: -7px;
+      border-radius: 50%; background: #fff; border: 4px solid var(--morado); box-sizing: content-box; transform: translate(-4px, 0);
+    }
+    .hito .relato h3 { margin: 6px 0 12px; font-size: 32px; font-weight: 600; line-height: 1.15; }
+    .hito .relato p { margin: 0; }
+    .hito .ficha {
+      background: var(--gris); border-radius: 6px; padding: 18px 20px 20px; position: relative;
+      background-image: repeating-linear-gradient(135deg, transparent 0 10px, rgba(103,80,164,.035) 10px 12px);
+    }
+    .ficha .fecha {
+      display: inline-block; font-size: 12px; color: var(--suave); background: #fff; border: 1px solid var(--linea);
+      border-radius: 3px; padding: 2px 8px; margin-bottom: 12px;
+    }
+    .ficha ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+    .ficha li { background: #fff; border: 1px solid var(--linea); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
+    .hito.derecha .relato { order: 2; }
+    .hito.derecha .ficha { order: 1; }
+    .hito.izquierda .relato { text-align: right; }
+    .hito.izquierda .ficha .fecha { float: right; }
+    .hito.izquierda .ficha ul { clear: both; }
+    .hito.en-camino::before { background: var(--lila); }
+
+    /* Cifras */
+    .cifras { background: radial-gradient(ellipse at top, #3a2a63 0%, var(--morado-noche) 55%, #12002f 100%); color: #fff; padding: 64px 0; }
+    .cifras .ancho { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; text-align: center; }
+    .cifra svg { width: 52px; height: 52px; color: #fff; }
+    .cifra strong { display: block; font: 600 46px/1.1 "Josefin Sans", sans-serif; margin-top: 12px; }
+    .cifra span { display: block; font: 400 17px/1.25 "Josefin Sans", sans-serif; text-transform: uppercase; letter-spacing: .04em; color: #e8def8; }
+
+    /* Pie con contacto */
+    .contacto { background: linear-gradient(160deg, var(--morado-oscuro), var(--morado) 60%, #7f67be); color: #fff; padding: 64px 0 48px; text-align: center; }
+    .contacto .logo-marca { width: 64px; height: 64px; font-size: 34px; border-radius: 18px; margin: 0 auto; background: #fff; }
+    .contacto .adorno { color: #e8def8; margin: 16px auto 20px; }
+    .separador { width: 180px; height: 1px; background: rgba(255,255,255,.4); margin: 0 auto 22px; }
+    .redes a {
+      display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #fff; color: var(--morado);
+    }
+    .redes svg { width: 18px; height: 18px; }
+    .datos { margin: 18px 0 8px; display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; font-size: 14px; }
+    .datos a { color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+    .datos svg { width: 15px; height: 15px; }
+    .contacto p.texto { max-width: 560px; margin: 16px auto 28px; color: #f3edf7; }
+    form { max-width: 680px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    form input, form textarea {
+      width: 100%; background: transparent; border: 1px solid rgba(255,255,255,.75); color: #fff; padding: 10px 12px;
+      font: 15px Raleway, sans-serif; border-radius: 2px;
+    }
+    form textarea { grid-column: 1 / -1; min-height: 84px; resize: vertical; }
+    form input::placeholder, form textarea::placeholder { color: #f3edf7; }
+    form button {
+      grid-column: 2; justify-self: center; margin-top: 8px; padding: 10px 40px; border: 0; border-radius: 2px; cursor: pointer;
+      background: var(--barra); color: #fff; font: 600 14px "Josefin Sans", sans-serif; letter-spacing: .06em; text-transform: uppercase;
+    }
+    form button:hover { background: #000; }
+    .nota { font-size: 13px; color: #e8def8; margin-top: 12px; }
+    .derechos { background: #3b2a6e; color: #e8def8; text-align: center; font-size: 13px; padding: 16px 24px; }
+    .derechos a { color: #fff; }
+
+    @media (max-width: 760px) {
+      .barra .ancho { flex-direction: column; align-items: flex-start; padding-top: 12px; }
+      .menu a { padding: 12px 12px 14px; border-left: 0; }
+      .ruta .ancho { flex-direction: column; justify-content: center; align-items: flex-start; padding-top: 16px; padding-bottom: 16px; }
+      .presentacion h2 { font-size: 30px; }
+      .presentacion .sub { font-size: 20px; }
+      .linea::before { left: 9px; }
+      .hito, .hito.derecha, .hito.izquierda { grid-template-columns: 1fr; gap: 16px; padding-left: 36px; }
+      .hito::before { left: 9px; }
+      .hito.derecha .relato, .hito.izquierda .relato { order: 1; text-align: left; }
+      .hito .ficha { order: 2; }
+      .hito.izquierda .ficha .fecha { float: none; }
+      .hito .relato h3 { font-size: 26px; }
+      .cifras .ancho { grid-template-columns: repeat(2, 1fr); row-gap: 40px; }
+      form { grid-template-columns: 1fr; }
+      form button { grid-column: 1; }
+    }
+  </style>
 </head>
 <body>
-<main>
-  <header class="marca">
-    <span class="logo" aria-hidden="true">H</span>
-    <h1>HueckoApp</h1>
-  </header>
-  <p class="suave">Encuentra los huecos libres en común de tu grupo y organiza planes sin cadenas de mensajes.</p>
 
-  <h2>¿Qué es?</h2>
-  <p>
-    HueckoApp es una aplicación para Android pensada para grupos de estudio, de trabajo o de amigos.
-    Cada persona registra su horario y la app calcula en qué momentos coinciden todos libres. Con eso el grupo
-    propone planes, vota la franja que mejor le queda y recibe avisos cuando el plan se confirma o cambia.
-  </p>
-
-  <h2>Funciones</h2>
-  <ul>
-    <li><strong>Horario:</strong> registra tus clases y compromisos, a mano o leyendo una foto de tu horario con inteligencia artificial.</li>
-    <li><strong>Grupos:</strong> crea un grupo y comparte su código, o únete acercando tu celular al de otra persona.</li>
-    <li><strong>Huecos en común:</strong> la app muestra las franjas en que el grupo está libre y qué porcentaje puede asistir.</li>
-    <li><strong>Planes y votaciones:</strong> propone un plan con varias franjas, vota y confirma la más votada.</li>
-    <li><strong>Imprevistos:</strong> avisa si no llegas o llegas tarde; el grupo puede votar si cancelar, reagendar o mantener el plan.</li>
-    <li><strong>Avisos:</strong> notificaciones de propuestas nuevas, planes confirmados o cancelados y un recordatorio antes del plan.</li>
-    <li><strong>Cuenta segura:</strong> entra con tu correo y contraseña (con código de verificación y verificación en dos pasos opcional) o con tu cuenta de Google.</li>
-  </ul>
-
-  <div class="tarjeta">
-    <p><strong>Proyecto académico.</strong> HueckoApp es un proyecto de curso desarrollado por Aless Bustamante. No muestra publicidad ni vende datos.</p>
-    <p>Lee cómo tratamos tus datos en la <a href="privacidad.html">política de privacidad</a>.</p>
+<header class="barra">
+  <div class="ancho">
+    <a class="logo" href="#inicio" aria-label="HueckoApp">
+      <span class="logo-marca" aria-hidden="true">H</span>
+      <span class="logo-nombre">HueckoApp<small>Huecos en común</small></span>
+    </a>
+    <nav class="menu" aria-label="Secciones">
+      <a href="#inicio">Inicio</a>
+      <a href="#historia">Historia</a>
+      <a href="#cifras">Cifras</a>
+      <a href="privacidad.html">Privacidad</a>
+      <a href="#contacto">Contacto</a>
+    </nav>
   </div>
+</header>
 
-  <h2>Contacto</h2>
-  <p>
-    Escribe a <a href="mailto:fabrizio.bs9012@gmail.com">fabrizio.bs9012@gmail.com</a> para preguntas, problemas
-    o para pedir que borremos tu cuenta. El código fuente está en
-    <a href="https://github.com/Alessandro-BS/HueckoApp-Android">GitHub</a>.
-  </p>
+<section class="ruta">
+  <div class="ancho">
+    <h1>HueckoApp</h1>
+    <nav aria-label="Ruta">Inicio</nav>
+  </div>
+</section>
 
-  <footer>
-    <a href="privacidad.html">Política de privacidad</a> · © 2026 HueckoApp
-  </footer>
-</main>
+<section class="presentacion" id="inicio">
+  <div class="ancho">
+    <h2>HueckoApp</h2>
+    <p class="sub">Los huecos libres de tu grupo, en un vistazo</p>
+    <svg class="adorno" viewBox="0 0 200 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M2 10 C 40 10, 60 4, 84 10 M198 10 C 160 10, 140 4, 116 10"/>
+      <path d="M84 10 C 90 13, 95 3, 100 10 C 105 3, 110 13, 116 10"/>
+      <circle cx="100" cy="10" r="2" fill="currentColor"/>
+    </svg>
+    <p class="texto">
+      Una app para Android pensada para grupos de estudio, de trabajo o de amigos. Cada persona registra su horario
+      y HueckoApp calcula cuándo coinciden todos libres. Con eso el grupo propone planes, vota la franja que mejor le queda
+      y recibe avisos cuando el plan se confirma o cambia.
+    </p>
+    <p class="texto">Proyecto académico, sin publicidad y sin venta de datos.</p>
+    <div class="botones">
+      <a class="boton" href="#historia">Conoce la historia</a>
+      <a class="boton claro" href="privacidad.html">Política de privacidad</a>
+    </div>
+  </div>
+</section>
+
+<section class="hitos" id="historia">
+  <div class="ancho">
+    <h2 class="hitos-titulo">Nuestra historia</h2>
+    <div class="linea">
+
+      <article class="hito derecha">
+        <div class="relato">
+          <h3>Nace la idea</h3>
+          <p>Coordinar a un grupo era una cadena interminable de mensajes: «¿a qué hora puedes?». HueckoApp empezó como respuesta
+            a esa pregunta: que la app cruce los horarios y diga cuándo están todos libres.</p>
+        </div>
+        <div class="ficha">
+          <span class="fecha">24.08.2026</span>
+          <ul><li>Primer commit</li><li>Diseño de la idea</li></ul>
+        </div>
+      </article>
+
+      <article class="hito izquierda">
+        <div class="relato">
+          <h3>Versión 1.0: Android nativo</h3>
+          <p>La primera versión, escrita en Kotlin, ya registraba horarios, los leía desde una foto con inteligencia artificial,
+            creaba grupos y permitía votar planes.</p>
+        </div>
+        <div class="ficha">
+          <span class="fecha">29.09.2026</span>
+          <ul><li>Cuentas</li><li>Horario</li><li>Lectura de fotos con IA</li><li>Grupos</li><li>Votaciones</li></ul>
+        </div>
+      </article>
+
+      <article class="hito derecha">
+        <div class="relato">
+          <h3>Versión 2.0: nueva base</h3>
+          <p>La app se rehízo con React Native y un servidor propio con base de datos PostgreSQL. Llegaron Huecko IA, el mapa
+            para elegir el lugar del plan y un panel de administración.</p>
+        </div>
+        <div class="ficha">
+          <span class="fecha">15.10.2026</span>
+          <ul><li>React Native + Expo</li><li>Servidor propio</li><li>Huecko IA</li><li>Mapa</li><li>Administración</li></ul>
+        </div>
+      </article>
+
+      <article class="hito izquierda">
+        <div class="relato">
+          <h3>La app en tu celular</h3>
+          <p>Primer APK instalable, con el servidor publicado en internet. Desde aquí HueckoApp funciona fuera del entorno
+            de desarrollo, en el celular de cualquiera.</p>
+        </div>
+        <div class="ficha">
+          <span class="fecha">31.10.2026</span>
+          <ul><li>APK con EAS</li><li>Servidor en Render</li><li>Base de datos en Neon</li></ul>
+        </div>
+      </article>
+
+      <article class="hito derecha en-camino">
+        <div class="relato">
+          <h3>Versión 3.0, en camino</h3>
+          <p>Unirse a un grupo acercando el celular, votaciones exprés ante imprevistos, notificaciones push
+            y cuentas con Google y verificación en dos pasos.</p>
+        </div>
+        <div class="ficha">
+          <span class="fecha">Noviembre 2026</span>
+          <ul><li>Proximidad</li><li>Votación exprés</li><li>Notificaciones</li><li>Google y 2FA</li></ul>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<section class="cifras" id="cifras" aria-label="HueckoApp en cifras">
+  <div class="ancho">
+    <div class="cifra">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M24 4 8 10v12c0 10 7 18 16 22 9-4 16-12 16-22V10L24 4Z"/><path d="m16 24 6 6 11-12"/>
+      </svg>
+      <strong>1848</strong><span>Pruebas<br>automáticas</span>
+    </div>
+    <div class="cifra">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="10" r="5"/><circle cx="12" cy="38" r="5"/><circle cx="36" cy="38" r="5"/><path d="M12 15v18M36 33V22c0-6-4-9-10-9h-8"/><path d="m22 8-5 5 5 5"/>
+      </svg>
+      <strong>51</strong><span>Pull<br>requests</span>
+    </div>
+    <div class="cifra">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true">
+        <path d="M22 6c1.5 8 4 11 12 12.5C26 20 23.5 23 22 31c-1.5-8-4-11-12-12.5C18 17 20.5 14 22 6Z"/><path d="M36 28c.8 4 2 5.5 6 6.2-4 .8-5.2 2.2-6 6.3-.8-4.1-2-5.5-6-6.3 4-.7 5.2-2.2 6-6.2Z"/>
+      </svg>
+      <strong>5</strong><span>Funciones<br>con IA</span>
+    </div>
+    <div class="cifra">
+      <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 34V22a12 12 0 0 1 24 0v12l4 4H8l4-4Z"/><path d="M20 42a4 4 0 0 0 8 0"/>
+      </svg>
+      <strong>6</strong><span>Tipos de<br>aviso</span>
+    </div>
+  </div>
+</section>
+
+<footer class="contacto" id="contacto">
+  <div class="ancho">
+    <span class="logo-marca" aria-hidden="true">H</span>
+    <svg class="adorno" viewBox="0 0 200 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M2 10 C 40 10, 60 4, 84 10 M198 10 C 160 10, 140 4, 116 10"/>
+      <path d="M84 10 C 90 13, 95 3, 100 10 C 105 3, 110 13, 116 10"/>
+      <circle cx="100" cy="10" r="2" fill="currentColor"/>
+    </svg>
+    <div class="separador"></div>
+    <div class="redes">
+      <a href="https://github.com/Alessandro-BS/HueckoApp-Android" aria-label="Código en GitHub">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+    </div>
+    <div class="datos">
+      <a href="mailto:fabrizio.bs9012@gmail.com">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 5h20v14H2V5Zm2 2v.5l8 5 8-5V7H4Zm16 2.8-8 5-8-5V17h16V9.8Z"/></svg>
+        fabrizio.bs9012@gmail.com
+      </a>
+      <a href="privacidad.html">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.6 8 11 4.6-1.4 8-6 8-11V5l-8-3Zm0 2.2 6 2.2V11c0 4-2.6 7.7-6 8.9-3.4-1.2-6-4.9-6-8.9V6.4l6-2.2Z"/></svg>
+        Política de privacidad
+      </a>
+    </div>
+    <p class="texto">¿Preguntas, un problema con la app o quieres que borremos tu cuenta? Escríbenos y te respondemos lo antes posible.</p>
+    <form id="formulario">
+      <input name="nombre" type="text" placeholder="Nombre:" required aria-label="Nombre">
+      <input name="correo" type="email" placeholder="Correo:" required aria-label="Correo">
+      <input name="asunto" type="text" placeholder="Asunto:" aria-label="Asunto">
+      <textarea name="mensaje" placeholder="Mensaje:" required aria-label="Mensaje"></textarea>
+      <button type="submit">Enviar</button>
+    </form>
+    <p class="nota">Al enviar se abrirá tu aplicación de correo con el mensaje listo.</p>
+  </div>
+</footer>
+<div class="derechos">© 2026 HueckoApp · Proyecto académico · <a href="privacidad.html">Privacidad</a></div>
+
+<script>
+  document.getElementById('formulario').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = e.target;
+    var asunto = f.asunto.value.trim() || 'Consulta sobre HueckoApp';
+    var cuerpo = f.mensaje.value.trim() + '\n\n— ' + f.nombre.value.trim() + ' (' + f.correo.value.trim() + ')';
+    window.location.href = 'mailto:fabrizio.bs9012@gmail.com?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo);
+  });
+</script>
 </body>
 </html>
