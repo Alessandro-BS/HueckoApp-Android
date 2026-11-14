@@ -29,8 +29,12 @@ export const queryClient = createQueryClient();
 
 export const queryKeys = {
   dashboard: (userId: string | undefined) => ['dashboard', userId ?? null] as const,
+  // Prefijo de todas las copias de Inicio (una por usuario), para invalidarlas juntas.
+  dashboards: ['dashboard'] as const,
   groups: ['groups', 'list'] as const,
   group: (groupId: string) => ['groups', 'detail', groupId] as const,
+  proposals: (groupId: string) => ['groups', 'proposals', groupId] as const,
+  availability: (groupId: string, week: string | undefined) => ['groups', 'availability', groupId, week ?? null] as const,
   proximity: (id: string) => ['proximity', id] as const,
 };
 

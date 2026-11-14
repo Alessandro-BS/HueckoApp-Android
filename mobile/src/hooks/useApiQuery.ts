@@ -19,10 +19,17 @@ export function useApiQuery<T>(key: QueryKey, load: () => Promise<T>): Resource<
 
   // Cambia la caché sin ir al servidor (tras crear o borrar algo). Cancela la carga en curso de esa clave:
   // traería el estado de antes del cambio.
+  // Si todavía no hay datos (la primera carga sigue en curso o falló), no hay nada que editar: editar «nada»
+  // dejaría solo lo nuevo (p. ej. un único grupo en «Mis grupos»). Se vuelve a pedir al servidor, que ya lo incluye.
+  // resetQueries y no invalidateQueries: sin datos, invalidar reutilizaría la carga en curso, que es de antes del cambio.
   const keyHash = JSON.stringify(key);
   const mutate = useCallback(
     (update: (prev: T | undefined) => T | undefined) => {
       const queryKey = JSON.parse(keyHash) as QueryKey;
+      if (queryClient.getQueryData<T>(queryKey) === undefined) {
+        void queryClient.resetQueries({ queryKey, exact: true });
+        return;
+      }
       void queryClient.cancelQueries({ queryKey, exact: true });
       queryClient.setQueryData<T>(queryKey, update);
     },
