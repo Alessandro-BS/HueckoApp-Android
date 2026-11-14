@@ -69,6 +69,16 @@ export function challengesRepository(db: Db) {
       return r && toRow(r);
     },
 
+    /** Serializa a quienes piden un reto para la misma cuenta (primera consulta de su transacción). */
+    async lockUser(userId: string): Promise<void> {
+      await db.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    },
+
+    /** Deshace el envío anotado de un reto cuyo correo no salió. */
+    async markUnsent(id: string): Promise<void> {
+      await db.query('UPDATE auth_challenges SET send_count = 0, last_sent_at = NULL WHERE id = $1', [id]);
+    },
+
     async consume(id: string, now: string): Promise<void> {
       await db.query('UPDATE auth_challenges SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL', [id, now]);
     },

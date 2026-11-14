@@ -77,6 +77,11 @@ describe('Brevo, Google y CODE_RATE_LIMIT (cuentas)', () => {
     expect(parseEnv({ ...BASE, GOOGLE_WEB_CLIENT_ID: ' abc.apps.googleusercontent.com ' }).GOOGLE_WEB_CLIENT_ID).toBe('abc.apps.googleusercontent.com');
   });
 
+  it('BREVO_SENDER_NAME y CODE_RATE_LIMIT vacíos (Render) usan su valor por defecto', () => {
+    const env = parseEnv({ ...BASE, BREVO_SENDER_NAME: '', CODE_RATE_LIMIT: '' });
+    expect([env.BREVO_SENDER_NAME, env.CODE_RATE_LIMIT]).toEqual(['HueckoApp', 30]);
+  });
+
   it('CODE_RATE_LIMIT: 30 por defecto; acepta otro entero positivo', () => {
     expect(parseEnv(BASE).CODE_RATE_LIMIT).toBe(30);
     expect(parseEnv({ ...BASE, CODE_RATE_LIMIT: '5' }).CODE_RATE_LIMIT).toBe(5);

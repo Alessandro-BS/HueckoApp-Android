@@ -84,9 +84,9 @@ const envSchema = z.object({
   // Vacío = sin configurar (Render deja las variables sin valor como cadena vacía).
   BREVO_API_KEY: emptyAsUndefined(z.string().trim().optional()),
   BREVO_SENDER_EMAIL: emptyAsUndefined(z.string().trim().optional()),
-  BREVO_SENDER_NAME: z.string().trim().min(1, 'BREVO_SENDER_NAME no puede estar vacío').default('HueckoApp'),
+  BREVO_SENDER_NAME: emptyAsUndefined(z.string().trim().default('HueckoApp')),
   GOOGLE_WEB_CLIENT_ID: emptyAsUndefined(z.string().trim().optional()),
-  CODE_RATE_LIMIT: z.coerce.number().int().positive().default(30),
+  CODE_RATE_LIMIT: emptyAsUndefined(z.coerce.number().int().positive().default(30)),
 }).superRefine((env, ctx) => {
   // En producción (Render) el disco es efímero: una base PGlite se perdería en cada despliegue.
   if (env.NODE_ENV === 'production' && env.DATABASE_URL === '') {

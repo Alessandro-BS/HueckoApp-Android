@@ -24,8 +24,8 @@ async function deliver(deps: ChallengeDeps, to: string, purpose: ChallengePurpos
   try {
     await deps.email.send({ to, ...codeEmail(purpose, code) });
   } catch (error) {
-    // Un cliente de correo que lance otra cosa que EmailSendError también significa «no salió».
-    if (!(error instanceof EmailSendError)) console.error('El cliente de correo lanzó un error inesperado:', error);
+    // El mensaje de EmailSendError lleva el estado de Brevo y nunca la clave: sin este log, un 401 sería un 503 sin rastro.
+    console.error(`No se pudo enviar el código (${purpose}):`, error instanceof EmailSendError ? error.message : error);
     throw sendFailed();
   }
 }
@@ -51,35 +51,45 @@ export async function issueChallenge(
   const repo = challengesRepository(deps.db);
   const now = deps.now();
   const nowIso = now.toISOString();
+  const availableAt = plus(nowIso, RESEND_COOLDOWN_SECONDS);
 
-  const live = await repo.liveFor(user.id, purpose);
-  if (live && !isDead(live, nowIso) && live.lastSentAt !== null) {
-    const availableAt = plus(live.lastSentAt, RESEND_COOLDOWN_SECONDS);
-    if (availableAt > nowIso) return viewOf(live, user.email, availableAt);
-  }
-
-  if ((await repo.emailsSentSince(user.id, new Date(now.getTime() - DAY_MS).toISOString())) >= DAILY_EMAIL_LIMIT) {
-    if (!opts.quiet) throw dailyLimit();
-    console.warn(`Límite diario de correos alcanzado (${purpose}, usuario ${user.id}).`);
-    return viewOf({ id: generateChallengeId(), purpose }, user.email, plus(nowIso, RESEND_COOLDOWN_SECONDS));
-  }
-
-  const id = generateChallengeId();
-  const code = generateCode();
-  await deps.db.transaction(async () => {
+  // Todo menos el envío va en una transacción con la fila del usuario bloqueada: dos peticiones a la vez para la misma
+  // cuenta hacen cola, y la segunda ve el reto de la primera (ya marcado como enviado) y lo reutiliza. El envío HTTP
+  // queda fuera para no tener el candado durante la llamada a Brevo.
+  type Plan = { kind: 'reuse'; view: ChallengeView } | { kind: 'limit' } | { kind: 'send'; id: string; code: string };
+  const plan = await deps.db.transaction(async (): Promise<Plan> => {
+    await repo.lockUser(user.id);
+    const live = await repo.liveFor(user.id, purpose);
+    if (live && !isDead(live, nowIso) && live.lastSentAt !== null) {
+      const reuseAt = plus(live.lastSentAt, RESEND_COOLDOWN_SECONDS);
+      if (reuseAt > nowIso) return { kind: 'reuse', view: viewOf(live, user.email, reuseAt) };
+    }
+    if ((await repo.emailsSentSince(user.id, new Date(now.getTime() - DAY_MS).toISOString())) >= DAILY_EMAIL_LIMIT) return { kind: 'limit' };
+    const id = generateChallengeId();
+    const code = generateCode();
     await repo.consumeLive(user.id, purpose, nowIso);
+    // Nace con el envío ya contado (send_count 1, last_sent_at ahora); si el correo no sale, se deshace más abajo.
     await repo.insert({ id, userId: user.id, purpose, codeHash: hashCode(deps.secret, id, code), createdAt: nowIso, expiresAt: plus(nowIso, CODE_TTL_MINUTES * 60) });
+    await repo.recordSend(id, nowIso);
+    return { kind: 'send', id, code };
   });
 
-  try {
-    await deliver(deps, user.email, purpose, code);
-  } catch (error) {
-    if (!opts.quiet) throw error;
-    console.warn(`No se pudo enviar el código (${purpose}, usuario ${user.id}).`);
-    return viewOf({ id, purpose }, user.email, nowIso);
+  if (plan.kind === 'reuse') return plan.view;
+  if (plan.kind === 'limit') {
+    if (!opts.quiet) throw dailyLimit();
+    console.warn(`Límite diario de correos alcanzado (${purpose}, usuario ${user.id}).`);
+    return viewOf({ id: generateChallengeId(), purpose }, user.email, availableAt);
   }
-  await repo.recordSend(id, nowIso);
-  return viewOf({ id, purpose }, user.email, plus(nowIso, RESEND_COOLDOWN_SECONDS));
+
+  try {
+    await deliver(deps, user.email, purpose, plan.code);
+  } catch (error) {
+    // El reto queda vivo pero sin envío anotado: se puede reenviar sin esperar.
+    await repo.markUnsent(plan.id);
+    if (!opts.quiet) throw error;
+    return viewOf({ id: plan.id, purpose }, user.email, availableAt);
+  }
+  return viewOf({ id: plan.id, purpose }, user.email, availableAt);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
 import type { ChallengePurpose } from '../src/auth/challenge-rules';
 import { type ChallengeDeps, issueChallenge, resendChallenge, verifyChallenge } from '../src/auth/challenges';
@@ -15,13 +15,22 @@ let db: Db;
 let email: ReturnType<typeof fakeEmail>;
 let clock: ReturnType<typeof makeClock>;
 let deps: ChallengeDeps;
+let errorLog: MockInstance;
+let warnLog: MockInstance;
 
 beforeEach(async () => {
+  // Los fallos de envío y el límite diario se registran en el log: aquí se silencian y se comprueban.
+  errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+  warnLog = vi.spyOn(console, 'warn').mockImplementation(() => {});
   db = await makeTestDb();
   await db.query('INSERT INTO users (id, name, email) VALUES ($1, $2, $3)', [USER.id, 'Usuario', USER.email]);
   email = fakeEmail();
   clock = makeClock(START);
   deps = { db, email, secret: TEST_SECRET, now: clock.now };
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 const rejection = (promise: Promise<unknown>) => promise.then(() => undefined, (e: unknown) => e);
@@ -128,13 +137,15 @@ describe('issueChallenge', () => {
   it('con el límite diario y quiet: no lanza, no envía y devuelve un reto con la misma forma', async () => {
     await sendTenEmails();
     const view = await issueChallenge(deps, USER, 'VERIFY_EMAIL', { quiet: true });
-    expect(view).toEqual({ id: expect.any(String), purpose: 'VERIFY_EMAIL', emailHint: 'u***@correo.com', resendAvailableAt: expect.any(String) });
+    expect(view).toEqual({ id: expect.any(String), purpose: 'VERIFY_EMAIL', emailHint: 'u***@correo.com', resendAvailableAt: later(183 + 60).toISOString() });
     expect(email.sent).toHaveLength(10);
+    expect(warnLog).toHaveBeenCalledTimes(1);
   });
 
   it('si Brevo falla: 503 EMAIL_SEND_FAILED, el reto sigue vivo con last_sent_at nulo y se reenvía sin esperar', async () => {
     email.fail(true);
     await expectApiError(issueChallenge(deps, USER, 'VERIFY_EMAIL'), 503, 'EMAIL_SEND_FAILED');
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('VERIFY_EMAIL'), 'Brevo respondió 503'); // la causa queda en el log
     const live = await db.one<{ id: string; last_sent_at: string | null; consumed_at: string | null; send_count: number }>('SELECT * FROM auth_challenges');
     expect(live).toMatchObject({ last_sent_at: null, consumed_at: null, send_count: 0 });
     email.fail(false);
@@ -142,10 +153,30 @@ describe('issueChallenge', () => {
     expect(await verifyChallenge(deps, live!.id, email.lastCodeTo(USER.email))).toEqual({ userId: 'u1', purpose: 'VERIFY_EMAIL' });
   });
 
-  it('si Brevo falla con quiet: no lanza y devuelve un reto', async () => {
+  it('si Brevo falla con quiet: no lanza, registra la causa y devuelve resendAvailableAt = ahora + 60 s como si hubiera salido', async () => {
     email.fail(true);
     const view = await issueChallenge(deps, USER, 'RESET_PASSWORD', { quiet: true });
-    expect(view).toMatchObject({ purpose: 'RESET_PASSWORD', emailHint: 'u***@correo.com', resendAvailableAt: START.toISOString() });
+    expect(view).toMatchObject({ purpose: 'RESET_PASSWORD', emailHint: 'u***@correo.com', resendAvailableAt: later(60).toISOString() });
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('RESET_PASSWORD'), 'Brevo respondió 503');
+  });
+
+  it('dos peticiones a la vez para la misma cuenta y propósito: el mismo reto, un solo correo y ningún error', async () => {
+    const [a, b] = await Promise.all([issueChallenge(deps, USER, 'LOGIN_2FA'), issueChallenge(deps, USER, 'LOGIN_2FA')]);
+    expect(b).toEqual(a);
+    expect(email.sent).toHaveLength(1);
+    expect(await db.many('SELECT id FROM auth_challenges WHERE consumed_at IS NULL')).toHaveLength(1);
+    const [c, d] = await Promise.all([
+      issueChallenge(deps, USER, 'RESET_PASSWORD', { quiet: true }),
+      issueChallenge(deps, USER, 'RESET_PASSWORD', { quiet: true }),
+    ]);
+    expect(d).toEqual(c);
+    expect(email.sent).toHaveLength(2);
+  });
+
+  it('lo primero de la transacción de issueChallenge es el candado de la fila del usuario', async () => {
+    const calls = recordQueries(db);
+    await issueChallenge(deps, USER, 'VERIFY_EMAIL');
+    expect(calls.find((c) => c.inTransaction)!.sql).toMatch(/FROM users WHERE id = \$1 FOR UPDATE/);
   });
 });
 
@@ -202,6 +233,7 @@ describe('resendChallenge', () => {
     clock.set(later(61));
     email.fail(true);
     await expectApiError(resendChallenge(deps, view.id), 503, 'EMAIL_SEND_FAILED');
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('VERIFY_EMAIL'), 'Brevo respondió 503');
     expect(await row(view.id)).toMatchObject({ send_count: 1, last_sent_at: START.toISOString() });
     expect(await verifyChallenge(deps, view.id, code)).toEqual({ userId: 'u1', purpose: 'VERIFY_EMAIL' });
   });
