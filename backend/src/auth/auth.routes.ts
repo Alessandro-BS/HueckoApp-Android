@@ -64,13 +64,15 @@ export function authRouter({
     const { name, email, password } = registerSchema.parse(req.body);
     const existing = await users.findByEmail(email);
     // Un correo ya confirmado (o vinculado a Google) tiene dueño. Uno sin confirmar no: se reemplazan nombre y
-    // contraseña, así nadie se queda con un correo ajeno registrándolo primero.
+    // contraseña, así nadie se queda con un correo ajeno registrándolo primero. Al reemplazar se anulan los códigos
+    // pendientes: issueChallenge crea un reto nuevo (nunca reutiliza el de antes, que confirmaría la cuenta con la
+    // contraseña nueva de otra persona).
     if (existing && (existing.emailVerified || existing.hasGoogle)) {
       throw new ApiError(409, 'EMAIL_TAKEN', 'Ya existe una cuenta con ese correo.');
     }
     const passwordHash = await hashPassword(password);
     const account = existing
-      ? await users.replaceUnverified(existing.id, { name, passwordHash })
+      ? await users.replaceUnverified(existing.id, { name, passwordHash, now: now().toISOString() })
       : await users.create({ name, email, passwordHash, createdAt: now().toISOString() });
     const body: AuthResult = { challenge: await issueChallenge(challengeDeps, account, 'VERIFY_EMAIL') };
     res.status(201).json(body);
@@ -99,9 +101,10 @@ export function authRouter({
       purposeCheck: ({ purpose }) => {
         if (!VERIFIABLE_PURPOSES.has(purpose)) throw challengeExpired();
       },
+      // VERIFY_EMAIL: el código prueba que lee ese correo. En la misma transacción que el código: un registro que
+      // reemplaza la contraseña a la vez espera a que termine y entonces ve la cuenta verificada (409).
+      onSuccess: ({ userId: id }) => users.markEmailVerified(id),
     });
-    // VERIFY_EMAIL: el código prueba que lee ese correo.
-    await users.markEmailVerified(userId);
     const account = await users.findById(userId);
     if (!account) throw challengeExpired(); // la cuenta se borró entre medias
     // El efecto ya se aplicó, pero una cuenta suspendida no recibe sesión.

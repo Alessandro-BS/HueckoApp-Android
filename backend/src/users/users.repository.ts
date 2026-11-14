@@ -75,17 +75,23 @@ export function usersRepository(db: Db) {
       };
     },
     /**
-     * Registro sobre un correo que nadie confirmó: cambia nombre y contraseña. Solo si sigue sin verificar y sin Google
-     * (lo comprueba al escribir: si otra petición lo verificó o lo vinculó justo antes, 409 EMAIL_TAKEN).
+     * Registro sobre un correo que nadie confirmó: cambia nombre y contraseña y anula todos sus códigos pendientes (el
+     * código que ya recibió la dueña del correo no debe confirmar la cuenta con la contraseña nueva). Solo si sigue sin
+     * verificar y sin Google: lo comprueba al escribir (si otra petición lo verificó o lo vinculó justo antes, 409
+     * EMAIL_TAKEN). Primero los retos y después la fila del usuario, el mismo orden de candados que la verificación del
+     * código: si hay una en curso, esta espera a que termine y ve la cuenta ya verificada.
      */
-    async replaceUnverified(id: string, input: { name: string; passwordHash: string }): Promise<Account> {
-      const { rowCount } = await db.query(
-        'UPDATE users SET name = $2, password_hash = $3 WHERE id = $1 AND email_verified = false AND google_sub IS NULL',
-        [id, input.name, input.passwordHash],
-      );
-      const account = rowCount > 0 ? await findById(id) : undefined;
-      if (!account) throw emailTaken();
-      return account;
+    async replaceUnverified(id: string, input: { name: string; passwordHash: string; now: string }): Promise<Account> {
+      return db.transaction(async () => {
+        await db.query('UPDATE auth_challenges SET consumed_at = $2 WHERE user_id = $1 AND consumed_at IS NULL', [id, input.now]);
+        const { rowCount } = await db.query(
+          'UPDATE users SET name = $2, password_hash = $3 WHERE id = $1 AND email_verified = false AND google_sub IS NULL',
+          [id, input.name, input.passwordHash],
+        );
+        const account = rowCount > 0 ? await findById(id) : undefined;
+        if (!account) throw emailTaken();
+        return account;
+      });
     },
     async markEmailVerified(id: string): Promise<void> {
       await db.query('UPDATE users SET email_verified = true WHERE id = $1', [id]);

@@ -128,12 +128,17 @@ type VerifyOutcome = { ok: true; userId: string; purpose: ChallengePurpose } | {
  * el quinto (y consume el reto). Bueno: consume y devuelve el usuario y el propósito.
  * `purposeCheck` corre dentro de la misma transacción, tras el candado y ANTES de mirar el código: si lanza, no se gasta
  * intento (las rutas lo usan para rechazar propósitos que no aceptan y, en ENABLE_2FA, el JWT de otra persona).
+ * `onSuccess` corre también dentro, justo después de consumir un código bueno: el efecto (p. ej. verificar el correo)
+ * queda en la misma transacción que el código, con el reto todavía bloqueado.
  */
 export async function verifyChallenge(
   deps: ChallengeDeps,
   id: string,
   code: string,
-  opts: { purposeCheck?: (c: { userId: string; purpose: ChallengePurpose }) => void } = {},
+  opts: {
+    purposeCheck?: (c: { userId: string; purpose: ChallengePurpose }) => void;
+    onSuccess?: (c: { userId: string; purpose: ChallengePurpose }) => Promise<void>;
+  } = {},
 ): Promise<{ userId: string; purpose: ChallengePurpose }> {
   const repo = challengesRepository(deps.db);
   // El resultado sale de la transacción y recién entonces se lanza: lanzar dentro desharía el conteo del intento fallido.
@@ -144,6 +149,7 @@ export async function verifyChallenge(
     opts.purposeCheck?.({ userId: challenge.userId, purpose: challenge.purpose });
     if (codeMatches(deps.secret, id, code, challenge.codeHash)) {
       await repo.consume(id, nowIso);
+      await opts.onSuccess?.({ userId: challenge.userId, purpose: challenge.purpose });
       return { ok: true, userId: challenge.userId, purpose: challenge.purpose };
     }
     await repo.recordFailure(id);

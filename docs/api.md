@@ -112,7 +112,7 @@ type ChallengePurpose = 'VERIFY_EMAIL' | 'LOGIN_2FA' | 'RESET_PASSWORD' | 'ENABL
 `password` entre 8 y 72 caracteres. El correo se guarda con `trim` y en minúsculas.
 
 Crea la cuenta **sin verificar**, manda el código `VERIFY_EMAIL` y responde `201 { "challenge": Challenge }` (sin token). La cuenta nace siempre con `role: "USER"` (un `role` en el cuerpo se ignora).
-- Correo que ya existe **sin verificar y sin Google** → en vez de `409` se reemplazan el nombre y la contraseña y se manda (o se reutiliza) el código: `201 { challenge }`. Así nadie se queda con un correo ajeno registrándolo primero.
+- Correo que ya existe **sin verificar y sin Google** → en vez de `409` se reemplazan el nombre y la contraseña, se anulan los códigos pendientes y se manda uno nuevo (otro `id`, aunque no hayan pasado 60 s): `201 { challenge }`. Así nadie se queda con un correo ajeno registrándolo primero, y el código que ya tenía la dueña del correo no confirma la cuenta con la contraseña de otra persona.
 - Correo ya verificado (o vinculado a Google) → `409 EMAIL_TAKEN`.
 - `503 EMAIL_SEND_FAILED` o `429 EMAIL_DAILY_LIMIT` (ver «Códigos por correo»): la cuenta queda creada sin verificar; volver a registrarse con el mismo correo lo reintenta.
 
@@ -145,7 +145,7 @@ Sin cuerpo. Manda un código nuevo (el anterior deja de valer, los intentos vuel
 - 6 dígitos, valen **15 minutos**, **5 intentos** (el quinto fallo quema el reto).
 - Reenvío cada **60 s** como mucho, y como mucho **5 envíos** por reto.
 - Como mucho **10 correos por cuenta cada 24 h** (todos los propósitos) → `429 EMAIL_DAILY_LIMIT` («Ya te enviamos muchos códigos hoy. Inténtalo mañana.»).
-- Pedir un código otra vez (registro, login) antes de 60 s reutiliza el reto vivo sin mandar otro correo.
+- Pedir un código otra vez al entrar (login) antes de 60 s reutiliza el reto vivo sin mandar otro correo. Registrarse otra vez sobre un correo sin verificar nunca lo reutiliza (ver `POST /auth/register`).
 - Si el correo no sale: `503 EMAIL_SEND_FAILED` («No pudimos enviar el correo. Intenta reenviar el código en un momento.»); el reto queda vivo y se puede reenviar sin esperar.
 - `verify` y `resend` comparten un límite por IP (`CODE_RATE_LIMIT`, 30 cada 15 min) → `429 TOO_MANY_REQUESTS`.
 
@@ -160,7 +160,7 @@ Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`).
 - Token de una cuenta que ya no existe → `401 UNAUTHORIZED`.
 - `sv` distinto de la versión de sesión de la cuenta → `401 UNAUTHORIZED` (así se cierran todas las sesiones anteriores, p. ej. al recuperar la contraseña). Un token emitido antes de que existiera `sv` cuenta como versión `0`.
 - Solo las cuentas `ADMIN` entran en `/admin/...` (`403 NOT_ADMIN`). Nadie se hace administrador por la API (ver «Administración»).
-- Las cuentas que ya existían antes de la verificación del correo y las de la semilla nacen verificadas: entran con su contraseña sin pedir código (`make-admin` solo cambia el rol).
+- Las cuentas que ya existían antes de la verificación del correo y las de la semilla están verificadas, y `make-admin` verifica el correo de la cuenta que nombra administradora: todas entran con su contraseña sin pedir código.
 
 > **Cerrar sesión** se hace en la app: se borra el token de `SecureStore`. No hay endpoint.
 

@@ -3,7 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 
-import { bearer, makeClock, makeTestApp, NOW, registerUnverified, registerUser, TEST_SECRET } from './helpers';
+import { bearer, makeClock, makeTestApp, NOW, recordQueries, registerUnverified, registerUser, TEST_SECRET } from './helpers';
 
 let app: Express;
 beforeEach(async () => {
@@ -54,6 +54,39 @@ describe('POST /api/auth/register', () => {
     expect(verified.body.user.name).toBe('Ana');
     expect((await login(target, 'ana@correo.com', 'contrasena-vieja')).status).toBe(401);
     expect((await login(target, 'ana@correo.com', 'contrasena-nueva')).status).toBe(200);
+  });
+
+  it('re-registrar un correo sin verificar invalida el reto anterior: el código de quien se registró antes ya no sirve', async () => {
+    const clock = makeClock(NOW);
+    const { app: target, db, emails } = await makeTestApp({ now: clock.now });
+    // La dueña del correo se registra y recibe su código…
+    const victim = await registerUnverified(target, { name: 'Ana', email: 'ana@correo.com', password: 'contrasena-de-ana' });
+    const victimCode = emails.lastCodeTo(victim.email);
+    // …y antes de 60 s otra persona registra el mismo correo con su contraseña.
+    clock.set(new Date(NOW.getTime() + 30 * SECOND));
+    const attacker = await register(target, { name: 'Intruso', email: 'ana@correo.com', password: 'contrasena-intrusa' });
+    expect(attacker.status).toBe(201);
+    expect(attacker.body.challenge.id).not.toBe(victim.challenge.id);
+    // El código de la dueña no confirma la cuenta con la contraseña del intruso.
+    const res = await request(target).post(`/api/auth/challenges/${victim.challenge.id}/verify`).send({ code: victimCode });
+    expect(res.status).toBe(410);
+    expect(res.body.error.code).toBe('CHALLENGE_EXPIRED');
+    expect(await db.one("SELECT email_verified FROM users WHERE email = 'ana@correo.com'")).toEqual({ email_verified: false });
+    // Todos los códigos van al buzón de la dueña del correo (uno nuevo por el segundo registro); el intruso no recibe ninguno.
+    expect(emails.sent.map((m) => m.to)).toEqual(['ana@correo.com', 'ana@correo.com']);
+    expect(Object.keys(attacker.body)).toEqual(['challenge']);
+  });
+
+  it('el reemplazo anula los retos y cambia la contraseña en una transacción, retos primero (orden de candados de verify)', async () => {
+    const { app: target, db } = await makeTestApp();
+    await registerUnverified(target, { email: 'ana@correo.com' });
+    const calls = recordQueries(db);
+    expect((await register(target, { name: 'Ana', email: 'ana@correo.com', password: 'contrasena-nueva' })).status).toBe(201);
+    const consume = calls.findIndex((c) => /UPDATE auth_challenges SET consumed_at/.test(c.sql));
+    const replace = calls.findIndex((c) => /UPDATE users SET name/.test(c.sql));
+    expect(consume).toBeGreaterThanOrEqual(0);
+    expect(replace).toBeGreaterThan(consume);
+    expect(calls[consume]!.inTransaction && calls[replace]!.inTransaction).toBe(true);
   });
 
   it('un correo sin verificar pero vinculado a Google → 409 EMAIL_TAKEN', async () => {

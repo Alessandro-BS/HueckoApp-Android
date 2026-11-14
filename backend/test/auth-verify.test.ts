@@ -5,7 +5,7 @@ import type { Express } from 'express';
 import type { ChallengePurpose } from '../src/auth/challenge-rules';
 import { issueChallenge } from '../src/auth/challenges';
 import type { Db } from '../src/db/db';
-import { bearer, type FakeEmail, makeClock, makeTestApp, NOW, registerUnverified, TEST_SECRET } from './helpers';
+import { bearer, type FakeEmail, makeClock, makeTestApp, NOW, recordQueries, registerUnverified, TEST_SECRET } from './helpers';
 
 const SECOND = 1000;
 const verify = (app: Express, id: string, body: object) => request(app).post(`/api/auth/challenges/${id}/verify`).send(body);
@@ -34,6 +34,18 @@ describe('POST /api/auth/challenges/:id/verify (VERIFY_EMAIL)', () => {
     const me = await request(app).get('/api/auth/me').set(bearer(res.body.token));
     expect(me.status).toBe(200);
     expect(me.body).toEqual(res.body.user);
+  });
+
+  it('verificar el correo va en la misma transacción que el código, tras bloquear el reto', async () => {
+    const { app, db, emails } = await makeTestApp();
+    const { challenge, email } = await registerUnverified(app);
+    const calls = recordQueries(db);
+    expect((await verify(app, challenge.id, { code: emails.lastCodeTo(email) })).status).toBe(200);
+    const lock = calls.findIndex((c) => /FOR UPDATE/.test(c.sql));
+    const mark = calls.findIndex((c) => /UPDATE users SET email_verified = true/.test(c.sql));
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(mark).toBeGreaterThan(lock);
+    expect(calls.slice(lock, mark + 1).every((c) => c.inTransaction)).toBe(true);
   });
 
   it('el código acepta espacios alrededor', async () => {
@@ -67,12 +79,17 @@ describe('POST /api/auth/challenges/:id/verify (VERIFY_EMAIL)', () => {
     const { app, emails } = await makeTestApp({ now: clock.now });
     const { challenge, email } = await registerUnverified(app);
     const oldCode = emails.lastCodeTo(email);
-    clock.set(new Date(NOW.getTime() + 61 * SECOND));
-    const res = await resend(app, challenge.id);
-    expect(res.status).toBe(204);
-    expect(emails.sent.filter((m) => m.to === email)).toHaveLength(2);
-    const newCode = emails.lastCodeTo(email);
-    if (oldCode !== newCode) expect((await verify(app, challenge.id, { code: oldCode })).status).toBe(400);
+    // Si por azar (1 entre un millón) sale el mismo código, se reenvía otra vez: quedan 4 reenvíos por reto.
+    let newCode = oldCode;
+    for (let sends = 1; newCode === oldCode && sends <= 4; sends++) {
+      clock.set(new Date(NOW.getTime() + sends * 61 * SECOND));
+      const res = await resend(app, challenge.id);
+      expect(res.status).toBe(204);
+      expect(emails.sent.filter((m) => m.to === email)).toHaveLength(sends + 1);
+      newCode = emails.lastCodeTo(email);
+    }
+    expect(newCode).not.toBe(oldCode);
+    expect((await verify(app, challenge.id, { code: oldCode })).status).toBe(400);
     expect((await verify(app, challenge.id, { code: newCode })).status).toBe(200);
   });
 

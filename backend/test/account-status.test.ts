@@ -7,7 +7,7 @@ import { setRoleByEmail } from '../src/admin/admin-users';
 import { requireAdmin, requireAuth } from '../src/auth/require-auth';
 import type { Db } from '../src/db/db';
 import { errorHandler } from '../src/middleware/errors';
-import { bearer, createGroup, makeTestApp, NOW, registerUser, TEST_SECRET } from './helpers';
+import { bearer, createGroup, makeTestApp, NOW, registerUnverified, registerUser, TEST_SECRET } from './helpers';
 
 const setRole = (db: Db, id: string, role: 'USER' | 'ADMIN') => db.query('UPDATE users SET role = $1 WHERE id = $2', [role, id]);
 const setStatus = (db: Db, id: string, status: 'ACTIVE' | 'SUSPENDED') =>
@@ -44,14 +44,17 @@ describe('rol en la sesión (D1)', () => {
     expect(verified.body.user.role).toBe('USER');
   });
 
-  it('una cuenta nombrada administradora con make-admin entra con su contraseña, sin pedir código', async () => {
-    const { app, db } = await makeTestApp();
-    await registerUser(app, { email: 'ana@correo.com', password: 'contrasena-segura' });
+  it('una cuenta sin verificar nombrada administradora con make-admin entra con su contraseña, sin pedir código', async () => {
+    const { app, db, emails } = await makeTestApp();
+    await registerUnverified(app, { email: 'ana@correo.com', password: 'contrasena-segura' });
+    const sentBefore = emails.sent.length;
     await setRoleByEmail(db, 'ana@correo.com', 'ADMIN', NOW);
     const login = await request(app).post('/api/auth/login').send({ email: 'ana@correo.com', password: 'contrasena-segura' });
     expect(login.status).toBe(200);
     expect(login.body.challenge).toBeUndefined();
+    expect(typeof login.body.token).toBe('string');
     expect(login.body.user).toMatchObject({ role: 'ADMIN', emailVerified: true });
+    expect(emails.sent).toHaveLength(sentBefore);
   });
 
   it('/auth/me lee el rol de la base en cada petición: el mismo token ve el cambio', async () => {
