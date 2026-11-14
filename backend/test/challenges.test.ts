@@ -216,8 +216,9 @@ describe('resendChallenge', () => {
     expect(email.sent).toHaveLength(5);
   });
 
-  it('410 si no existe, está vencido o ya se consumió', async () => {
-    await expectApiError(resendChallenge(deps, 'no-existe'), 410, 'CHALLENGE_EXPIRED');
+  it('un id que no existe no hace nada (204 en la ruta); 410 si está vencido o ya se consumió', async () => {
+    await expect(resendChallenge(deps, 'no-existe')).resolves.toBeUndefined();
+    expect(email.sent).toHaveLength(0);
     const view = await issueChallenge(deps, USER, 'VERIFY_EMAIL');
     await verifyChallenge(deps, view.id, email.lastCodeTo(USER.email));
     clock.set(later(61));

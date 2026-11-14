@@ -131,7 +131,7 @@ describe('POST /api/auth/challenges/:id/verify (VERIFY_EMAIL)', () => {
     expect(await db.one('SELECT email_verified FROM users WHERE email = $1', [email])).toEqual({ email_verified: true });
   });
 
-  it.each<ChallengePurpose>(['RESET_PASSWORD', 'LOGIN_2FA', 'ENABLE_2FA'])(
+  it.each<ChallengePurpose>(['LOGIN_2FA', 'ENABLE_2FA'])(
     'un reto %s todavía no se acepta aquí: 410 sin gastar intento ni consumirlo',
     async (purpose) => {
       const { app, db, emails } = await makeTestApp({ now: () => NOW });
@@ -149,7 +149,7 @@ describe('POST /api/auth/challenges/:id/verify (VERIFY_EMAIL)', () => {
   it('verify y resend tienen su límite por IP (CODE_RATE_LIMIT): 429 TOO_MANY_REQUESTS', async () => {
     const { app } = await makeTestApp({ codeRateLimit: 2 });
     expect((await verify(app, 'xyz', { code: '123456' })).status).toBe(410);
-    expect((await resend(app, 'xyz')).status).toBe(410);
+    expect((await resend(app, 'xyz')).status).toBe(204);
     const res = await verify(app, 'xyz', { code: '123456' });
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe('TOO_MANY_REQUESTS');

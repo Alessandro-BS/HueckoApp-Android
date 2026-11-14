@@ -17,6 +17,11 @@ export function devicesRepository(db: Db) {
       await db.query('DELETE FROM push_devices WHERE token = $1 AND user_id = $2', [token, userId]);
     },
 
+    // Al restablecer la contraseña: ningún celular de esa cuenta sigue recibiendo avisos.
+    async removeAllOf(userId: string): Promise<void> {
+      await db.query('DELETE FROM push_devices WHERE user_id = $1', [userId]);
+    },
+
     // Para DeviceNotRegistered: Expo dice que ese celular ya no existe.
     async removeToken(token: string): Promise<void> {
       await db.query('DELETE FROM push_devices WHERE token = $1', [token]);

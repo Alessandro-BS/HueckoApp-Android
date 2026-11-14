@@ -30,6 +30,8 @@ export type Challenge = { id: string; purpose: ChallengePurpose; emailHint: stri
 // Respuesta de register/login: la sesión, o un reto que hay que confirmar con el código del correo antes.
 export type AuthResult = AuthResponse | { challenge: Challenge };
 
+export type ForgotPasswordInput = { email: string };
+
 export type VerifyChallengeInput = { code: string; newPassword?: string };
 
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';

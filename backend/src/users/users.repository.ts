@@ -97,6 +97,15 @@ export function usersRepository(db: Db) {
     async markEmailVerified(id: string): Promise<void> {
       await db.query('UPDATE users SET email_verified = true WHERE id = $1', [id]);
     },
+    /** Contraseña nueva: sube la versión de sesión (los JWT anteriores caen) y confirma el correo. Devuelve la versión nueva. */
+    async resetPassword(id: string, passwordHash: string): Promise<number> {
+      const row = await db.one<{ session_version: number }>(
+        'UPDATE users SET password_hash = $2, session_version = session_version + 1, email_verified = true WHERE id = $1 RETURNING session_version',
+        [id, passwordHash],
+      );
+      if (!row) throw new Error('cuenta inexistente');
+      return row.session_version;
+    },
     async findByEmail(email: string): Promise<(Account & { passwordHash: string | null }) | undefined> {
       const row = await db.one<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
       return row && { ...toAccount(row), passwordHash: row.password_hash };

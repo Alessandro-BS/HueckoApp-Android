@@ -93,7 +93,7 @@ export async function issueChallenge(
 }
 
 /**
- * Reenvío: 410 si no existe, venció o se consumió; 429 RESEND_TOO_SOON; como mucho 5 envíos por reto (410 al pasarse);
+ * Reenvío: no hace nada (y responde 204) si el id no existe; 410 si venció o se consumió; 429 RESEND_TOO_SOON; como mucho 5 envíos por reto (410 al pasarse);
  * límite diario. Manda un código nuevo (el anterior deja de valer), con intentos en 0 y vencimiento extendido. Si el
  * correo no sale, nada cambia.
  */
@@ -104,7 +104,9 @@ export async function resendChallenge(deps: ChallengeDeps, id: string): Promise<
     const now = deps.now();
     const nowIso = now.toISOString();
     const challenge = await repo.findForUpdate(id);
-    if (!challenge || isDead(challenge, nowIso) || challenge.sendCount >= MAX_SENDS_PER_CHALLENGE) throw expired();
+    // Un id que no está en la base responde igual que uno real (204): los retos falsos de /password/forgot no se delatan.
+    if (!challenge) return;
+    if (isDead(challenge, nowIso) || challenge.sendCount >= MAX_SENDS_PER_CHALLENGE) throw expired();
     if (challenge.lastSentAt !== null) {
       const waitMs = new Date(plus(challenge.lastSentAt, RESEND_COOLDOWN_SECONDS)).getTime() - now.getTime();
       if (waitMs > 0) {

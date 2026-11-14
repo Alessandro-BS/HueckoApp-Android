@@ -26,6 +26,8 @@ export const loginSchema = z.object({
   password: z.string({ error: 'La contraseña es requerida' }).min(1, 'La contraseña es requerida'),
 });
 
+export const forgotPasswordSchema = z.object({ email });
+
 // Un formato malo (no 6 dígitos) es 400 VALIDATION_ERROR y no gasta intento: el reto ni se mira.
 export const verifyChallengeSchema = z.object({
   code: z.string({ error: 'El código es requerido' }).trim().regex(/^\d{6}$/, 'El código tiene 6 dígitos'),
