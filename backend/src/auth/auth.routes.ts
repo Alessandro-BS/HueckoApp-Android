@@ -5,9 +5,10 @@ import { ZodError } from 'zod';
 import type { AuthResponse, AuthResult } from '@hueckoapp/shared';
 import type { ResolvedDeps } from '../app';
 import { devicesRepository } from '../notifications/devices.repository';
+import { isUniqueViolation } from '../db/errors';
 import { ApiError } from '../middleware/errors';
 import { type Account, toCurrentUser, usersRepository } from '../users/users.repository';
-import { forgotPasswordSchema, loginSchema, registerSchema, verifyChallengeSchema } from './auth.schemas';
+import { forgotPasswordSchema, googleLoginSchema, loginSchema, registerSchema, verifyChallengeSchema } from './auth.schemas';
 import type { ChallengePurpose } from './challenge-rules';
 import { emailHint, generateChallengeId } from './codes';
 import { type ChallengeDeps, issueChallenge, resendChallenge, verifyChallenge } from './challenges';
@@ -42,6 +43,7 @@ export function authRouter({
   jwtExpiresIn,
   now,
   email: emailClient,
+  google: googleVerifier,
   loginRateLimit = LOGIN_RATE_LIMIT_DEFAULT,
   registerRateLimit = REGISTER_RATE_LIMIT_DEFAULT,
   codeRateLimit = CODE_RATE_LIMIT_DEFAULT,
@@ -98,6 +100,42 @@ export function authRouter({
       ? sessionFor(account)
       : { challenge: await issueChallenge(challengeDeps, account, 'VERIFY_EMAIL') };
     res.json(body);
+  });
+
+  // Entrar con Google: el idToken lo verifica Google (aquí, el verificador inyectado). Exige email_verified. Una cuenta
+  // con ese correo se vincula (si estaba sin verificar pierde contraseña y 2FA: ver linkGoogle); sin cuenta, se crea.
+  // No pide 2FA: Google ya autenticó a la persona.
+  router.post('/google', loginLimiter, async (req, res) => {
+    const { idToken } = googleLoginSchema.parse(req.body);
+    if (!googleVerifier) throw new ApiError(503, 'GOOGLE_NOT_CONFIGURED', 'Entrar con Google no está disponible por ahora.');
+    const identity = await googleVerifier.verify(idToken);
+    if (!identity || !identity.emailVerified) throw new ApiError(401, 'GOOGLE_TOKEN_INVALID', 'No pudimos verificar tu cuenta de Google.');
+    const email = identity.email.trim().toLowerCase();
+
+    const resolve = async (): Promise<Account> => {
+      const bySub = await users.findByGoogleSub(identity.sub);
+      if (bySub) return bySub;
+      const byEmail = await users.findByEmail(email);
+      if (byEmail) {
+        // Ese correo ya tiene otro Google vinculado. Una cuenta suspendida no se toca (se rechaza abajo).
+        if (byEmail.hasGoogle) throw new ApiError(401, 'GOOGLE_TOKEN_INVALID', 'No pudimos verificar tu cuenta de Google.');
+        if (byEmail.status === 'SUSPENDED') return byEmail;
+        const linked = await users.linkGoogle(byEmail.id, identity.sub, { googleName: identity.name, now: now().toISOString() });
+        if (!linked) throw new ApiError(401, 'GOOGLE_TOKEN_INVALID', 'No pudimos verificar tu cuenta de Google.');
+        return linked;
+      }
+      return users.createFromGoogle({ name: identity.name, email, sub: identity.sub, createdAt: now().toISOString() });
+    };
+    let account: Account;
+    try {
+      account = await resolve();
+    } catch (e) {
+      // Dos primeras entradas a la vez: el UNIQUE de correo o google_sub frena a una. Se repite la búsqueda una vez.
+      if (!isUniqueViolation(e, 'users_email_key') && !isUniqueViolation(e, 'users_google_sub_key')) throw e;
+      account = await resolve();
+    }
+    if (account.status === 'SUSPENDED') throw accountSuspended();
+    res.json(sessionFor(account));
   });
 
   // Siempre 202 { challenge }, exista o no la cuenta, falle o no Brevo, se pase o no el límite diario: no delata qué

@@ -4,6 +4,7 @@ import request from 'supertest';
 import { vi } from 'vitest';
 
 import type { AiClient, AiRequest } from '../src/ai/ai-client';
+import type { GoogleIdentity, GoogleVerifier } from '../src/auth/google-verifier';
 import type { TrustProxy } from '../src/config/trust-proxy';
 import { createApp } from '../src/app';
 import { addDays } from '../src/common/zone';
@@ -50,6 +51,7 @@ export async function makeTestApp(options?: {
   cronSecret?: string;
   email?: EmailClient;
   codeRateLimit?: number;
+  google?: GoogleVerifier;
 }): Promise<{ app: Express; db: Db; emails: FakeEmail }> {
   const db = options?.db ?? (await makeTestDb());
   const emails = fakeEmail();
@@ -72,6 +74,7 @@ export async function makeTestApp(options?: {
     // Sin `email`, el correo falso de `emails` (nunca se llama a Brevo).
     email: options?.email ?? emails,
     codeRateLimit: options?.codeRateLimit ?? 10_000,
+    google: options?.google,
   });
   const client = options?.email ?? emails;
   if ('lastCodeTo' in client) emailsOf.set(app, client as FakeEmail);
@@ -205,6 +208,11 @@ export function fakeEmail(): FakeEmail {
     },
   };
 }
+
+// Google falso, sin red: el idToken es la clave de `identities`; uno desconocido es inválido (null).
+export const fakeGoogle = (identities: Record<string, GoogleIdentity>): GoogleVerifier => ({
+  verify: async (idToken) => identities[idToken] ?? null,
+});
 
 // Reloj que el test mueve a mano: makeTestApp({ now: clock.now }) y después clock.set(...).
 export function makeClock(start: Date) {

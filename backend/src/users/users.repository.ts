@@ -94,6 +94,42 @@ export function usersRepository(db: Db) {
         return account;
       });
     },
+    /** Cuenta creada al entrar con Google: nombre de Google, sin contraseña, correo verificado. El UNIQUE de email/google_sub lo lanza tal cual (carrera: el llamador reintenta la búsqueda). */
+    async createFromGoogle(input: { name: string; email: string; sub: string; createdAt: string }): Promise<Account> {
+      const id = randomUUID();
+      await db.query('INSERT INTO users (id, name, email, email_verified, google_sub, created_at) VALUES ($1, $2, $3, true, $4, $5)', [
+        id, input.name, input.email, input.sub, input.createdAt,
+      ]);
+      return (await findById(id))!;
+    },
+    /**
+     * Vincula la cuenta a Google y la da por verificada. Decide bajo el candado de la fila (no con lo leído antes) si la
+     * cuenta estaba sin verificar: entonces el registro pudo ser de otra persona, así que pierde la contraseña y el 2FA,
+     * toma el nombre de Google y se anulan sus códigos pendientes (nadie debe verificar el registro viejo). Una cuenta
+     * verificada conserva todo. Bloquea la cuenta antes que los retos (mismo orden que el resto de auth). Si ya tenía
+     * otro Google, undefined; si ya tenía este mismo (otra petición se adelantó), la devuelve como está.
+     */
+    async linkGoogle(id: string, sub: string, input: { googleName: string; now: string }): Promise<Account | undefined> {
+      return db.transaction(async () => {
+        const row = await db.one<UserRow>('SELECT * FROM users WHERE id = $1 FOR UPDATE', [id]);
+        if (!row) return undefined;
+        if (row.google_sub !== null) return row.google_sub === sub ? toAccount(row) : undefined;
+        if (row.email_verified) {
+          await db.query('UPDATE users SET google_sub = $2 WHERE id = $1', [id, sub]);
+        } else {
+          await db.query('UPDATE auth_challenges SET consumed_at = $2 WHERE user_id = $1 AND consumed_at IS NULL', [id, input.now]);
+          await db.query(
+            'UPDATE users SET google_sub = $2, email_verified = true, password_hash = NULL, two_factor_enabled = false, name = $3 WHERE id = $1',
+            [id, sub, input.googleName],
+          );
+        }
+        return findById(id);
+      });
+    },
+    async findByGoogleSub(sub: string): Promise<Account | undefined> {
+      const row = await db.one<UserRow>('SELECT * FROM users WHERE google_sub = $1', [sub]);
+      return row && toAccount(row);
+    },
     async markEmailVerified(id: string): Promise<void> {
       await db.query('UPDATE users SET email_verified = true WHERE id = $1', [id]);
     },

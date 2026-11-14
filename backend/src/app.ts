@@ -8,6 +8,7 @@ import { AI_RATE_LIMIT_DEFAULT, aiRateLimiter } from './ai/ai-limiter';
 import { aiRouter, groupAiRouter, proposalAiRouter } from './ai/ai.routes';
 import { createMockAiClient } from './ai/mock-client';
 import { authRouter } from './auth/auth.routes';
+import type { GoogleVerifier } from './auth/google-verifier';
 import { requireAdmin, requireAuth } from './auth/require-auth';
 import type { TrustProxy } from './config/trust-proxy';
 import type { Db } from './db/db';
@@ -54,6 +55,8 @@ export type AppDeps = {
   email?: EmailClient;
   // Intentos por IP cada 15 min en verify/resend/forgot (CODE_RATE_LIMIT; 30 si se omite); las pruebas lo suben.
   codeRateLimit?: number;
+  // Verificador de idTokens de Google. Sin él (no hay GOOGLE_WEB_CLIENT_ID), POST /auth/google responde 503.
+  google?: GoogleVerifier;
 };
 
 // El único reloj por defecto de la app; los routers reciben las dependencias con `now` ya resuelto.

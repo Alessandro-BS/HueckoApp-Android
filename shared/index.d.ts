@@ -31,6 +31,7 @@ export type Challenge = { id: string; purpose: ChallengePurpose; emailHint: stri
 export type AuthResult = AuthResponse | { challenge: Challenge };
 
 export type ForgotPasswordInput = { email: string };
+export type GoogleLoginInput = { idToken: string };
 
 export type VerifyChallengeInput = { code: string; newPassword?: string };
 

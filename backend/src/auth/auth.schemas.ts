@@ -26,6 +26,10 @@ export const loginSchema = z.object({
   password: z.string({ error: 'La contraseña es requerida' }).min(1, 'La contraseña es requerida'),
 });
 
+export const googleLoginSchema = z.object({
+  idToken: z.string({ error: 'El token de Google es requerido' }).min(1, 'El token de Google es requerido').max(8192),
+});
+
 export const forgotPasswordSchema = z.object({ email });
 
 // Un formato malo (no 6 dígitos) es 400 VALIDATION_ERROR y no gasta intento: el reto ni se mira.

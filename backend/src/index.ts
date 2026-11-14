@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import { createGeminiClient } from './ai/gemini-client';
 import { createMockAiClient } from './ai/mock-client';
 import { createApp } from './app';
+import { createGoogleVerifier } from './auth/google-verifier';
 import { env } from './config/env';
 import { databaseConfig, openDatabase } from './db/connect';
 import type { Db } from './db/db';
@@ -96,6 +97,7 @@ async function main() {
     cronSecret: env.CRON_SECRET,
     email,
     codeRateLimit: env.CODE_RATE_LIMIT,
+    google: env.GOOGLE_WEB_CLIENT_ID ? createGoogleVerifier(env.GOOGLE_WEB_CLIENT_ID) : undefined,
   }).listen(env.PORT, (error?: NodeJS.ErrnoException) => {
     // Express 5 llama a este callback también si no puede escuchar (p. ej. un puerto ocupado): sin tratarlo aquí,
     // el servidor diría que escucha y la base quedaría sin cerrar.
