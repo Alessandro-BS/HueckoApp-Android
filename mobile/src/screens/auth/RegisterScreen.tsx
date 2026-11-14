@@ -28,7 +28,7 @@ export function RegisterScreen({ navigation }: NativeStackScreenProps<AuthStackP
   const passwordRef = useRef<TextInput>(null);
 
   const submit = async () => {
-    if (loading) return;
+    if (loading || googleLoading) return;
     const nErr = validateName(name);
     const eErr = validateEmail(email);
     const pErr = validatePassword(password);

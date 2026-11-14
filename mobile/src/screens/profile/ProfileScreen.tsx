@@ -32,7 +32,7 @@ export function ProfileScreen({ navigation }: DrawerScreen<'Profile'>) {
   };
 
   const confirmTwoFactor = async () => {
-    if (!twoFactorDialog || dialogLoading) return;
+    if (!twoFactorDialog || dialogLoading || password.length === 0) return;
     setDialogError(null);
     setDialogLoading(true);
     try {

@@ -36,7 +36,7 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
   }, []);
 
   const submit = async () => {
-    if (loading) return;
+    if (loading || googleLoading) return;
     const eErr = validateEmail(email);
     const pErr = validatePassword(password);
     setEmailError(eErr);

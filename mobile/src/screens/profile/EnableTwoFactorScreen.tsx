@@ -1,75 +1,29 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { resendChallengeRequest, verifyChallengeRequest } from '../../api/auth';
-import { ApiError, errorMessage } from '../../api/client';
+import { verifyChallengeRequest } from '../../api/auth';
 import { CodeInput, ErrorBanner, PrimaryButton, SecondaryButton } from '../../components';
 import { useAuth } from '../../context/AuthContext';
-import { useResendCountdown } from '../../hooks/useResendCountdown';
+import { useChallengeCode } from '../../hooks/useChallengeCode';
 import type { AppStackParamList } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { showToast } from '../../utils/toast';
-
-const CODE_LENGTH = 6;
 
 // Código del correo para activar la verificación en dos pasos. La sesión ya existe: el servidor responde 204.
 export function EnableTwoFactorScreen({ navigation, route }: NativeStackScreenProps<AppStackParamList, 'EnableTwoFactor'>) {
   const { challenge } = route.params;
   const { refreshUser } = useAuth();
-  const [code, setCode] = useState('');
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [expired, setExpired] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
-  const { secondsLeft, restart } = useResendCountdown(challenge.resendAvailableAt);
+  const { code, setCode, serverError, expired, loading, resending, secondsLeft, canResend, submit: submitCode, resend } = useChallengeCode(challenge);
 
-  const submit = async () => {
-    if (loading || expired) return;
-    if (code.length !== CODE_LENGTH) {
-      setServerError('Escribe los 6 dígitos del código.');
-      return;
-    }
-    setServerError(null);
-    setLoading(true);
-    try {
-      await verifyChallengeRequest(challenge.id, code);
+  const submit = () =>
+    submitCode(async (value) => {
+      await verifyChallengeRequest(challenge.id, value);
       await refreshUser().catch(() => undefined); // ya quedó activa en el servidor; el perfil se actualiza al volver a primer plano
       showToast('Verificación en dos pasos activada.');
       navigation.goBack();
-    } catch (e) {
-      setServerError(errorMessage(e));
-      if (e instanceof ApiError && e.code === 'CHALLENGE_EXPIRED') setExpired(true);
-      else if (e instanceof ApiError && e.code === 'CODE_INVALID') setCode('');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resend = async () => {
-    if (secondsLeft > 0 || resending || expired) return;
-    setResending(true);
-    setServerError(null);
-    try {
-      await resendChallengeRequest(challenge.id);
-      showToast('Te enviamos un código nuevo.');
-      restart(new Date(Date.now() + 60_000).toISOString());
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'RESEND_TOO_SOON') {
-        const retry = (e.details as { retryAfterSeconds?: unknown } | null)?.retryAfterSeconds;
-        if (typeof retry === 'number') restart(new Date(Date.now() + retry * 1000).toISOString());
-      } else {
-        setServerError(errorMessage(e));
-        if (e instanceof ApiError && e.code === 'CHALLENGE_EXPIRED') setExpired(true);
-      }
-    } finally {
-      setResending(false);
-    }
-  };
-
-  const canResend = secondsLeft === 0 && !resending && !expired;
+    });
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -87,10 +41,7 @@ export function EnableTwoFactorScreen({ navigation, route }: NativeStackScreenPr
           <View style={styles.card}>
             <CodeInput
               value={code}
-              onChange={(c) => {
-                setCode(c);
-                setServerError(null);
-              }}
+              onChange={setCode}
               autoFocus
             />
             {serverError ? (

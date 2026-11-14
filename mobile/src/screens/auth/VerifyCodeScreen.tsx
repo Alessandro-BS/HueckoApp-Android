@@ -4,82 +4,37 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { resendChallengeRequest } from '../../api/auth';
-import { ApiError, errorMessage } from '../../api/client';
 import { CodeInput, ErrorBanner, PrimaryButton, SecondaryButton, TextField } from '../../components';
 import { useAuth } from '../../context/AuthContext';
-import { useResendCountdown } from '../../hooks/useResendCountdown';
+import { useChallengeCode } from '../../hooks/useChallengeCode';
 import type { AuthStackParamList } from '../../navigation/types';
 import { colors, radius, typography } from '../../theme';
 import { showToast } from '../../utils/toast';
 import { validatePassword } from '../../utils/validation';
 
-const CODE_LENGTH = 6;
-
 export function VerifyCodeScreen({ navigation, route }: NativeStackScreenProps<AuthStackParamList, 'VerifyCode'>) {
   const { challenge } = route.params;
   const { completeChallenge } = useAuth();
   const isReset = challenge.purpose === 'RESET_PASSWORD';
-  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [repeatError, setRepeatError] = useState<string | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [expired, setExpired] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
-  const { secondsLeft, restart } = useResendCountdown(challenge.resendAvailableAt);
+  const { code, setCode, serverError, expired, loading, resending, secondsLeft, canResend, submit: submitCode, resend } = useChallengeCode(challenge);
 
-  const submit = async () => {
-    if (loading || expired) return;
-    if (code.length !== CODE_LENGTH) {
-      setServerError('Escribe los 6 dígitos del código.');
-      return;
-    }
-    if (isReset) {
-      const pErr = validatePassword(password);
-      const rErr = pErr ? null : password !== repeat ? 'Las contraseñas no coinciden' : null;
-      setPasswordError(pErr);
-      setRepeatError(rErr);
-      if (pErr || rErr) return;
-    }
-    setServerError(null);
-    setLoading(true);
-    try {
-      await completeChallenge(challenge.id, code, isReset ? password : undefined);
+  const validatePasswords = () => {
+    const pErr = validatePassword(password);
+    const rErr = pErr ? null : password !== repeat ? 'Las contraseñas no coinciden' : null;
+    setPasswordError(pErr);
+    setRepeatError(rErr);
+    return !pErr && !rErr;
+  };
+
+  const submit = () =>
+    submitCode(async (value) => {
+      await completeChallenge(challenge.id, value, isReset ? password : undefined);
       showToast(isReset ? 'Contraseña actualizada. Bienvenido a HueckoApp.' : '¡Sesión iniciada con éxito! Bienvenido a HueckoApp.');
-    } catch (e) {
-      setServerError(errorMessage(e));
-      if (e instanceof ApiError && e.code === 'CHALLENGE_EXPIRED') setExpired(true);
-      else if (e instanceof ApiError && e.code === 'CODE_INVALID') setCode('');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resend = async () => {
-    if (secondsLeft > 0 || resending || expired) return;
-    setResending(true);
-    setServerError(null);
-    try {
-      await resendChallengeRequest(challenge.id);
-      showToast('Te enviamos un código nuevo.');
-      restart(new Date(Date.now() + 60_000).toISOString());
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'RESEND_TOO_SOON') {
-        const retry = (e.details as { retryAfterSeconds?: unknown } | null)?.retryAfterSeconds;
-        if (typeof retry === 'number') restart(new Date(Date.now() + retry * 1000).toISOString());
-      } else {
-        setServerError(errorMessage(e));
-        if (e instanceof ApiError && e.code === 'CHALLENGE_EXPIRED') setExpired(true);
-      }
-    } finally {
-      setResending(false);
-    }
-  };
-
-  const canResend = secondsLeft === 0 && !resending && !expired;
+    }, isReset ? validatePasswords : undefined);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -98,10 +53,7 @@ export function VerifyCodeScreen({ navigation, route }: NativeStackScreenProps<A
           <View style={styles.card}>
             <CodeInput
               value={code}
-              onChange={(c) => {
-                setCode(c);
-                setServerError(null);
-              }}
+              onChange={setCode}
               autoFocus
             />
             {isReset ? (
