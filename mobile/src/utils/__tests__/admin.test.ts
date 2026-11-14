@@ -7,8 +7,8 @@ const NOW = new Date(2026, 8, 29, 10, 0); // martes 29/09/2026
 
 it('canSeeAdmin solo con rol ADMIN', () => {
   expect(canSeeAdmin(null)).toBe(false);
-  expect(canSeeAdmin({ id: 'u1', name: 'Ana', email: 'a@b.co', role: 'USER' })).toBe(false);
-  expect(canSeeAdmin({ id: 'u1', name: 'Ana', email: 'a@b.co', role: 'ADMIN' })).toBe(true);
+  expect(canSeeAdmin({ id: 'u1', name: 'Ana', email: 'a@b.co', role: 'USER', emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false })).toBe(false);
+  expect(canSeeAdmin({ id: 'u1', name: 'Ana', email: 'a@b.co', role: 'ADMIN', emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false })).toBe(true);
 });
 
 it('etiquetas', () => {

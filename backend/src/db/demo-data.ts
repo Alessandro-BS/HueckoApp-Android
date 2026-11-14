@@ -142,7 +142,8 @@ export function seedDemoData(db: Db, passwordHash: string, now: Date): Promise<S
       }
       ids[u.key] = randomUUID();
       // created_at del reloj inyectado (ISO), como el registro por la API: las estadísticas comparan rangos ISO.
-      await db.query('INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+      // Nacen verificadas: las cuentas demo entran con su contraseña sin pedir código.
+      await db.query('INSERT INTO users (id, name, email, password_hash, role, created_at, email_verified) VALUES ($1, $2, $3, $4, $5, $6, true)', [
         ids[u.key], u.name, u.email, passwordHash, u.role, now.toISOString(),
       ]);
       created.users++;

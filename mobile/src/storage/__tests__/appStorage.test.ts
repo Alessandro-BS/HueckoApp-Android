@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeDashboard } from '../../testing/fixtures';
 import { dashboardCache, sessionUserStorage } from '../appStorage';
 
-const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const };
+const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false };
 
 beforeEach(async () => {
   await AsyncStorage.clear();

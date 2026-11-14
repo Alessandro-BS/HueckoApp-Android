@@ -1,12 +1,15 @@
+import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+
+import { hashPassword } from '../src/auth/passwords';
 
 import { instant, isoDay, mondayOf, validWeeks } from '../src/common/zone';
 import { buildDashboard, upcomingPlans } from '../src/dashboard/dashboard';
 import type { Db } from '../src/db/db';
-import { seedDemoData } from '../src/db/demo-data';
+import { DEMO_PASSWORD, seedDemoData } from '../src/db/demo-data';
 import { groupsRepository } from '../src/groups/groups.repository';
 import { proposalsRepository } from '../src/proposals/proposals.repository';
-import { makeTestDb, NOW } from './helpers';
+import { makeTestApp, makeTestDb, NOW } from './helpers';
 
 const DAY = 86_400_000;
 // La semilla solo guarda el hash: los tests no necesitan bcrypt.
@@ -39,6 +42,20 @@ async function dashboardOf(db: Db, now: Date) {
 }
 
 describe('semilla de datos de ejemplo (D8)', () => {
+  it('las cuentas de la semilla nacen verificadas y entran con su contraseña sin pedir código', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, await hashPassword(DEMO_PASSWORD), NOW);
+    expect(await column(db, 'SELECT DISTINCT email_verified::text AS v FROM users')).toEqual(['true']);
+    const { app, emails } = await makeTestApp({ db });
+    for (const email of ['test@test.com', 'admin@test.com']) {
+      const res = await request(app).post('/api/auth/login').send({ email, password: DEMO_PASSWORD });
+      expect(res.status, email).toBe(200);
+      expect(typeof res.body.token, email).toBe('string');
+      expect(res.body.user, email).toMatchObject({ email, emailVerified: true, hasPassword: true });
+    }
+    expect(emails.sent).toEqual([]);
+  });
+
   it('crea las cuentas, los códigos y las dos propuestas con fechas relativas a hoy', async () => {
     const db = await makeTestDb();
     expect(await seedDemoData(db, HASH, NOW)).toEqual({ users: 4, groups: 2, blocks: 5, proposals: 2, adminReset: false });

@@ -36,13 +36,14 @@ Todos los errores tienen la misma forma:
 | 404 | No existe, o no es visible para este usuario |
 | 409 | Conflicto de reglas: email ya registrado, ya es miembro, votación cerrada, de fecha o exprés (`VOTING_CLOSED`), nadie votó (`NO_VOTES`), el estado del plan no lo permite (`INVALID_STATE`; también si otra petición lo cambió justo antes: el estado se comprueba al escribir), franja repetida (`WINDOW_EXISTS`), plan sin franjas y con menos de 2 huecos en común en la semana (`NO_COMMON_WINDOWS`), confirmar una franja que ya empezó (`WINDOW_STARTED`), quitarle el rol al último organizador de un grupo (`LAST_ORGANIZER`), un bloque del horario que se solapa con otro (`TIME_BLOCK_OVERLAP`); en administración, cambiarse a uno mismo (`CANNOT_CHANGE_SELF`) o dejar la app sin administradores activos (`LAST_ADMIN`) |
 | 413 | `PAYLOAD_TOO_LARGE`: la petición supera el tamaño máximo (1 MB; 5 MB la imagen del OCR) |
-| 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20) o en `/auth/register` (10), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
+| 429 | `TOO_MANY_REQUESTS`: demasiados intentos por IP cada 15 min en `/auth/login` (20), en `/auth/register` (10) o con los códigos (`/auth/challenges/:id/verify` y `/resend`, 30), con contadores separados, o demasiadas llamadas a la IA (20 cada 15 min por usuario), o demasiados avisos de proximidad (10 por minuto por usuario) |
+| 400/410/429/503 | Códigos por correo: `CODE_INVALID`, `CHALLENGE_EXPIRED`, `RESEND_TOO_SOON`, `EMAIL_DAILY_LIMIT`, `EMAIL_SEND_FAILED` (ver «Autenticación» → «Códigos por correo») |
 | 500 | Error inesperado del servidor |
 | 502 | `AI_BAD_RESPONSE`: la IA respondió algo que no cumple el formato esperado |
 | 503 | `AI_UNAVAILABLE`: la IA no respondió (proveedor caído o más de 30 s) |
 
 ### Límites e IP del cliente
-Los límites de `/auth` son **por IP**, con contadores separados para login (`LOGIN_RATE_LIMIT`, 20) y registro (`REGISTER_RATE_LIMIT`, 10) cada 15 min. Si el backend está detrás de un proxy (Render, Railway, nginx…), `TRUST_PROXY` debe decir cuántos hay (normalmente `1`) para que la IP salga de `X-Forwarded-For`; con `false` (por defecto) esa cabecera se ignora.
+Los límites de `/auth` son **por IP**, con contadores separados para login (`LOGIN_RATE_LIMIT`, 20), registro (`REGISTER_RATE_LIMIT`, 10) y códigos (`CODE_RATE_LIMIT`, 30: verificar y reenviar) cada 15 min. Si el backend está detrás de un proxy (Render, Railway, nginx…), `TRUST_PROXY` debe decir cuántos hay (normalmente `1`) para que la IP salga de `X-Forwarded-For`; con `false` (por defecto) esa cabecera se ignora.
 
 ---
 
@@ -59,7 +60,8 @@ Resumen de las entidades:
 | Tipo | Qué es |
 |---|---|
 | `User` | Usuario (`id`, `name`, `email`) |
-| `CurrentUser` | Quien inició sesión: `User` + `role` (`USER`/`ADMIN`). Solo lo devuelven `/auth/register`, `/auth/login` y `/auth/me` |
+| `CurrentUser` | Quien inició sesión: `User` + `role` (`USER`/`ADMIN`) + `emailVerified`, `twoFactorEnabled`, `hasPassword`, `hasGoogle`. Solo lo devuelven `/auth/login`, `/auth/challenges/:id/verify` y `/auth/me` |
+| `AuthResult` / `Challenge` / `ChallengePurpose` | Respuesta de registro y login: la sesión o un reto con código por correo (ver «Autenticación») |
 | `TimeBlock` | Bloque de horario: recurrente (`dayOfWeek`) o puntual (`date`) |
 | `GroupSummary` / `Group` | Grupo; el detalle incluye `inviteCode` y `members` |
 | `GroupMember` | Usuario + `role` (`ORGANIZER`/`MEMBER`) + `isEssential` |
@@ -92,30 +94,73 @@ Sin autenticación. Responde `200 { "status": "ok" }`.
 
 ## Autenticación
 
+**Sin código no hay JWT:** una cuenta recibe su token solo después de confirmar su correo con el código que le mandamos. `/auth/register` y `/auth/login` responden un `AuthResult`:
+
+```ts
+type AuthResult = { token: string; user: CurrentUser }   // sesión (AuthResponse)
+                | { challenge: Challenge };              // hay que escribir el código del correo antes
+type Challenge = { id: string; purpose: ChallengePurpose; emailHint: string; resendAvailableAt: string };
+type ChallengePurpose = 'VERIFY_EMAIL' | 'LOGIN_2FA' | 'RESET_PASSWORD' | 'ENABLE_2FA';
+```
+
+`emailHint` es el correo enmascarado («a***@gmail.com»); `resendAvailableAt` (ISO), desde cuándo se puede pedir otro código. Con un `challenge`, la app abre «Escribe el código» y lo confirma con `POST /auth/challenges/:id/verify`.
+
 ### `POST /auth/register`
 ```json
 { "name": "Ana", "email": "ana@correo.com", "password": "min 8 caracteres" }
 ```
 `password` entre 8 y 72 caracteres. El correo se guarda con `trim` y en minúsculas.
 
-`201 { "token": "<jwt>", "user": CurrentUser }` · `409 EMAIL_TAKEN`. La cuenta nace siempre con `role: "USER"` (un `role` en el cuerpo se ignora).
+Crea la cuenta **sin verificar**, manda el código `VERIFY_EMAIL` y responde `201 { "challenge": Challenge }` (sin token). La cuenta nace siempre con `role: "USER"` (un `role` en el cuerpo se ignora).
+- Correo que ya existe **sin verificar y sin Google** → en vez de `409` se reemplazan el nombre y la contraseña y se manda (o se reutiliza) el código: `201 { challenge }`. Así nadie se queda con un correo ajeno registrándolo primero.
+- Correo ya verificado (o vinculado a Google) → `409 EMAIL_TAKEN`.
+- `503 EMAIL_SEND_FAILED` o `429 EMAIL_DAILY_LIMIT` (ver «Códigos por correo»): la cuenta queda creada sin verificar; volver a registrarse con el mismo correo lo reintenta.
 
 ### `POST /auth/login`
 ```json
 { "email": "ana@correo.com", "password": "..." }
 ```
-`200 { "token": "<jwt>", "user": CurrentUser }` · `401 INVALID_CREDENTIALS` · `403 ACCOUNT_SUSPENDED`
+- Cuenta verificada → `200 { "token": "<jwt>", "user": CurrentUser }`.
+- Cuenta sin verificar (y contraseña correcta) → `200 { "challenge": Challenge }` con `purpose: "VERIFY_EMAIL"` y un código nuevo en el correo (o el mismo reto si se mandó hace menos de 60 s). Puede dar `503 EMAIL_SEND_FAILED` o `429 EMAIL_DAILY_LIMIT`.
+- `401 INVALID_CREDENTIALS` · `403 ACCOUNT_SUSPENDED`.
 
-El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe. `403 ACCOUNT_SUSPENDED` («Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.») solo sale si la contraseña es correcta; con una incorrecta la respuesta es el mismo `401`.
+El `401 INVALID_CREDENTIALS` lleva el mensaje «Correo o contraseña incorrectos.» y es igual si el correo no existe o si la cuenta no tiene contraseña (creada con Google). `403 ACCOUNT_SUSPENDED` («Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.») solo sale si la contraseña es correcta; con una incorrecta la respuesta es el mismo `401`.
+
+### `POST /auth/challenges/:id/verify`
+```json
+{ "code": "123456" }
+```
+`code`: 6 dígitos (se admiten espacios alrededor). Un formato malo es `400 VALIDATION_ERROR` y **no gasta intento**. `newPassword` (mismas reglas que la contraseña del registro) es para recuperar la contraseña.
+
+- Código correcto en un reto `VERIFY_EMAIL` → marca el correo como verificado y responde `200 { "token": "<jwt>", "user": CurrentUser }`. Si la cuenta está suspendida, el correo queda verificado igual pero responde `403 ACCOUNT_SUSPENDED` sin token.
+- Código incorrecto → `400 CODE_INVALID` con `details: { "attemptsLeft": n }`.
+- Quinto fallo, reto vencido, ya usado o inexistente → `410 CHALLENGE_EXPIRED` («Pide un código nuevo.»).
+- Los retos `RESET_PASSWORD`, `LOGIN_2FA` y `ENABLE_2FA` todavía no se aceptan aquí: responden `410` sin gastar intento.
+
+### `POST /auth/challenges/:id/resend`
+Sin cuerpo. Manda un código nuevo (el anterior deja de valer, los intentos vuelven a 0 y el vencimiento se extiende) → `204`.
+`429 RESEND_TOO_SOON` con `details: { "retryAfterSeconds": n }` · `429 EMAIL_DAILY_LIMIT` · `503 EMAIL_SEND_FAILED` · `410 CHALLENGE_EXPIRED` (vencido, usado, inexistente o ya se reenvió 5 veces).
+
+### Códigos por correo
+- 6 dígitos, valen **15 minutos**, **5 intentos** (el quinto fallo quema el reto).
+- Reenvío cada **60 s** como mucho, y como mucho **5 envíos** por reto.
+- Como mucho **10 correos por cuenta cada 24 h** (todos los propósitos) → `429 EMAIL_DAILY_LIMIT` («Ya te enviamos muchos códigos hoy. Inténtalo mañana.»).
+- Pedir un código otra vez (registro, login) antes de 60 s reutiliza el reto vivo sin mandar otro correo.
+- Si el correo no sale: `503 EMAIL_SEND_FAILED` («No pudimos enviar el correo. Intenta reenviar el código en un momento.»); el reto queda vivo y se puede reenviar sin esperar.
+- `verify` y `resend` comparten un límite por IP (`CODE_RATE_LIMIT`, 30 cada 15 min) → `429 TOO_MANY_REQUESTS`.
 
 ### `GET /auth/me`
-`200 CurrentUser` (`{ id, name, email, role }`). La app lo usa al abrir para comprobar si el token guardado sigue siendo válido y para saber si mostrar «Administración». También lo vuelve a pedir **al volver a primer plano** y cuando una petición responde `403 NOT_ADMIN` (le quitaron el rol): así un cambio de rol se ve sin reabrir la app.
+`200 CurrentUser` (`{ id, name, email, role, emailVerified, twoFactorEnabled, hasPassword, hasGoogle }`). La app lo usa al abrir para comprobar si el token guardado sigue siendo válido y para saber si mostrar «Administración». También lo vuelve a pedir **al volver a primer plano** y cuando una petición responde `403 NOT_ADMIN` (le quitaron el rol): así un cambio de rol se ve sin reabrir la app.
+
+`hasPassword`: la cuenta puede entrar con contraseña (una creada con Google no tiene); `hasGoogle`: está vinculada a Google.
 
 ### Rol y estado de la cuenta
-Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`). El JWT solo identifica a la persona (`sub`): **en cada petición con token el servidor lee el rol y el estado de la base**, así que un cambio surte efecto al instante, sin esperar a que caduque el token (un `role` metido en el JWT no cuenta).
+Cada cuenta tiene `role` (`USER` o `ADMIN`) y `status` (`ACTIVE` o `SUSPENDED`). El JWT solo identifica a la persona (`sub`) y la versión de su sesión (`sv`): **en cada petición con token el servidor lee el rol, el estado y la versión de sesión de la base**, así que un cambio surte efecto al instante, sin esperar a que caduque el token (un `role` metido en el JWT no cuenta).
 - Cuenta suspendida → `403 ACCOUNT_SUSPENDED` en cualquier ruta con token y en el login; la app cierra sesión.
 - Token de una cuenta que ya no existe → `401 UNAUTHORIZED`.
+- `sv` distinto de la versión de sesión de la cuenta → `401 UNAUTHORIZED` (así se cierran todas las sesiones anteriores, p. ej. al recuperar la contraseña). Un token emitido antes de que existiera `sv` cuenta como versión `0`.
 - Solo las cuentas `ADMIN` entran en `/admin/...` (`403 NOT_ADMIN`). Nadie se hace administrador por la API (ver «Administración»).
+- Las cuentas que ya existían antes de la verificación del correo y las de la semilla nacen verificadas: entran con su contraseña sin pedir código (`make-admin` solo cambia el rol).
 
 > **Cerrar sesión** se hace en la app: se borra el token de `SecureStore`. No hay endpoint.
 

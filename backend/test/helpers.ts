@@ -1,4 +1,4 @@
-import type { CurrentUser, Group, Proposal, ProposalInput, TimeWindowInput, User } from '@hueckoapp/shared';
+import type { AuthResponse, Challenge, Group, Proposal, ProposalInput, TimeWindowInput, User } from '@hueckoapp/shared';
 import type { Express } from 'express';
 import request from 'supertest';
 import { vi } from 'vitest';
@@ -32,7 +32,12 @@ export const win = (dayOfWeek: number, startTime: string, endTime: string): Time
 // Base PGlite nueva y migrada para un test (se cierra sola al terminar: test/setup.ts).
 export const makeTestDb = (): Promise<Db> => openTestDatabase();
 
+// El correo falso de cada app de makeTestApp: registerUser saca de ahí el código para verificar la cuenta.
+const emailsOf = new WeakMap<Express, FakeEmail>();
+
 export async function makeTestApp(options?: {
+  /** Una base ya preparada (p. ej. con la semilla); sin ella, una nueva. */
+  db?: Db;
   loginRateLimit?: number;
   registerRateLimit?: number;
   trustProxy?: TrustProxy;
@@ -46,7 +51,7 @@ export async function makeTestApp(options?: {
   email?: EmailClient;
   codeRateLimit?: number;
 }): Promise<{ app: Express; db: Db; emails: FakeEmail }> {
-  const db = await makeTestDb();
+  const db = options?.db ?? (await makeTestDb());
   const emails = fakeEmail();
   const app = createApp({
     db,
@@ -68,6 +73,8 @@ export async function makeTestApp(options?: {
     email: options?.email ?? emails,
     codeRateLimit: options?.codeRateLimit ?? 10_000,
   });
+  const client = options?.email ?? emails;
+  if ('lastCodeTo' in client) emailsOf.set(app, client as FakeEmail);
   return { app, db, emails };
 }
 
@@ -211,10 +218,12 @@ export function makeClock(start: Date) {
 }
 
 let counter = 0;
-export async function registerUser(
+
+/** Registra una cuenta por la API y la deja sin verificar: devuelve el reto VERIFY_EMAIL y los datos usados. */
+export async function registerUnverified(
   app: Express,
   overrides: Partial<{ name: string; email: string; password: string }> = {},
-): Promise<{ token: string; user: User }> {
+): Promise<{ challenge: Challenge; email: string; password: string }> {
   counter += 1;
   const body = {
     name: `Usuario ${counter}`,
@@ -224,9 +233,26 @@ export async function registerUser(
   };
   const res = await request(app).post('/api/auth/register').send(body);
   if (res.status !== 201) throw new Error(`registro falló: ${res.status} ${JSON.stringify(res.body)}`);
-  // Como `User` (sin `role`), que es como aparece en miembros y propuestas: así los tests comparan con toEqual.
-  const { role: _role, ...user } = res.body.user as CurrentUser;
-  return { token: res.body.token, user };
+  // El correo como lo guarda el servidor (trim y minúsculas): es a donde llega el código.
+  return { challenge: res.body.challenge, email: body.email.trim().toLowerCase(), password: body.password };
+}
+
+/**
+ * Registra una cuenta y la verifica con el código del correo falso (como haría la app): devuelve su sesión. El `user`
+ * queda como `User` (sin `role` ni los datos de la cuenta), que es como aparece en miembros y propuestas: así los tests
+ * comparan con toEqual.
+ */
+export async function registerUser(
+  app: Express,
+  overrides: Partial<{ name: string; email: string; password: string }> = {},
+): Promise<{ token: string; user: User }> {
+  const emails = emailsOf.get(app);
+  if (!emails) throw new Error('registerUser necesita una app de makeTestApp con el correo falso');
+  const { challenge, email } = await registerUnverified(app, overrides);
+  const res = await request(app).post(`/api/auth/challenges/${challenge.id}/verify`).send({ code: emails.lastCodeTo(email) });
+  if (res.status !== 200) throw new Error(`verificar el correo falló: ${res.status} ${JSON.stringify(res.body)}`);
+  const { token, user: current } = res.body as AuthResponse;
+  return { token, user: { id: current.id, name: current.name, email: current.email } };
 }
 
 export async function createGroup(

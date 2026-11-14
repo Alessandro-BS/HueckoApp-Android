@@ -19,7 +19,7 @@ jest.mock('../../notifications/registration', () => ({
   unregisterDevice: jest.fn(async () => undefined),
 }));
 const mocked = authApi as jest.Mocked<typeof authApi>;
-const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const };
+const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false };
 const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
 
 beforeEach(async () => {

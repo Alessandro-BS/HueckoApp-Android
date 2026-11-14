@@ -10,12 +10,13 @@ const unauthorized = () => new ApiError(401, 'UNAUTHORIZED', 'Tu sesión expiró
 export const accountSuspended = () =>
   new ApiError(403, 'ACCOUNT_SUSPENDED', 'Tu cuenta está suspendida. Si crees que es un error, escribe al equipo de HueckoApp.');
 
-type AccessRow = { role: UserRole; status: UserStatus };
+type AccessRow = { role: UserRole; status: UserStatus; session_version: number };
 
 /**
  * Exige un JWT válido y una cuenta ACTIVE (D2). El rol y el estado se leen de la base en CADA petición: suspender
  * o cambiar el rol surte efecto al instante, sin esperar a que caduque el token, y nada de lo que venga dentro del
- * JWT (salvo `sub`) cuenta.
+ * JWT (salvo `sub` y `sv`) cuenta. `sv` distinto de session_version → 401: así se cierran todas las sesiones anteriores
+ * (p. ej. al recuperar la contraseña). No mira email_verified: una cuenta sin verificar nunca recibe un JWT.
  */
 export function requireAuth(db: Db, secret: string): RequestHandler {
   return async (req, res, next) => {
@@ -23,10 +24,12 @@ export function requireAuth(db: Db, secret: string): RequestHandler {
     if (typeof res.locals.userId === 'string') return next();
     const header = req.get('authorization') ?? '';
     const [scheme, token] = header.split(' ');
-    const userId = scheme === 'Bearer' && token ? verifyToken(token, secret) : null;
-    if (!userId) return next(unauthorized());
-    const access = await db.one<AccessRow>('SELECT role, status FROM users WHERE id = $1', [userId]);
+    const claims = scheme === 'Bearer' && token ? verifyToken(token, secret) : null;
+    if (!claims) return next(unauthorized());
+    const { userId } = claims;
+    const access = await db.one<AccessRow>('SELECT role, status, session_version FROM users WHERE id = $1', [userId]);
     if (!access) return next(unauthorized()); // la cuenta ya no existe
+    if (access.session_version !== claims.sessionVersion) return next(unauthorized()); // sesión cerrada desde otro lado
     if (access.status === 'SUSPENDED') return next(accountSuspended());
     res.locals.userId = userId;
     res.locals.role = access.role;
