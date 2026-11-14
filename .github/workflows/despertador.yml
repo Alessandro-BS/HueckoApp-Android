@@ -6,9 +6,12 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   tick:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Llamar a /api/internal/tick
         env:
@@ -19,4 +22,4 @@ jobs:
             echo "::warning::Falta la variable API_URL o el secreto CRON_SECRET: no se llama al servidor."
             exit 0
           fi
-          curl -fsS -X POST "$API_URL/api/internal/tick" -H "Authorization: Bearer $CRON_SECRET"
+          curl -fsS --max-time 120 -X POST "$API_URL/api/internal/tick" -H "Authorization: Bearer $CRON_SECRET"

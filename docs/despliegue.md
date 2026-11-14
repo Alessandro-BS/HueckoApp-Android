@@ -51,7 +51,29 @@
 >
 > ⏰ **Despertador (avisos push):** el servidor barre cada minuto (cierra votaciones vencidas, encola recordatorios y envía los avisos pendientes), pero el plan gratuito de Render lo duerme tras 15 min sin uso. El workflow [`despertador.yml`](../.github/workflows/despertador.yml) llama a `POST /api/internal/tick` cada ~10 min. En GitHub → *Settings → Secrets and variables → Actions*: secreto `CRON_SECRET` (el mismo valor que en Render) y variable `API_URL` (p. ej. `https://hueckoapp-api.onrender.com`, sin `/` final). Sin alguno de los dos, el workflow avisa y termina sin error.
 >
+> ⚠️ **Límites de GitHub Actions para este despertador:**
+> - Los workflows con `schedule` **solo corren desde la rama predeterminada (`main`)**: hasta que `despertador.yml` llegue a `main` no se ejecutará solo (sí con *Run workflow* si ya está en la rama elegida).
+> - GitHub **desactiva los workflows programados tras 60 días sin actividad** en el repositorio: si los avisos dejan de salir, entra a la pestaña *Actions* y vuelve a habilitarlo.
+> - El cron **no es exacto**: en horas de mucha carga una ejecución puede retrasarse varios minutos o saltarse, y por eso un recordatorio puede llegar con retraso. Si hace falta puntualidad, usa un servicio de cron externo que llame al mismo endpoint.
+>
 > 💤 En el plan gratuito el servicio se duerme tras 15 min sin uso: la primera petición después tarda ~1 min en responder.
+
+---
+
+## 🔔 Avisos push (Firebase)
+
+Los avisos usan Firebase Cloud Messaging (FCM V1) a través del servicio de Expo. Hace falta una sola vez:
+
+1. En la [consola de Firebase](https://console.firebase.google.com) crea un proyecto y agrega una app **Android** con el paquete que está en `android.package` de `mobile/app.json`.
+2. Descarga `google-services.json` y guárdalo en `mobile/google-services.json`. **Se sube al repo** (no es secreto: solo identifica la app) y en `mobile/app.json` agrega `"googleServicesFile": "./google-services.json"` dentro de `android`.
+3. En Firebase → *Configuración del proyecto → Cuentas de servicio* genera una **clave privada** (JSON). Esa clave **sí es secreta**: no la guardes dentro del repo; `.gitignore` ignora `*-firebase-adminsdk-*.json` y `mobile/google-service-account*.json` por si se cuela.
+4. Súbela a EAS (una vez):
+   ```bash
+   cd mobile
+   npx eas-cli@latest credentials
+   ```
+   Elige **Android → production → Google Service Account → Manage your Google Service Account Key for Push Notifications (FCM V1)** y sube el JSON. Repite para el perfil `development` si vas a probar con ese APK.
+5. Genera un APK nuevo (`development`, `preview` o `production`): las notificaciones remotas **no funcionan en Expo Go**.
 
 ---
 
