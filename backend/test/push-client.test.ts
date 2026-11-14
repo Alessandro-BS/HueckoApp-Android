@@ -118,18 +118,42 @@ describe('createExpoPushClient', () => {
     await expect(createExpoPushClient({ fetchImpl }).send(messages(2))).rejects.toBeInstanceOf(PushTransportError);
   });
 
-  it('400 y 413 → un ticket de error por cada mensaje del lote (no se reintenta)', async () => {
-    const { fetchImpl } = fakeFetch(async () =>
+  it('400 con un solo mensaje → un ticket de error definitivo (sin reenvíos); 413 → un error por mensaje', async () => {
+    const single = fakeFetch(async () =>
       Response.json({ errors: [{ code: 'VALIDATION_ERROR', message: '"to" must be a string' }] }, { status: 400 }),
     );
-    const tickets = await createExpoPushClient({ fetchImpl }).send(messages(3));
-    expect(tickets).toHaveLength(3);
-    for (const ticket of tickets) expect(ticket).toEqual({ status: 'error', message: expect.stringContaining('"to" must be a string') });
+    expect(await createExpoPushClient({ fetchImpl: single.fetchImpl }).send(messages(1))).toEqual([
+      { status: 'error', message: expect.stringContaining('"to" must be a string') },
+    ]);
+    expect(single.calls).toHaveLength(1);
 
     const tooLarge = fakeFetch(async () => new Response('Payload Too Large', { status: 413 }));
     expect(await createExpoPushClient({ fetchImpl: tooLarge.fetchImpl }).send(messages(2))).toEqual([
       { status: 'error', message: expect.stringContaining('413') },
       { status: 'error', message: expect.stringContaining('413') },
     ]);
+  });
+
+  it('400 con varios mensajes → se reenvían uno por uno: solo fallan los malos', async () => {
+    const { fetchImpl, calls } = fakeFetch(async (body) => {
+      if (body.length > 1 || body[0]!.to === 'ExponentPushToken[1]') {
+        return Response.json({ errors: [{ code: 'PUSH_TOO_MANY_EXPERIENCE_IDS', message: 'varios proyectos' }] }, { status: 400 });
+      }
+      return Response.json({ data: [{ status: 'ok', id: `ticket-${body[0]!.body}` }] });
+    });
+    const tickets = await createExpoPushClient({ fetchImpl }).send(messages(3));
+    expect(tickets).toEqual([
+      { status: 'ok', id: 'ticket-Aviso 0' },
+      { status: 'error', message: expect.stringContaining('varios proyectos') },
+      { status: 'ok', id: 'ticket-Aviso 2' },
+    ]);
+    expect(calls.map((c) => c.body.length)).toEqual([3, 1, 1, 1]);
+  });
+
+  it('400 del lote y un error de transporte al reenviar uno → PushTransportError (se reintenta todo)', async () => {
+    const { fetchImpl } = fakeFetch(async (body) =>
+      body.length > 1 ? new Response('{}', { status: 400 }) : new Response('caído', { status: 503 }),
+    );
+    await expect(createExpoPushClient({ fetchImpl }).send(messages(2))).rejects.toBeInstanceOf(PushTransportError);
   });
 });

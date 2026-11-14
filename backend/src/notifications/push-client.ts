@@ -65,7 +65,14 @@ export function createExpoPushClient({
     }
 
     if (response.status === 400 || response.status === 413) {
-      // El lote mismo está mal (inválido o demasiado grande): reintentarlo daría lo mismo; cada mensaje recibe el error.
+      // Con varios mensajes, uno solo malo (p. ej. un token de otro proyecto) hace rechazar todo el lote: se reenvían uno
+      // por uno para que solo fallen los malos. Un error de transporte en el reenvío sube y se reintenta todo.
+      if (batch.length > 1) {
+        const tickets: PushTicket[] = [];
+        for (const single of batch) tickets.push(...(await sendBatch([single])));
+        return tickets;
+      }
+      // Un solo mensaje (o un lote demasiado grande): reintentarlo daría lo mismo; cada mensaje recibe el error.
       const message = `Expo respondió ${response.status}: ${errorsOf(payload) ?? 'petición rechazada'}`;
       return batch.map((): PushTicket => ({ status: 'error', message }));
     }

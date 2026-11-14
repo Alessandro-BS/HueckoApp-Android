@@ -475,7 +475,7 @@ Avisos push (Expo) de los planes. Cada cambio de un plan guarda sus avisos (tabl
   - `REMINDER`: ««{plan}» empieza a las {HH:mm} en {lugar}.»; sin lugar: ««{plan}» empieza a las {HH:mm}.»
 
 ### `PUT /me/push-devices`
-Registra el celular para recibir avisos. Cuerpo `PushDeviceInput` `{ "token": "ExponentPushToken[…]" }`; el token debe ser `ExponentPushToken[...]` o `ExpoPushToken[...]`. Si ya existía (también de otra cuenta), pasa a quien lo envía y se actualiza `last_seen_at`. `204` · `400 VALIDATION_ERROR` · `401`.
+Registra el celular para recibir avisos. Cuerpo `PushDeviceInput` `{ "token": "ExponentPushToken[…]" }`; el token debe ser `ExponentPushToken[...]` o `ExpoPushToken[...]`, de **255 caracteres como máximo**. Si ya existía (también de otra cuenta), pasa a quien lo envía y se actualiza `last_seen_at`. `204` · `400 VALIDATION_ERROR` · `401`.
 
 ### `DELETE /me/push-devices/:token`
 Borra ese token si es de quien lo pide (la app lo envía con `encodeURIComponent`, porque lleva corchetes). `204` siempre, también si no existe o es de otra persona (idempotente) · `401`.

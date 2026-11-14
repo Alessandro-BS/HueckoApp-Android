@@ -57,6 +57,13 @@ describe('PUT /api/me/push-devices', () => {
     expect(await rows()).toHaveLength(0);
   });
 
+  it('rechaza un token de más de 255 caracteres con 400 (un token enorme haría rechazar todo el lote en Expo)', async () => {
+    const res = await put({ token: `ExponentPushToken[${'a'.repeat(240)}]` });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect((await put({ token: `ExponentPushToken[${'a'.repeat(200)}]` })).status).toBe(204);
+  });
+
   it('sin JWT, 401', async () => {
     expect((await request(app).put('/api/me/push-devices').send({ token: TOKEN })).status).toBe(401);
   });
