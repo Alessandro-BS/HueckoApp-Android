@@ -1,10 +1,11 @@
+import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { setRoleByEmail } from '../src/admin/admin-users';
 import { MAKE_ADMIN_USAGE, parseMakeAdminArgs } from '../src/admin/make-admin-args';
 import type { Db } from '../src/db/db';
 import { insertUser } from './admin-fixtures';
-import { makeTestDb, NOW } from './helpers';
+import { makeTestApp, makeTestDb, NOW, registerUnverified } from './helpers';
 
 describe('parseMakeAdminArgs', () => {
   it.each([
@@ -49,6 +50,26 @@ describe('setRoleByEmail (consola)', () => {
     await expect(setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).rejects.toThrow('Tiene que quedar al menos un administrador activo.');
     await insertUser(db, { email: 'otra@test.com', role: 'ADMIN' });
     expect((await setRoleByEmail(db, 'unica@test.com', 'USER', NOW)).changed).toBe(true); // control positivo
+  });
+
+  it('nombrar administradora a una cuenta sin verificar la verifica: entra con su contraseña y recibe token', async () => {
+    const { app, db } = await makeTestApp();
+    await registerUnverified(app, { email: 'ana@test.com', password: 'contrasena-segura' });
+    expect(await db.one("SELECT email_verified FROM users WHERE email = 'ana@test.com'")).toEqual({ email_verified: false });
+    await setRoleByEmail(db, 'ana@test.com', 'ADMIN', NOW);
+    expect(await db.one("SELECT email_verified FROM users WHERE email = 'ana@test.com'")).toEqual({ email_verified: true });
+    const login = await request(app).post('/api/auth/login').send({ email: 'ana@test.com', password: 'contrasena-segura' });
+    expect(login.status).toBe(200);
+    expect(typeof login.body.token).toBe('string');
+    expect(login.body.challenge).toBeUndefined();
+  });
+
+  it('quitar el rol no toca la verificación del correo', async () => {
+    const db = await makeTestDb();
+    await insertUser(db, { email: 'primera@test.com', role: 'ADMIN' });
+    await insertUser(db, { email: 'ana@test.com', role: 'ADMIN' });
+    await setRoleByEmail(db, 'ana@test.com', 'USER', NOW);
+    expect(await db.one("SELECT email_verified FROM users WHERE email = 'ana@test.com'")).toEqual({ email_verified: false });
   });
 
   it('correo desconocido → error que lo nombra', async () => {

@@ -68,7 +68,7 @@ export function JoinGroupDialog({ submit, onDone, onDismiss }: DialogProps) {
       loading={action.loading}
     >
       <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-        Ingresa el código de invitación que te compartió el administrador del grupo.
+        Ingresa el código de invitación que te compartió un organizador del grupo.
       </Text>
       <View style={{ height: 16 }} />
       <TextField

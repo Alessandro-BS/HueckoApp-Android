@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeDashboard } from '../../testing/fixtures';
 import { dashboardCache, sessionUserStorage } from '../appStorage';
 
-const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const };
+const ana = { id: 'u1', name: 'Ana', email: 'ana@correo.com', role: 'USER' as const, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false };
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -17,9 +17,10 @@ it('la copia de Inicio vuelve tal cual se guardó', async () => {
 
 it.each([
   ['de una versión anterior (sin versión)', { dashboard: makeDashboard(), blocks: [] }],
+  ['de la versión 1 (Proposal con myVoteWindowId)', { v: 1, data: { dashboard: makeDashboard(), blocks: [] } }],
   ['de otra versión', { v: 99, data: { dashboard: makeDashboard(), blocks: [] } }],
-  ['con otra forma', { v: 1, data: { dashboard: { metrics: null }, blocks: [] } }],
-  ['que no es un objeto', { v: 1, data: 'hola' }],
+  ['con otra forma', { v: 2, data: { dashboard: { metrics: null }, blocks: [] } }],
+  ['que no es un objeto', { v: 2, data: 'hola' }],
 ])('una copia %s se ignora en vez de romper Inicio', async (_, stored) => {
   await AsyncStorage.setItem('hueckoapp.dashboard.u1', JSON.stringify(stored));
   expect(await dashboardCache.get('u1')).toBeNull();
@@ -37,4 +38,10 @@ it('el perfil de la sesión solo vale con id, nombre, correo y un rol conocido',
   expect(await sessionUserStorage.get()).toBeNull();
   await AsyncStorage.setItem('hueckoapp.sessionUser', JSON.stringify({ name: 'Ana' }));
   expect(await sessionUserStorage.get()).toBeNull();
+});
+
+it('un perfil guardado antes de la verificación se carga completado con los valores por defecto', async () => {
+  const { emailVerified, twoFactorEnabled, hasPassword, hasGoogle, ...old } = ana;
+  await AsyncStorage.setItem('hueckoapp.sessionUser', JSON.stringify(old));
+  expect(await sessionUserStorage.get()).toEqual({ ...old, emailVerified: true, twoFactorEnabled: false, hasPassword: true, hasGoogle: false });
 });

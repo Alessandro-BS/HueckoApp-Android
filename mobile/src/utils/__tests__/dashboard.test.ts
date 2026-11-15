@@ -26,7 +26,7 @@ it('attendanceLabel cuenta a quien no falta', () => {
 
 it('resumen del grupo: singulariza (quirk 19) y «—» sin propuesta (B18)', () => {
   const [g] = makeDashboard().groups;
-  expect(groupSlotLabel(g)).toBe('2 miembros · Mié 11:00 - 13:00');
+  expect(groupSlotLabel(g)).toBe('2 miembros · Mié 7 oct · 11:00 - 13:00');
   expect(groupMatchLabel(g)).toBe('100%');
   const solo = { ...g, memberCount: 1, nextWindow: null };
   expect(groupSlotLabel(solo)).toBe('1 miembro · Sin propuesta aún');

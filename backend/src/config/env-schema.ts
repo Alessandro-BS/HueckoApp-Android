@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { THINKING_LEVELS } from '../ai/ai-client';
 import { LOGIN_RATE_LIMIT_DEFAULT, REGISTER_RATE_LIMIT_DEFAULT } from '../auth/auth.routes';
+import { BREVO_DAILY_LIMIT_DEFAULT } from '../auth/challenge-rules';
+import { EXPRESS_VOTE_MINUTES_DEFAULT } from '../proposals/express-rules';
 import { trustProxySchema } from './trust-proxy';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -36,6 +38,9 @@ const databaseUrlSchema = z
     return url === null || LOCAL_HOSTS.has(url.hostname) || TLS_MODES.has(url.searchParams.get('sslmode') ?? '');
   }, 'DATABASE_URL apunta a otro servidor sin TLS: añade ?sslmode=verify-full (Neon lo exige).');
 
+// Cadena vacía (o solo espacios) = variable sin configurar.
+const emptyAsUndefined = <T extends z.ZodType>(schema: T) => z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), schema);
+
 // Valida las variables de entorno al arrancar: si falta algo, el servidor
 // no levanta y el error dice qué falta, en vez de fallar más tarde.
 const envSchema = z.object({
@@ -64,10 +69,38 @@ const envSchema = z.object({
   TRUST_PROXY: trustProxySchema,
   LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(LOGIN_RATE_LIMIT_DEFAULT),
   REGISTER_RATE_LIMIT: z.coerce.number().int().positive().default(REGISTER_RATE_LIMIT_DEFAULT),
+  // Votación exprés: minutos que dura (sin pasar del inicio del plan y con al menos 5).
+  EXPRESS_VOTE_MINUTES: z.coerce.number().int().positive().default(EXPRESS_VOTE_MINUTES_DEFAULT),
+  // Avisos (Fase 5): el secreto del despertador de GitHub Actions (vacío = sin configurar: Render deja las variables
+  // sin valor como cadena vacía) y el token opcional de la Expo Push API.
+  CRON_SECRET: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().min(32, 'CRON_SECRET debe tener al menos 32 caracteres').optional(),
+  ),
+  EXPO_ACCESS_TOKEN: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().optional(),
+  ),
+  // Cuentas (Fase 6): correo por Brevo (códigos de verificación), Google y límite por IP de los intentos con código.
+  // Vacío = sin configurar (Render deja las variables sin valor como cadena vacía).
+  BREVO_API_KEY: emptyAsUndefined(z.string().trim().optional()),
+  BREVO_SENDER_EMAIL: emptyAsUndefined(z.string().trim().optional()),
+  BREVO_SENDER_NAME: emptyAsUndefined(z.string().trim().default('HueckoApp')),
+  GOOGLE_WEB_CLIENT_ID: emptyAsUndefined(z.string().trim().optional()),
+  CODE_RATE_LIMIT: emptyAsUndefined(z.coerce.number().int().positive().default(30)),
+  // Freno al cupo de Brevo (300/día en el plan gratis): correos con código en 24 h entre todas las cuentas.
+  BREVO_DAILY_LIMIT: emptyAsUndefined(z.coerce.number().int().positive().default(BREVO_DAILY_LIMIT_DEFAULT)),
 }).superRefine((env, ctx) => {
   // En producción (Render) el disco es efímero: una base PGlite se perdería en cada despliegue.
   if (env.NODE_ENV === 'production' && env.DATABASE_URL === '') {
     ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: 'En producción DATABASE_URL es obligatoria (Neon): PGlite es solo para desarrollo.' });
+  }
+  if (env.NODE_ENV === 'production' && (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['BREVO_API_KEY'],
+      message: 'En producción BREVO_API_KEY y BREVO_SENDER_EMAIL son obligatorias: sin ellas nadie puede verificar su correo.',
+    });
   }
 });
 

@@ -35,7 +35,7 @@ export async function insertUser(
   return id;
 }
 
-// Grupo creado en la base con fecha concreta; el OWNER y los miembros son opcionales.
+// Grupo creado en la base con fecha concreta; el organizador y los miembros son opcionales.
 export async function insertGroup(
   db: Db,
   over: Partial<{ name: string; inviteCode: string; createdAt: string; ownerId: string; memberIds: string[] }> = {},
@@ -47,7 +47,7 @@ export async function insertGroup(
     over.inviteCode ?? id.slice(0, 8).toUpperCase(),
     over.createdAt ?? new Date().toISOString(),
   ]);
-  if (over.ownerId) await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'OWNER')", [id, over.ownerId]);
+  if (over.ownerId) await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'ORGANIZER')", [id, over.ownerId]);
   for (const memberId of over.memberIds ?? []) {
     await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'MEMBER')", [id, memberId]);
   }

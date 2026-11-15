@@ -25,6 +25,8 @@ export function MyScheduleScreen({ navigation }: TabScreen<'Schedule'>) {
 
   const addBlock = () => navigation.navigate('AddSchedule', { initialDay: selectedDay });
 
+  const editBlock = (block: TimeBlock) => navigation.navigate('AddSchedule', { block });
+
   const deleteBlock = async (block: TimeBlock) => {
     try {
       await removeBlock(block.id);
@@ -111,7 +113,7 @@ export function MyScheduleScreen({ navigation }: TabScreen<'Schedule'>) {
                 onAction={addBlock}
               />
             ) : (
-              dayBlocks.map((block) => <TimeBlockItem key={block.id} block={block} onDelete={() => confirmDelete(block)} />)
+              dayBlocks.map((block) => <TimeBlockItem key={block.id} block={block} onPress={() => editBlock(block)} onDelete={() => confirmDelete(block)} />)
             )}
             {laterBlocks.length > 0 ? (
               <View style={styles.later}>
@@ -119,7 +121,7 @@ export function MyScheduleScreen({ navigation }: TabScreen<'Schedule'>) {
                 {laterBlocks.map((block) => (
                   <View key={block.id} style={styles.laterRow}>
                     <Text style={[typography.labelMedium, { color: colors.onSurfaceVariant }]}>{formatShortDate(block.date!)}</Text>
-                    <TimeBlockItem block={block} onDelete={() => confirmDelete(block)} />
+                    <TimeBlockItem block={block} onPress={() => editBlock(block)} onDelete={() => confirmDelete(block)} />
                   </View>
                 ))}
               </View>

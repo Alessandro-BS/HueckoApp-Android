@@ -108,3 +108,58 @@ jest.mock('expo-file-system', () => {
   }
   return { File: MockFile, Paths: { cache: { uri: 'file:///cache/' } }, __writes: mockWrites, __encodings: mockEncodings };
 });
+
+// TanStack Query avisa a los componentes en un setTimeout(0); en los tests, al momento, para que act() lo incluya.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require('@tanstack/react-query').notifyManager.setScheduler((callback: () => void) => callback());
+
+// Sensor de proximidad (módulo nativo local): cada test fija isAvailable y avisa con __emit(near) a los listeners activos.
+// addProximityListener devuelve una suscripción con `remove` como jest.fn, para comprobar que se deja de escuchar.
+type MockProximityListener = (change: { near: boolean }) => void;
+jest.mock('./modules/proximity', () => {
+  const mockListeners = new Set<MockProximityListener>();
+  return {
+    isAvailable: jest.fn(() => true),
+    addProximityListener: jest.fn((listener: MockProximityListener) => {
+      mockListeners.add(listener);
+      return { remove: jest.fn(() => void mockListeners.delete(listener)) };
+    }),
+    __emit: (near: boolean) => mockListeners.forEach((listener) => listener({ near })),
+  };
+});
+
+// Giroscopio (expo-sensors): cada test fija isAvailableAsync y avisa con __emit({x,y,z}) a los listeners activos.
+type MockGyroscopeListener = (reading: { x: number; y: number; z: number }) => void;
+jest.mock('expo-sensors', () => {
+  const mockGyroListeners = new Set<MockGyroscopeListener>();
+  return {
+    Gyroscope: {
+      isAvailableAsync: jest.fn(async () => true),
+      setUpdateInterval: jest.fn(),
+      addListener: jest.fn((listener: MockGyroscopeListener) => {
+        mockGyroListeners.add(listener);
+        return { remove: jest.fn(() => void mockGyroListeners.delete(listener)) };
+      }),
+      __emit: (reading: { x: number; y: number; z: number }) => mockGyroListeners.forEach((listener) => listener(reading)),
+    },
+  };
+});
+
+// Notificaciones push: cada test fija permisos y token (jest.mocked(Notifications.getPermissionsAsync).mockResolvedValue(...)).
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { HIGH: 4 },
+  setNotificationChannelAsync: jest.fn(async () => null),
+  getPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true })),
+  DEFAULT_ACTION_IDENTIFIER: 'expo.modules.notifications.actions.DEFAULT',
+  setNotificationHandler: jest.fn(),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  getExpoPushTokenAsync: jest.fn(async () => ({ type: 'expo', data: 'ExponentPushToken[abc]' })),
+}));
+// expo-constants: app instalada (no Expo Go) con el projectId de EAS; un test cambia executionEnvironment a 'storeClient'.
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { executionEnvironment: 'standalone', expoConfig: { extra: { eas: { projectId: 'proj-1' } } } },
+}));

@@ -86,6 +86,7 @@ describe('aiUsage', () => {
         { task: 'proposal-draft', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
         { task: 'plan-suggestions', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
         { task: 'voting-summary', calls: 1, ok: 1, successRate: 100, avgDurationMs: 500 },
+        { task: 'express-recommendation', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
       ],
     });
   });

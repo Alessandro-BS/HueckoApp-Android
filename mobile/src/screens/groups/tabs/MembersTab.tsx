@@ -1,6 +1,6 @@
 import type { Group, GroupMember } from '@hueckoapp/shared';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { errorMessage } from '../../../api/client';
 import { Avatar, Badge, SecondaryButton } from '../../../components';
@@ -11,11 +11,12 @@ type Props = {
   group: Group;
   currentUserId: string;
   onToggleEssential: (userId: string, isEssential: boolean) => Promise<void>;
+  onSetRole: (userId: string, role: 'ORGANIZER' | 'MEMBER') => Promise<void>;
   onLeave: () => Promise<void>;
 };
 
-export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }: Props) {
-  const isOwner = group.members.some((m) => m.id === currentUserId && m.role === 'OWNER');
+export function MembersTab({ group, currentUserId, onToggleEssential, onSetRole, onLeave }: Props) {
+  const isOrganizer = group.members.some((m) => m.id === currentUserId && m.role === 'ORGANIZER');
   const [leaving, setLeaving] = useState(false);
 
   const toggle = async (member: GroupMember, value: boolean) => {
@@ -24,6 +25,26 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }:
     } catch (e) {
       showToast(errorMessage(e));
     }
+  };
+
+  const setRole = async (member: GroupMember, role: 'ORGANIZER' | 'MEMBER') => {
+    try {
+      await onSetRole(member.id, role);
+      if (role === 'ORGANIZER') showToast(`${member.name} ahora es organizador del grupo.`);
+    } catch (e) {
+      showToast(errorMessage(e));
+    }
+  };
+
+  const confirmRemoveOrganizer = (member: GroupMember) => {
+    const message =
+      member.id === currentUserId
+        ? `Dejarás de organizar «${group.name}»: ya no podrás editarlo ni gestionar sus planes.`
+        : `${member.name} dejará de organizar el grupo.`;
+    Alert.alert('Quitar organizador', message, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Quitar', style: 'destructive', onPress: () => void setRole(member, 'MEMBER') },
+    ]);
   };
 
   const leave = async () => {
@@ -46,9 +67,9 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }:
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      {isOwner ? (
+      {isOrganizer ? (
         <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>
-          Marca como imprescindibles a quienes deben estar sí o sí: si uno falta a un plan, el plan se vuelve a coordinar.
+          Marca como imprescindibles a quienes deben estar sí o sí: si uno falta a un plan, el plan se vuelve a coordinar. Los organizadores editan el grupo, gestionan sus planes y pueden nombrar o quitar a otros organizadores.
         </Text>
       ) : null}
       {group.members.map((member, index) => (
@@ -59,18 +80,41 @@ export function MembersTab({ group, currentUserId, onToggleEssential, onLeave }:
               {member.id === currentUserId ? `${member.name} (tú)` : member.name}
             </Text>
             <Text style={[typography.bodySmall, { color: colors.onSurfaceVariant }]}>{member.email}</Text>
-            {member.role === 'OWNER' || member.isEssential ? (
+            {member.role === 'ORGANIZER' || member.isEssential ? (
               <View style={styles.badges}>
-                {member.role === 'OWNER' ? (
-                  <Badge text="Administrador" containerColor={colors.primaryContainer} contentColor={colors.onPrimaryContainer} />
+                {member.role === 'ORGANIZER' ? (
+                  <Badge text="Organizador" containerColor={colors.primaryContainer} contentColor={colors.onPrimaryContainer} />
                 ) : null}
                 {member.isEssential ? (
                   <Badge text="Imprescindible" containerColor={colors.tertiaryContainer} contentColor={colors.onTertiaryContainer} />
                 ) : null}
               </View>
             ) : null}
+            {isOrganizer ? (
+              member.role === 'ORGANIZER' ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Quitar organizador: ${member.name}`}
+                  onPress={() => confirmRemoveOrganizer(member)}
+                  hitSlop={8}
+                  style={styles.action}
+                >
+                  <Text style={[typography.labelLarge, { color: colors.error }]}>Quitar organizador</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Hacer organizador: ${member.name}`}
+                  onPress={() => void setRole(member, 'ORGANIZER')}
+                  hitSlop={8}
+                  style={styles.action}
+                >
+                  <Text style={[typography.labelLarge, { color: colors.primary }]}>Hacer organizador</Text>
+                </Pressable>
+              )
+            ) : null}
           </View>
-          {isOwner ? (
+          {isOrganizer ? (
             <Switch
               accessibilityLabel={`Imprescindible: ${member.name}`}
               value={member.isEssential}
@@ -91,5 +135,6 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   texts: { flex: 1 },
+  action: { marginTop: 8, alignSelf: 'flex-start' },
   badges: { flexDirection: 'row', gap: 6, marginTop: 6 },
 });

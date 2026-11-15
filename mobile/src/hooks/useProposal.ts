@@ -1,5 +1,5 @@
-import type { IncidenceInput, Proposal, ResolveIncidencesInput, TimeWindowInput } from '@hueckoapp/shared';
-import { useCallback } from 'react';
+import type { ExpressOption, IncidenceInput, Proposal, ReplanInput, TimeWindowInput } from '@hueckoapp/shared';
+import { useCallback, useEffect } from 'react';
 
 import {
   addWindow as postWindow,
@@ -7,14 +7,18 @@ import {
   confirmProposal,
   getProposal,
   removeVote,
+  replanProposal,
   reportIncidence as postIncidence,
-  resolveIncidences,
+  voteExpress as putExpressVote,
   voteWindow,
 } from '../api/proposals';
+import { subscribeProposalChanged } from '../notifications/proposalEvents';
 import { useResource } from './useResource';
 import { useVoteToggle } from './useVoteToggle';
 
 export type { VoteOutcome } from './useVoteToggle';
+
+const NO_VOTES: readonly string[] = [];
 
 // Una propuesta y todo lo que se puede hacer con ella. Cada acción reemplaza la propuesta con la que
 // devuelve el servidor (una sola fuente de verdad: B7). Votar usa useVoteToggle (no lanza: devuelve
@@ -22,6 +26,9 @@ export type { VoteOutcome } from './useVoteToggle';
 export function useProposal(proposalId: string) {
   const load = useCallback(() => getProposal(proposalId), [proposalId]);
   const { data, loading, refreshing, error, failedLoads, reload, mutate } = useResource(load);
+
+  // Un aviso push de esta propuesta con la pantalla abierta: se vuelve a pedir al servidor.
+  useEffect(() => subscribeProposalChanged(proposalId, () => void reload()), [proposalId, reload]);
 
   const apply = useCallback(
     (proposal: Proposal) => {
@@ -31,11 +38,12 @@ export function useProposal(proposalId: string) {
     [mutate],
   );
 
-  const myVote = data?.myVoteWindowId ?? null;
   const { toggle, loading: voting, error: voteError, clearError: clearVoteError } = useVoteToggle({
-    currentVote: () => myVote,
+    votesOf: () => data?.myVoteWindowIds ?? NO_VOTES,
+    isMultiple: () => data?.multipleVotes ?? false,
     vote: async (id, windowId) => apply(await voteWindow(id, windowId)),
-    unvote: async (id) => apply(await removeVote(id)),
+    // Sin windowId se llama con un solo argumento: DELETE sin ?windowId= quita todos mis votos (voto único).
+    unvote: async (id, windowId) => apply(windowId ? await removeVote(id, windowId) : await removeVote(id)),
   });
   const toggleVote = useCallback((windowId: string) => toggle(proposalId, windowId), [toggle, proposalId]);
 
@@ -46,14 +54,17 @@ export function useProposal(proposalId: string) {
     async (input: IncidenceInput) => apply(await postIncidence(proposalId, input)),
     [proposalId, apply],
   );
-  const resolve = useCallback(
-    async (input: ResolveIncidencesInput) => apply(await resolveIncidences(proposalId, input)),
+  // Votación exprés: como las demás acciones, lanza si falla (409 VOTING_CLOSED, 403 si no puedo votar).
+  const voteExpress = useCallback(
+    async (option: ExpressOption) => apply(await putExpressVote(proposalId, option)),
     [proposalId, apply],
   );
+
+  const replan = useCallback(async (input: ReplanInput) => apply(await replanProposal(proposalId, input)), [proposalId, apply]);
 
   return {
     proposal: data, loading, refreshing, error, failedLoads, reload,
     toggleVote, voting, voteError, clearVoteError,
-    addWindow, confirm, cancel, reportIncidence, resolve,
+    addWindow, confirm, cancel, reportIncidence, voteExpress, replan,
   };
 }

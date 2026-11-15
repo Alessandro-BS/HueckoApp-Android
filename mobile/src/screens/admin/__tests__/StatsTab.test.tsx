@@ -33,7 +33,7 @@ it('muestra las cifras del servidor, los gráficos con sus datos y el uso de la 
   expect(values('chart-hours')[11]).toBe(2);
   expect(screen.getByText('Leer horario de una foto')).toBeTruthy();
   expect(screen.getByText('3 · 67 % · 2,1 s')).toBeTruthy();
-  expect(screen.getAllByText('0 · —')).toHaveLength(2); // ideas y resumen: sin llamadas, sin duración
+  expect(screen.getAllByText('0 · —')).toHaveLength(3); // ideas, resumen y recomendación exprés: sin llamadas, sin duración
 });
 
 it('sin planes confirmados, el gráfico de horas explica por qué está vacío', async () => {

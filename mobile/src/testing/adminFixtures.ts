@@ -23,11 +23,11 @@ export const makeUserDetail = (over: Partial<AdminUserDetail> = {}): AdminUserDe
 
 export const makeAdminProposal = (over: Partial<AdminProposalSummary> = {}): AdminProposalSummary => ({
   id: 'prop_2', title: 'Repaso antes de la entrega', state: 'PROPUESTO', createdBy: ANA, createdAt: '2026-09-29T14:00:00.000Z',
-  votingDeadline: '2026-09-30T01:00:00.000Z', scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0, ...over,
+  votingDeadline: '2026-09-30T01:00:00.000Z', scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0, autoClosed: false, ...over,
 });
 
 export const makeGroupSummary = (over: Partial<AdminGroupSummary> = {}): AdminGroupSummary => ({
-  id: 'g1', name: 'Proyecto Integrador', description: 'Entrega final', memberCount: 2, proposalCount: 1, owner: TEST_USER,
+  id: 'g1', name: 'Proyecto Integrador', description: 'Entrega final', memberCount: 2, proposalCount: 1, organizers: [TEST_USER],
   createdAt: '2026-09-01T15:00:00.000Z', ...over,
 });
 
@@ -35,7 +35,7 @@ export const makeGroupDetail = (over: Partial<AdminGroupDetail> = {}): AdminGrou
   ...makeGroupSummary(),
   inviteCode: 'PROY2026',
   availabilityThreshold: 80,
-  members: [{ ...TEST_USER, role: 'OWNER', isEssential: false }, { ...ANA, role: 'MEMBER', isEssential: true }],
+  members: [{ ...TEST_USER, role: 'ORGANIZER', isEssential: false }, { ...ANA, role: 'MEMBER', isEssential: true }],
   proposals: [makeAdminProposal()],
   ...over,
 });
@@ -49,6 +49,7 @@ export const makeAiUsage = (): AiUsage => ({
     { task: 'proposal-draft', calls: 1, ok: 1, successRate: 100, avgDurationMs: 900 },
     { task: 'plan-suggestions', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
     { task: 'voting-summary', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
+    { task: 'express-recommendation', calls: 0, ok: 0, successRate: null, avgDurationMs: null },
   ],
 });
 

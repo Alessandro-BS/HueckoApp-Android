@@ -194,3 +194,20 @@ it('en modo demostración lo avisa', async () => {
   await renderScreen();
   expect(await screen.findByText(AI_DEMO_TEXT)).toBeTruthy();
 });
+
+it('un 409 de solape marca el borrador implicado bajo sus campos y editarlo quita la marca', async () => {
+  const message = 'Se solapa con «Cálculo II» (lunes 08:00–11:00).';
+  mockedAi.scanSchedule.mockResolvedValue({ blocks: [block({}), block({ label: 'Física', dayOfWeek: 3 })] });
+  mockedSchedule.createTimeBlocksBulk.mockRejectedValue(
+    new ApiError(409, 'TIME_BLOCK_OVERLAP', message, { path: ['blocks', 1], blockId: 'b1' }),
+  );
+  await renderScreen();
+  await fireEvent.press(await screen.findByText('Añadir a mi horario'));
+  // El mensaje aparece en el aviso general y bajo el segundo borrador.
+  await waitFor(() => expect(screen.getAllByText(message)).toHaveLength(2));
+
+  await fireEvent.changeText(screen.getByLabelText('Nombre del bloque 1'), 'Cálculo I');
+  expect(screen.getAllByText(message)).toHaveLength(2);
+  await fireEvent.changeText(screen.getByLabelText('Nombre del bloque 2'), 'Física II');
+  expect(screen.getAllByText(message)).toHaveLength(1);
+});

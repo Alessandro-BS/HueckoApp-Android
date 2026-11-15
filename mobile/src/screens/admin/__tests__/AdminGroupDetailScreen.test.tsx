@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 
 import * as adminApi from '../../../api/admin';
 import { ApiError } from '../../../api/client';
+import { ANA, TEST_USER } from '../../../testing/fixtures';
 import { makeAdminProposal, makeGroupDetail } from '../../../testing/adminFixtures';
 import { showToast } from '../../../utils/toast';
 import { AdminGroupDetailScreen } from '../AdminGroupDetailScreen';
@@ -25,7 +26,7 @@ beforeEach(() => {
 it('muestra el grupo, sus miembros y sus propuestas', async () => {
   await renderScreen();
   expect(await screen.findByText('Código PROY2026 · 2 miembros · umbral 80 %')).toBeTruthy();
-  expect(screen.getByText('Administra: Usuario de Prueba')).toBeTruthy();
+  expect(screen.getByText('Organiza: Usuario de Prueba')).toBeTruthy();
   expect(screen.getByText('Imprescindible')).toBeTruthy();
   expect(screen.getByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.getByText('En votación')).toBeTruthy();
@@ -117,4 +118,52 @@ it('eliminar pide confirmación, borra, avisa y vuelve atrás', async () => {
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   expect(mocked.deleteAdminGroup).toHaveBeenCalledWith('g1');
   expect(showToast).toHaveBeenCalledWith('Grupo «Proyecto Integrador» eliminado.');
+});
+
+it('lista los organizadores arriba y marca a cada miembro como Organiza, Imprescindible o Miembro', async () => {
+  const carlos = { ...ANA, id: 'u_carlos', name: 'Carlos', email: 'carlos@correo.com' };
+  mocked.getAdminGroup.mockResolvedValue(
+    makeGroupDetail({
+      organizers: [TEST_USER, carlos],
+      memberCount: 3,
+      members: [
+        { ...TEST_USER, role: 'ORGANIZER', isEssential: false },
+        { ...carlos, role: 'ORGANIZER', isEssential: true },
+        { ...ANA, role: 'MEMBER', isEssential: true },
+      ],
+    }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Organiza: Usuario de Prueba, Carlos')).toBeTruthy();
+  expect(screen.getAllByText('Organiza')).toHaveLength(2);
+  expect(screen.getByText('Imprescindible')).toBeTruthy();
+});
+
+it('sin organizadores lo dice', async () => {
+  mocked.getAdminGroup.mockResolvedValue(makeGroupDetail({ organizers: [], members: [] }));
+  await renderScreen();
+  expect(await screen.findByText('Sin organizadores')).toBeTruthy();
+});
+
+it('una propuesta que se canceló sola (autoClosed) se puede moderar; una cancelada a mano no', async () => {
+  mocked.getAdminGroup.mockResolvedValue(
+    makeGroupDetail({
+      proposals: [
+        makeAdminProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: true }),
+        makeAdminProposal({ id: 'mano', title: 'Cancelada a mano', state: 'CANCELADO', autoClosed: false }),
+      ],
+    }),
+  );
+  mocked.cancelProposalAsAdmin.mockResolvedValue(makeAdminProposal({ id: 'auto', title: 'Sin votos', state: 'CANCELADO', autoClosed: false }));
+  await renderScreen();
+  expect(await screen.findByLabelText('Cancelar «Sin votos»')).toBeTruthy();
+  expect(screen.queryByLabelText('Cancelar «Cancelada a mano»')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('Cancelar «Sin votos»'));
+  expect(
+    screen.getByText('«Sin votos» se canceló sola porque nadie votó. Quedará cancelada por la administración (ya no se podrá replantear) y en el registro de acciones.'),
+  ).toBeTruthy();
+  await fireEvent.changeText(screen.getByLabelText('Motivo'), 'Spam');
+  await fireEvent.press(screen.getByText('Sí, cancelar'));
+  await waitFor(() => expect(mocked.cancelProposalAsAdmin).toHaveBeenCalledWith('auto', 'Spam'));
+  await waitFor(() => expect(screen.queryByText('Cancelar propuesta')).toBeNull());
 });

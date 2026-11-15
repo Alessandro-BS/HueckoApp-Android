@@ -1,11 +1,15 @@
+import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
+import { hashPassword } from '../src/auth/passwords';
+
+import { instant, isoDay, mondayOf, validWeeks } from '../src/common/zone';
 import { buildDashboard, upcomingPlans } from '../src/dashboard/dashboard';
 import type { Db } from '../src/db/db';
-import { seedDemoData } from '../src/db/demo-data';
+import { DEMO_PASSWORD, seedDemoData } from '../src/db/demo-data';
 import { groupsRepository } from '../src/groups/groups.repository';
 import { proposalsRepository } from '../src/proposals/proposals.repository';
-import { makeTestDb, NOW } from './helpers';
+import { makeTestApp, makeTestDb, NOW } from './helpers';
 
 const DAY = 86_400_000;
 // La semilla solo guarda el hash: los tests no necesitan bcrypt.
@@ -38,6 +42,20 @@ async function dashboardOf(db: Db, now: Date) {
 }
 
 describe('semilla de datos de ejemplo (D8)', () => {
+  it('las cuentas de la semilla nacen verificadas y entran con su contraseña sin pedir código', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, await hashPassword(DEMO_PASSWORD), NOW);
+    expect(await column(db, 'SELECT DISTINCT email_verified::text AS v FROM users')).toEqual(['true']);
+    const { app, emails } = await makeTestApp({ db });
+    for (const email of ['test@test.com', 'admin@test.com']) {
+      const res = await request(app).post('/api/auth/login').send({ email, password: DEMO_PASSWORD });
+      expect(res.status, email).toBe(200);
+      expect(typeof res.body.token, email).toBe('string');
+      expect(res.body.user, email).toMatchObject({ email, emailVerified: true, hasPassword: true });
+    }
+    expect(emails.sent).toEqual([]);
+  });
+
   it('crea las cuentas, los códigos y las dos propuestas con fechas relativas a hoy', async () => {
     const db = await makeTestDb();
     expect(await seedDemoData(db, HASH, NOW)).toEqual({ users: 4, groups: 2, blocks: 5, proposals: 2, adminReset: false });
@@ -97,6 +115,23 @@ describe('semilla de datos de ejemplo (D8)', () => {
     expect(d.pendingVotes.map((p) => p.votingDeadline)).toEqual([new Date(2026, 9, 10, 20, 0).toISOString()]);
   });
 
+  it('no deja avisos pendientes: ni los suyos ni los de las propuestas de ejemplo de una siembra anterior', async () => {
+    const db = await makeTestDb();
+    const pending = async () => (await db.one<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE sent_at IS NULL'))!.n;
+    await seedDemoData(db, HASH, NOW);
+    expect(await pending()).toBe(0);
+    // Un aviso pendiente de una propuesta de ejemplo (p. ej. de una semilla anterior, o de alguien que la usó desde la
+    // app): al volver a sembrar, la propuesta se borra y su aviso también.
+    const [demoId] = await column(db, "SELECT id AS v FROM proposals WHERE title = 'Reunión de avance del proyecto'");
+    await db.query(
+      `INSERT INTO notifications (id, user_id, kind, title, body, data, created_at)
+       VALUES ('viejo', $1, 'PLAN_CONFIRMED', 'Proyecto Integrador', 'x', $2, $3)`,
+      [await userId(db, 'ana@test.com'), JSON.stringify({ kind: 'PLAN_CONFIRMED', proposalId: demoId, groupId: 'g', screen: 'PLAN' }), NOW.toISOString()],
+    );
+    await seedDemoData(db, HASH, new Date(NOW.getTime() + DAY));
+    expect(await pending()).toBe(0);
+  });
+
   it('no toca las propuestas creadas desde la app y devuelve al grupo a quien se había ido', async () => {
     const db = await makeTestDb();
     await seedDemoData(db, HASH, NOW);
@@ -108,19 +143,58 @@ describe('semilla de datos de ejemplo (D8)', () => {
       title: 'Plan propio',
       location: null,
       votingDeadline: new Date(NOW.getTime() + DAY).toISOString(),
-      windows: [{ dayOfWeek: 2, startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }],
+      windows: [{ date: '2026-09-29', startTime: '16:00', endTime: '18:00', availabilityPercentage: 100 }],
+      multipleVotes: true,
       createdAt: NOW.toISOString(),
     });
     await groupsRepository(db).leave(groupId, anaId);
+    // Su aviso NEW_PROPOSAL (a test@test.com) tampoco se toca.
+    const notices = async () =>
+      (await db.many<{ kind: string }>("SELECT kind FROM notifications WHERE data::json->>'proposalId' = $1", [mine])).map((r) => r.kind);
+    expect(await notices()).toEqual(['NEW_PROPOSAL']);
 
     await seedDemoData(db, HASH, NOW);
+    expect(await notices()).toEqual(['NEW_PROPOSAL']);
     // Sigue existiendo con el mismo id (findById lo encuentra por él).
     expect((await proposalsRepository(db).findById(mine, anaId))?.id).toBe(mine);
     expect((await proposalsRepository(db).findById(mine, anaId))?.title).toBe('Plan propio');
     expect(await count(db, 'proposals')).toBe(3);
+    // Vuelve con su rol de la semilla (un grupo puede tener varios organizadores).
     expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
-      ['Usuario de Prueba', 'OWNER'],
-      ['Ana', 'MEMBER'],
+      ['Usuario de Prueba', 'ORGANIZER'],
+      ['Ana', 'ORGANIZER'],
+    ]);
+  });
+
+  it('«Proyecto Integrador» tiene dos organizadores (test y ana) y «Amigos de la Uni» uno (carlos)', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, HASH, NOW);
+    const organizers = (code: string) =>
+      column(
+        db,
+        `SELECT u.email AS v FROM group_members m JOIN users u ON u.id = m.user_id JOIN groups g ON g.id = m.group_id
+         WHERE g.invite_code = '${code}' AND m.role = 'ORGANIZER' ORDER BY m.joined_at, m.seq`,
+      );
+    expect(await organizers('PROY2026')).toEqual(['test@test.com', 'ana@test.com']);
+    expect(await organizers('HUECKO123')).toEqual(['carlos@test.com']);
+  });
+
+  it('sembrar otra vez sobre una base donde Ana es MEMBER la deja ORGANIZER, sin degradar a nadie', async () => {
+    const db = await makeTestDb();
+    await seedDemoData(db, HASH, NOW);
+    const groupId = (await db.one<{ id: string }>('SELECT id FROM groups WHERE invite_code = $1', ['PROY2026']))!.id;
+    const anaId = await userId(db, 'ana@test.com');
+    await db.query("UPDATE group_members SET role = 'MEMBER' WHERE group_id = $1 AND user_id = $2", [groupId, anaId]);
+    // Carlos entra a mano como MEMBER: la semilla no le toca el rol.
+    const carlosId = await userId(db, 'carlos@test.com');
+    await groupsRepository(db).addMember(groupId, carlosId);
+
+    await seedDemoData(db, HASH, NOW);
+    await seedDemoData(db, HASH, NOW);
+    expect((await groupsRepository(db).findById(groupId))!.members.map((m) => [m.name, m.role])).toEqual([
+      ['Usuario de Prueba', 'ORGANIZER'],
+      ['Ana', 'ORGANIZER'],
+      ['Carlos', 'MEMBER'],
     ]);
   });
 
@@ -141,5 +215,14 @@ describe('semilla de datos de ejemplo (D8)', () => {
     const open = all.find((p) => p.state === 'PROPUESTO')!;
     expect(open.votingDeadline).toBe(deadline.toISOString());
     expect(new Date(open.votingDeadline).getTime()).toBeGreaterThan(now.getTime());
+    // Franjas con fecha: la elegida es la fecha del plan; las de la votación empiezan después del plazo y caen en las
+    // semanas válidas.
+    expect(chosen.date).toBe(confirmed.scheduledDate);
+    const weeks = validWeeks(now);
+    for (const w of open.windows) {
+      expect(isoDay(w.date)).toBe(w.dayOfWeek);
+      expect(weeks).toContain(mondayOf(w.date));
+      expect(instant(w.date, w.startTime).getTime()).toBeGreaterThan(new Date(open.votingDeadline).getTime());
+    }
   });
 });

@@ -2,7 +2,7 @@ import { createMaterialTopTabNavigator } from '@react-navigation/material-top-ta
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { LoadState } from '../../components';
+import { LoadState, SecondaryButton } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useGroup } from '../../hooks/useGroup';
 import type { AppStackScreen, GroupTabsParamList } from '../../navigation/types';
@@ -19,7 +19,7 @@ const Tabs = createMaterialTopTabNavigator<GroupTabsParamList>();
 export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDetail'>) {
   const { groupId } = route.params;
   const { user } = useAuth();
-  const { group, loading, error, reload, setEssential, leave } = useGroup(groupId);
+  const { group, loading, error, reload, setEssential, setMemberRole, leave } = useGroup(groupId);
 
   // La cabecera arranca con el nombre recibido y se actualiza si cambió en el servidor.
   // Depende solo del nombre (no de `group`): mutar un miembro no vuelve a tocar la cabecera.
@@ -56,6 +56,12 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
         ) : null}
         <Text style={[typography.labelMedium, { color: colors.onSurfaceVariant }]}>{memberCountLabel(group.memberCount)}</Text>
         <InviteCodeCard code={group.inviteCode} />
+        <SecondaryButton
+          title="Acercar para invitar"
+          icon="nfc"
+          style={styles.proximity}
+          onPress={() => navigation.navigate('ProximityInvite', { groupId: group.id, name: group.name })}
+        />
       </View>
       <Tabs.Navigator
         screenOptions={{
@@ -75,7 +81,7 @@ export function GroupDetailScreen({ navigation, route }: AppStackScreen<'GroupDe
         </Tabs.Screen>
         <Tabs.Screen name="Members" options={{ title: 'Miembros' }}>
           {() => (
-            <MembersTab group={group} currentUserId={user?.id ?? ''} onToggleEssential={setEssential} onLeave={handleLeave} />
+            <MembersTab group={group} currentUserId={user?.id ?? ''} onToggleEssential={setEssential} onSetRole={setMemberRole} onLeave={handleLeave} />
           )}
         </Tabs.Screen>
       </Tabs.Navigator>
@@ -88,5 +94,6 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: colors.surface },
   banner: { height: 120, alignItems: 'center', justifyContent: 'center' },
   bannerInitial: { fontSize: 45, lineHeight: 52, fontWeight: '400', color: '#FFFFFF' },
+  proximity: { marginTop: 8 },
   header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, gap: 4 },
 });

@@ -1,4 +1,4 @@
-import type { AiStatus, PlanSuggestions, ProposalDraft, ScheduleOcrResult, VotingSummary } from '@hueckoapp/shared';
+import type { AiStatus, PlanSuggestions, ProposalDraft, ProposalDraftInput, ScheduleOcrResult, VotingSummary } from '@hueckoapp/shared';
 
 import { api } from './client';
 
@@ -23,8 +23,11 @@ export async function scanSchedule(image: OcrImage) {
   return response.data;
 }
 
-export const draftProposal = async (groupId: string, text: string) =>
-  (await api.post<ProposalDraft>(`/groups/${enc(groupId)}/ai/proposal-draft`, { text }, { timeout: AI_TIMEOUT_MS })).data;
+// `week`: el lunes de la semana elegida en Nueva propuesta; sin ella, el servidor usa esta semana y la siguiente.
+export async function draftProposal(groupId: string, text: string, week?: string) {
+  const body: ProposalDraftInput = week ? { text, week } : { text };
+  return (await api.post<ProposalDraft>(`/groups/${enc(groupId)}/ai/proposal-draft`, body, { timeout: AI_TIMEOUT_MS })).data;
+}
 
 export const suggestPlans = async (groupId: string) =>
   (await api.post<PlanSuggestions>(`/groups/${enc(groupId)}/ai/suggestions`, undefined, { timeout: AI_TIMEOUT_MS })).data;

@@ -3,11 +3,13 @@ import { act, renderHook } from '@testing-library/react-native';
 import { ApiError } from '../../api/client';
 import { useVoteToggle } from '../useVoteToggle';
 
-const setup = (mine: string | null = null) => {
+const setup = (mine: string[] | string | null = null, multiple = false) => {
   const vote = jest.fn().mockResolvedValue(undefined);
   const unvote = jest.fn().mockResolvedValue(undefined);
-  const currentVote = jest.fn(() => mine);
-  return { vote, unvote, currentVote };
+  const list = mine === null ? [] : Array.isArray(mine) ? mine : [mine];
+  const votesOf = jest.fn((): readonly string[] => list);
+  const isMultiple = jest.fn(() => multiple);
+  return { vote, unvote, votesOf, isMultiple };
 };
 
 it('vota si la franja no es la mía y avisa «voted»', async () => {
@@ -38,7 +40,7 @@ it('consulta el voto actual de la propuesta tocada (sirve para varias propuestas
   const deps = setup(null);
   const { result } = await renderHook(() => useVoteToggle(deps));
   await act(async () => void (await result.current.toggle('p9', 'w_3')));
-  expect(deps.currentVote).toHaveBeenCalledWith('p9');
+  expect(deps.votesOf).toHaveBeenCalledWith('p9');
 });
 
 it('si falla no lanza: devuelve { ok: false } y expone el mensaje; clearError lo limpia', async () => {
@@ -72,4 +74,29 @@ it('evita el doble toque mientras hay un voto en curso', async () => {
     await first;
   });
   expect(deps.vote).toHaveBeenCalledTimes(1);
+});
+
+it('voto múltiple: votar otra franja la añade y tocar una votada quita solo esa', async () => {
+  const deps = setup(['w_1', 'w_2'], true);
+  const { result } = await renderHook(() => useVoteToggle(deps));
+  let outcome;
+  await act(async () => {
+    outcome = await result.current.toggle('p1', 'w_3');
+  });
+  expect(outcome).toEqual({ ok: true, value: 'voted' });
+  expect(deps.vote).toHaveBeenCalledWith('p1', 'w_3');
+  await act(async () => {
+    outcome = await result.current.toggle('p1', 'w_1');
+  });
+  expect(outcome).toEqual({ ok: true, value: 'unvoted' });
+  expect(deps.unvote).toHaveBeenCalledWith('p1', 'w_1');
+});
+
+it('voto único: tocar otra franja mueve el voto y tocar la mía lo quita sin indicar franja', async () => {
+  const deps = setup(['w_1'], false);
+  const { result } = await renderHook(() => useVoteToggle(deps));
+  await act(async () => void (await result.current.toggle('p1', 'w_2')));
+  expect(deps.vote).toHaveBeenCalledWith('p1', 'w_2');
+  await act(async () => void (await result.current.toggle('p1', 'w_1')));
+  expect(deps.unvote).toHaveBeenCalledWith('p1');
 });

@@ -1,3 +1,4 @@
+import type { TimeBlock } from '@hueckoapp/shared';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../../api/client';
@@ -11,7 +12,7 @@ jest.mock('../../../utils/clock', () => ({ today: () => new Date(2026, 8, 29, 10
 
 const mocked = scheduleApi as jest.Mocked<typeof scheduleApi>;
 const navigation = { goBack: jest.fn() } as any;
-const renderScreen = (params?: { initialDay?: number }) =>
+const renderScreen = (params?: { initialDay?: number; block?: TimeBlock }) =>
   render(<AddScheduleScreen navigation={navigation} route={{ key: 'AddSchedule', name: 'AddSchedule', params } as any} />);
 
 beforeEach(() => jest.clearAllMocks());
@@ -108,5 +109,48 @@ it('muestra el error del servidor y se queda en la pantalla', async () => {
   await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), 'Clase');
   await fireEvent.press(screen.getByText('Guardar bloque'));
   expect(await screen.findByText('Máximo 80 caracteres')).toBeTruthy();
+  expect(navigation.goBack).not.toHaveBeenCalled();
+});
+
+const saved: TimeBlock = {
+  id: 'b7', userId: 'u1', label: 'Cálculo II', type: 'TRABAJO', startTime: '09:00', endTime: '11:00',
+  isRecurring: true, dayOfWeek: 4, date: null,
+};
+
+it('con un bloque en la ruta abre rellena y guarda con updateTimeBlock', async () => {
+  mocked.updateTimeBlock.mockResolvedValue({} as any);
+  await renderScreen({ block: saved });
+  expect(screen.getByLabelText('Nombre del bloque').props.value).toBe('Cálculo II');
+  expect(screen.getByText('09:00')).toBeTruthy();
+  expect(screen.getByText('11:00')).toBeTruthy();
+  await fireEvent.changeText(screen.getByLabelText('Nombre del bloque'), 'Cálculo III');
+  await fireEvent.press(saveButton());
+
+  await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  expect(mocked.updateTimeBlock).toHaveBeenCalledWith('b7', {
+    label: 'Cálculo III', type: 'TRABAJO', startTime: '09:00', endTime: '11:00',
+    isRecurring: true, dayOfWeek: 4, date: null,
+  });
+  expect(mocked.createTimeBlock).not.toHaveBeenCalled();
+});
+
+it('editar un puntual conserva su fecha y su tipo', async () => {
+  mocked.updateTimeBlock.mockResolvedValue({} as any);
+  await renderScreen({ block: { ...saved, type: 'PUNTUAL', isRecurring: false, dayOfWeek: null, date: '2026-10-02' } });
+  expect(screen.getByText('Vie 2 oct')).toBeTruthy();
+  await fireEvent.press(saveButton());
+  await waitFor(() => expect(mocked.updateTimeBlock).toHaveBeenCalled());
+  expect(mocked.updateTimeBlock).toHaveBeenCalledWith('b7', expect.objectContaining({
+    type: 'PUNTUAL', isRecurring: false, dayOfWeek: null, date: '2026-10-02',
+  }));
+});
+
+it('un 409 de solape se ve con el mensaje del servidor y no se vuelve atrás', async () => {
+  mocked.updateTimeBlock.mockRejectedValue(
+    new ApiError(409, 'TIME_BLOCK_OVERLAP', 'Se solapa con «Cálculo II» (lunes 08:00–11:00).', { blockId: 'b1' }),
+  );
+  await renderScreen({ block: saved });
+  await fireEvent.press(saveButton());
+  expect(await screen.findByText('Se solapa con «Cálculo II» (lunes 08:00–11:00).')).toBeTruthy();
   expect(navigation.goBack).not.toHaveBeenCalled();
 });

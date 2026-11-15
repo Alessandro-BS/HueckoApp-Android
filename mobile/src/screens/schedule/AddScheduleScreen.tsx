@@ -1,8 +1,8 @@
-import type { BlockType } from '@hueckoapp/shared';
+import type { BlockType, TimeBlockInput } from '@hueckoapp/shared';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { createTimeBlock } from '../../api/schedule';
+import { createTimeBlock, updateTimeBlock } from '../../api/schedule';
 import { ChoiceChip, DateTimeField, ErrorBanner, PrimaryButton, TextField, TimeField } from '../../components';
 import { useAction } from '../../hooks/useAction';
 import type { AppStackScreen } from '../../navigation/types';
@@ -24,17 +24,18 @@ function FieldLabel({ children }: { children: string }) {
 }
 
 export function AddScheduleScreen({ navigation, route }: AppStackScreen<'AddSchedule'>) {
+  const editing = route.params?.block;
   const [now] = useState(today);
-  const [label, setLabel] = useState('');
-  const [isRecurring, setIsRecurring] = useState(true);
-  const [dayOfWeek, setDayOfWeek] = useState(route.params?.initialDay ?? 1);
-  const [date, setDate] = useState(() => toDateKey(now));
+  const [label, setLabel] = useState(editing?.label ?? '');
+  const [isRecurring, setIsRecurring] = useState(editing?.isRecurring ?? true);
+  const [dayOfWeek, setDayOfWeek] = useState(editing?.dayOfWeek ?? route.params?.initialDay ?? 1);
+  const [date, setDate] = useState(() => editing?.date ?? toDateKey(now));
   // Un puntual no puede caer antes de hoy.
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const [type, setType] = useState<BlockType>('CLASE');
-  const [startTime, setStartTime] = useState('08:00');
-  const [endTime, setEndTime] = useState('09:00');
-  const save = useAction(createTimeBlock);
+  const [type, setType] = useState<BlockType>(editing?.type ?? 'CLASE');
+  const [startTime, setStartTime] = useState(editing?.startTime ?? '08:00');
+  const [endTime, setEndTime] = useState(editing?.endTime ?? '09:00');
+  const save = useAction((input: TimeBlockInput) => (editing ? updateTimeBlock(editing.id, input) : createTimeBlock(input)));
 
   const startHint = startTimeHint(startTime);
   const endHint = endTimeHint(startTime, endTime);

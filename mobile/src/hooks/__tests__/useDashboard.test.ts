@@ -9,6 +9,7 @@ import * as scheduleApi from '../../api/schedule';
 import { dashboardCache } from '../../storage/appStorage';
 import { makeDashboard, makeProposal } from '../../testing/fixtures';
 import { useDashboard } from '../useDashboard';
+import { withQueryClient } from '../../testing/queryClient';
 
 jest.mock('../../api/dashboard');
 jest.mock('../../api/proposals');
@@ -30,7 +31,7 @@ beforeEach(async () => {
 });
 
 const load = async () => {
-  const hook = await renderHook(() => useDashboard());
+  const hook = await renderHook(() => useDashboard(), withQueryClient());
   await waitFor(() => expect(hook.result.current.loaded).toBe(true));
   return hook;
 };
@@ -42,7 +43,7 @@ it('carga el resumen y mis bloques en una sola carga', async () => {
 });
 
 it('toggleVote vota y actualiza solo esa votación, conservando el nombre del grupo', async () => {
-  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowId: 'w_22' }));
+  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowIds: ['w_22'] }));
   const { result } = await load();
   let outcome;
   await act(async () => {
@@ -50,12 +51,12 @@ it('toggleVote vota y actualiza solo esa votación, conservando el nombre del gr
   });
   expect(outcome).toEqual({ ok: true, value: 'voted' });
   expect(proposals.voteWindow).toHaveBeenCalledWith('prop_2', 'w_22');
-  expect(result.current.dashboard?.pendingVotes[0]).toMatchObject({ id: 'prop_2', myVoteWindowId: 'w_22', groupName: 'Proyecto Integrador' });
+  expect(result.current.dashboard?.pendingVotes[0]).toMatchObject({ id: 'prop_2', myVoteWindowIds: ['w_22'], groupName: 'Proyecto Integrador' });
 });
 
 it('toggleVote sobre mi franja retira el voto', async () => {
   dashboard.getDashboard.mockResolvedValue(
-    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowId: 'w_21' }), groupName: 'Proyecto Integrador' }] }),
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
   );
   proposals.removeVote.mockResolvedValue(makeProposal());
   const { result } = await load();
@@ -65,7 +66,18 @@ it('toggleVote sobre mi franja retira el voto', async () => {
   });
   expect(outcome).toEqual({ ok: true, value: 'unvoted' });
   expect(proposals.removeVote).toHaveBeenCalledWith('prop_2');
-  expect(result.current.dashboard?.pendingVotes[0].myVoteWindowId).toBeNull();
+  expect(result.current.dashboard?.pendingVotes[0].myVoteWindowIds).toEqual([]);
+});
+
+it('con voto múltiple, toggleVote sobre una franja mía retira solo esa', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  proposals.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+  const { result } = await load();
+  await act(async () => void (await result.current.toggleVote('prop_2', 'w_21')));
+  expect(proposals.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+  expect(result.current.dashboard?.pendingVotes[0].myVoteWindowIds).toEqual(['w_22']);
 });
 
 it('si el voto falla, no lanza: expone voteError y el resumen no cambia', async () => {
@@ -82,7 +94,7 @@ it('si el voto falla, no lanza: expone voteError y el resumen no cambia', async 
 
 it('si falla una de las dos cargas queda el error', async () => {
   dashboard.getDashboard.mockRejectedValue(new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.'));
-  const { result } = await renderHook(() => useDashboard());
+  const { result } = await renderHook(() => useDashboard(), withQueryClient());
   await waitFor(() => expect(result.current.error).toBe('No se pudo conectar con el servidor. Revisa tu conexión.'));
   expect(result.current.loaded).toBe(false);
 });
@@ -92,7 +104,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
   const offline = () => new ApiError(0, 'NETWORK_ERROR', 'No se pudo conectar con el servidor. Revisa tu conexión.');
 
   it('cada carga buena se guarda para ese usuario', async () => {
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.loaded).toBe(true));
     await waitFor(async () => expect(await dashboardCache.get('u1')).toEqual({ dashboard: makeDashboard(), blocks: [block] }));
     expect(result.current.stale).toBe(false);
@@ -101,7 +113,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
   it('sin red muestra la última copia, marcada como desactualizada y sin poder votar', async () => {
     await dashboardCache.set('u1', saved);
     dashboard.getDashboard.mockRejectedValue(offline());
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.error).not.toBeNull());
     await waitFor(() => expect(result.current.stale).toBe(true));
     expect(result.current.loaded).toBe(true);
@@ -111,7 +123,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
 
   it('cuando llega la respuesta del servidor reemplaza a la copia', async () => {
     await dashboardCache.set('u1', saved);
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.dashboard).toEqual(makeDashboard()));
     expect(result.current.stale).toBe(false);
     await waitFor(async () => expect((await dashboardCache.get('u1'))?.dashboard).toEqual(makeDashboard()));
@@ -120,7 +132,7 @@ describe('copia local en AsyncStorage (con userId)', () => {
   it('no muestra la copia de otro usuario', async () => {
     await dashboardCache.set('u2', saved);
     dashboard.getDashboard.mockRejectedValue(offline());
-    const { result } = await renderHook(() => useDashboard('u1'));
+    const { result } = await renderHook(() => useDashboard('u1'), withQueryClient());
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.loaded).toBe(false);
   });

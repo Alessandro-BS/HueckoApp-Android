@@ -13,13 +13,13 @@ import {
   makeClock,
   makeTestApp,
   NOW,
+  recordQueries,
   registerUser,
   setupSeedGroup,
   voteFor,
+  win,
   windowOf,
 } from './helpers';
-
-const NEW_DEADLINE = new Date(2026, 9, 10, 20, 0).toISOString();
 
 let app: Express;
 let db: Db;
@@ -37,28 +37,24 @@ beforeEach(async () => {
 const postTo = (path: string, token: string, body: object = {}) =>
   request(app).post(`/api/proposals/${path}`).set(bearer(token)).send(body);
 const vote = (p: Proposal, dayOfWeek: number, token: string) => voteFor(app, p.id, windowOf(p, dayOfWeek).id, token);
-// Ana pasa a ser imprescindible: su FALTA lleva el plan a EN_RECOORDINACION.
+// Ana pasa a ser imprescindible: su FALTA es crítica y abre la votación exprés.
 const makeEssential = () =>
   request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true });
 
-// Martes 16–18, jueves 10–12 y viernes 16–18, creada por yo para poder confirmarla.
+// Martes 6/10 16–18, jueves 8/10 10–12 y viernes 9/10 16–18, creada por yo para poder confirmarla.
 const threeWindows = () =>
   createProposal(app, yo.token, group.id, {
     title: 'Repaso antes de la entrega',
     votingDeadline: DEADLINE,
-    windows: [
-      { dayOfWeek: 2, startTime: '16:00', endTime: '18:00' },
-      { dayOfWeek: 4, startTime: '10:00', endTime: '12:00' },
-      { dayOfWeek: 5, startTime: '16:00', endTime: '18:00' },
-    ],
+    windows: [win(2, '16:00', '18:00'), win(4, '10:00', '12:00'), win(5, '16:00', '18:00')],
   });
 
-// Miércoles 11–13, votada por los dos y confirmada por yo.
+// Miércoles 7/10 11–13 (o sábado 10/10), votada por los dos en el miércoles y confirmada por yo.
 async function confirmedPlan(): Promise<Proposal> {
   const p = await createProposal(app, yo.token, group.id, {
     title: 'Reunión de avance del proyecto',
     votingDeadline: DEADLINE,
-    windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00' }],
+    windows: [win(3, '11:00', '13:00'), win(6, '11:00', '13:00')],
   });
   await vote(p, 3, yo.token);
   await vote(p, 3, ana.token);
@@ -67,12 +63,13 @@ async function confirmedPlan(): Promise<Proposal> {
   return res.body;
 }
 
-// Plan confirmado en el que falta Ana (imprescindible): queda EN_RECOORDINACION.
+// Plan confirmado en el que falta Ana (imprescindible): yo, el único que vota, elige REAGENDAR y queda EN_RECOORDINACION.
 async function recoordinatingPlan(): Promise<Proposal> {
   const p = await confirmedPlan();
   await makeEssential();
-  const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
-  if (res.body.state !== 'EN_RECOORDINACION') throw new Error(`reportar falló: ${res.status} ${JSON.stringify(res.body)}`);
+  await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+  const res = await request(app).put(`/api/proposals/${p.id}/express-vote`).set(bearer(yo.token)).send({ option: 'REAGENDAR' });
+  if (res.body.state !== 'EN_RECOORDINACION') throw new Error(`reagendar falló: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;
 }
 
@@ -85,7 +82,7 @@ async function cancelledPlan(): Promise<Proposal> {
 }
 
 describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
-  it('sin windowId gana la más votada y scheduledAt/scheduledDate son su próxima ocurrencia', async () => {
+  it('sin windowId gana la más votada; scheduledAt = instant(date, startTime) y scheduledDate = date', async () => {
     const p = await threeWindows();
     await vote(p, 4, yo.token);
     await vote(p, 4, ana.token);
@@ -94,8 +91,8 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect(res.body).toMatchObject({
       state: 'CONFIRMADO',
       chosenWindowId: windowOf(p, 4).id,
-      scheduledAt: new Date(2026, 9, 1, 10, 0).toISOString(),
-      scheduledDate: '2026-10-01',
+      scheduledAt: '2026-10-08T15:00:00.000Z', // jueves 8/10 10:00 en Lima
+      scheduledDate: '2026-10-08',
     });
   });
 
@@ -103,27 +100,55 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     const p = await createProposal(app, yo.token, group.id, {
       votingDeadline: DEADLINE,
       windows: [
-        { dayOfWeek: 1, startTime: '10:00', endTime: '12:00' }, // 50 %
-        { dayOfWeek: 5, startTime: '16:00', endTime: '18:00' }, // 100 %
+        win(1, '10:00', '12:00'), // 50 %
+        win(5, '16:00', '18:00'), // 100 %
       ],
     });
     await vote(p, 1, ana.token);
     await vote(p, 5, yo.token);
     const res = await postTo(`${p.id}/confirm`, yo.token);
     expect(res.body.chosenWindowId).toBe(windowOf(p, 5).id);
-    expect(res.body.scheduledAt).toBe(new Date(2026, 9, 2, 16, 0).toISOString());
-    expect(res.body.scheduledDate).toBe('2026-10-02');
+    expect(res.body.scheduledAt).toBe('2026-10-09T21:00:00.000Z');
+    expect(res.body.scheduledDate).toBe('2026-10-09');
   });
 
-  it('con windowId confirma esa franja aunque no tenga votos (hoy mismo si aún no llegó la hora)', async () => {
+  it('empate total: gana la de fecha más temprana, aunque su día de la semana sea mayor', async () => {
+    const p = await createProposal(app, yo.token, group.id, {
+      votingDeadline: DEADLINE,
+      windows: [{ date: '2026-10-13', startTime: '16:00', endTime: '18:00' }, win(5, '16:00', '18:00')],
+    });
+    await vote(p, 2, ana.token);
+    await vote(p, 5, yo.token);
+    const res = await postTo(`${p.id}/confirm`, yo.token);
+    expect(res.body.scheduledDate).toBe('2026-10-09');
+  });
+
+  it('con windowId confirma esa franja aunque no tenga votos', async () => {
     const p = await threeWindows();
     const res = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 2).id });
     expect(res.body).toMatchObject({
       state: 'CONFIRMADO',
       chosenWindowId: windowOf(p, 2).id,
-      scheduledAt: new Date(2026, 8, 29, 16, 0).toISOString(),
-      scheduledDate: '2026-09-29',
+      scheduledAt: '2026-10-06T21:00:00.000Z',
+      scheduledDate: '2026-10-06',
     });
+  });
+
+  // El plazo siempre es anterior a la primera franja, así que una franja empezada con la votación abierta solo existe en
+  // datos migrados de antes de las fechas: la del martes se mueve al martes 29/9 a las 10:00 (justo NOW).
+  it('409 WINDOW_STARTED si la franja elegida ya empezó (datos migrados); las que no empezaron se confirman', async () => {
+    const p = await threeWindows();
+    await vote(p, 2, ana.token);
+    await db.query("UPDATE proposal_windows SET date = '2026-09-29', start_time = '10:00', end_time = '12:00' WHERE id = $1", [windowOf(p, 2).id]);
+    const empezada = await postTo(`${p.id}/confirm`, yo.token);
+    expect([empezada.status, empezada.body.error.code, empezada.body.error.message]).toEqual([
+      409, 'WINDOW_STARTED', 'Esa franja ya empezó: replantea la propuesta.',
+    ]);
+    const conId = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 2).id });
+    expect(conId.body.error.code).toBe('WINDOW_STARTED');
+    expect((await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token))).body.state).toBe('PROPUESTO');
+    const jueves = await postTo(`${p.id}/confirm`, yo.token, { windowId: windowOf(p, 4).id });
+    expect([jueves.status, jueves.body.scheduledDate, jueves.body.autoClosed]).toEqual([200, '2026-10-08', false]);
   });
 
   it('409 NO_VOTES sin votos ni windowId; 404 WINDOW_NOT_FOUND con una franja ajena', async () => {
@@ -158,14 +183,30 @@ describe('POST /api/proposals/:id/confirm (C2, C11)', () => {
     expect([res2.status, res2.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
-  it('se puede confirmar después del plazo', async () => {
+  // Antes se podía confirmar a mano después del plazo; ahora, al vencer, la votación se cierra sola con la más votada
+  // (lo mismo que habría elegido confirmar sin windowId) y confirmar ya no vale.
+  it('después del plazo ya se confirmó sola con la más votada: confirmar → 409 INVALID_STATE', async () => {
     const p = await threeWindows();
     await vote(p, 4, ana.token);
     clock.set(AFTER_DEADLINE);
     const res = await postTo(`${p.id}/confirm`, yo.token);
-    expect(res.status).toBe(200);
-    expect(res.body.scheduledAt).toBe(new Date(2026, 9, 8, 10, 0).toISOString());
-    expect(res.body.scheduledDate).toBe('2026-10-08');
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    const now = await request(app).get(`/api/proposals/${p.id}`).set(bearer(yo.token));
+    expect(now.body).toMatchObject({
+      state: 'CONFIRMADO',
+      autoClosed: true,
+      chosenWindowId: windowOf(p, 4).id,
+      scheduledAt: new Date(2026, 9, 8, 10, 0).toISOString(),
+      scheduledDate: '2026-10-08',
+    });
+  });
+
+  it('se puede confirmar a mano hasta justo antes del plazo', async () => {
+    const p = await threeWindows();
+    await vote(p, 4, ana.token);
+    clock.set(new Date(new Date(DEADLINE).getTime() - 1));
+    const res = await postTo(`${p.id}/confirm`, yo.token);
+    expect([res.status, res.body.state, res.body.autoClosed, res.body.scheduledDate]).toEqual([200, 'CONFIRMADO', false, '2026-10-08']);
   });
 });
 
@@ -208,6 +249,7 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
         delayMinutes: null,
         criticality: 'MEDIA',
         resolved: false,
+        criticalReason: null,
         createdAt: NOW.toISOString(),
       },
     ]);
@@ -223,14 +265,19 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
     expect(res.body.state).toBe('CONFIRMADO');
   });
 
-  it('FALTA de un imprescindible → ALTA y el plan pasa a EN_RECOORDINACION', async () => {
+  it('FALTA de un imprescindible → ALTA, abre la votación exprés y el plan sigue CONFIRMADO', async () => {
     const p = await confirmedPlan();
     await makeEssential();
     const res = await report(p, ana.token, { type: 'FALTA', reason: 'Estoy enferma' });
-    expect(res.body.state).toBe('EN_RECOORDINACION');
-    expect(res.body.incidences[0].criticality).toBe('ALTA');
-    // En EN_RECOORDINACION se siguen aceptando reportes.
-    expect((await report(p, yo.token, { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 10 })).status).toBe(201);
+    expect(res.body.state).toBe('CONFIRMADO');
+    expect(res.body.incidences[0]).toMatchObject({ criticality: 'ALTA', criticalReason: 'el grupo lo marcó como imprescindible' });
+    expect(res.body.expressVote).toMatchObject({ status: 'ABIERTA', eligibleVoters: 1 });
+  });
+
+  it('409 INVALID_STATE en EN_RECOORDINACION: no hay fecha a la que faltar', async () => {
+    const p = await recoordinatingPlan();
+    const res = await report(p, yo.token, { type: 'TARDANZA', reason: 'Tráfico', delayMinutes: 10 });
+    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
   });
 
   it('FALTA de alguien no imprescindible → MEDIA y sigue CONFIRMADO', async () => {
@@ -266,103 +313,6 @@ describe('POST /api/proposals/:id/incidences (C4, G6)', () => {
   });
 });
 
-describe('POST /api/proposals/:id/incidences/resolve (G4)', () => {
-  const resolve = (p: Proposal, token: string, body: object) => postTo(`${p.id}/incidences/resolve`, token, body);
-  const withIncidence = async () => {
-    const p = await confirmedPlan();
-    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
-    return p;
-  };
-
-  it('Mantener: incidencias resueltas; sigue CONFIRMADO con su franja y su fecha', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      state: 'CONFIRMADO', chosenWindowId: p.chosenWindowId, scheduledAt: p.scheduledAt, scheduledDate: p.scheduledDate,
-    });
-    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
-  });
-
-  it('Cancelar: CANCELADO', async () => {
-    const p = await withIncidence();
-    expect((await resolve(p, yo.token, { newState: 'CANCELADO' })).body.state).toBe('CANCELADO');
-  });
-
-  it('Reprogramar: PROPUESTO sin votos ni franja elegida, con plazo nuevo, y se vuelve a votar', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
-    });
-    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0]);
-    expect(res.body.incidences.every((i: { resolved: boolean }) => i.resolved)).toBe(true);
-    expect((await vote(res.body, 3, ana.token)).status).toBe(200);
-  });
-
-  it('Reprogramar exige un plazo nuevo y futuro', async () => {
-    const p = await withIncidence();
-    const sinPlazo = await resolve(p, yo.token, { newState: 'PROPUESTO' });
-    expect(sinPlazo.body.error.details).toContainEqual(
-      expect.objectContaining({ path: ['votingDeadline'], message: 'Para reprogramar indica una nueva fecha límite' }),
-    );
-    const pasado = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: new Date(2026, 8, 28).toISOString() });
-    expect(pasado.body.error.details).toContainEqual(
-      expect.objectContaining({ path: ['votingDeadline'], message: 'La fecha límite debe ser futura' }),
-    );
-  });
-
-  it('el plazo solo se valida al reprogramar: con CONFIRMADO o CANCELADO se ignora', async () => {
-    const p = await withIncidence();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO', votingDeadline: new Date(2026, 8, 28).toISOString() });
-    expect([res.status, res.body.state]).toEqual([200, 'CONFIRMADO']);
-    const cancelado = await resolve(p, yo.token, { newState: 'CANCELADO', votingDeadline: 'no-es-una-fecha' });
-    expect([cancelado.status, cancelado.body.state]).toEqual([200, 'CANCELADO']);
-  });
-
-  it('de EN_RECOORDINACION a CONFIRMADO', async () => {
-    const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
-    expect(res.body.state).toBe('CONFIRMADO');
-  });
-
-  it('de EN_RECOORDINACION a PROPUESTO: sin votos ni franja elegida, con el plazo nuevo e incidencias resueltas', async () => {
-    const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      state: 'PROPUESTO', chosenWindowId: null, scheduledAt: null, scheduledDate: null, votingDeadline: NEW_DEADLINE, myVoteWindowId: null,
-    });
-    expect(res.body.windows.map((w: { voteCount: number }) => w.voteCount)).toEqual([0]);
-    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
-  });
-
-  it('de EN_RECOORDINACION a CANCELADO: incidencias resueltas', async () => {
-    const p = await recoordinatingPlan();
-    const res = await resolve(p, yo.token, { newState: 'CANCELADO' });
-    expect([res.status, res.body.state]).toEqual([200, 'CANCELADO']);
-    expect(res.body.incidences.map((i: { resolved: boolean }) => i.resolved)).toEqual([true]);
-  });
-
-  it('409 INVALID_STATE al resolver un plan CANCELADO', async () => {
-    const p = await cancelledPlan();
-    const res = await resolve(p, yo.token, { newState: 'CONFIRMADO' });
-    expect([res.status, res.body.error.code]).toEqual([409, 'INVALID_STATE']);
-  });
-
-  it('403 si no la gestiono; 400 con un estado inválido; 409 si no está confirmada', async () => {
-    const p = await withIncidence();
-    expect((await resolve(p, ana.token, { newState: 'CANCELADO' })).body.error.code).toBe('NOT_MANAGER');
-    const invalido = await resolve(p, yo.token, { newState: 'EN_RECOORDINACION' });
-    expect(invalido.body.error.details).toContainEqual(
-      expect.objectContaining({ path: ['newState'], message: 'Estado inválido: CONFIRMADO, CANCELADO o PROPUESTO' }),
-    );
-    const enVotacion = await threeWindows();
-    expect((await resolve(enVotacion, yo.token, { newState: 'CANCELADO' })).body.error.code).toBe('INVALID_STATE');
-  });
-});
-
 // Otra petición cambia el estado entre la comprobación de la ruta y su escritura (en Neon, dos conexiones a la vez):
 // la escritura solo se aplica si el plan sigue en el estado comprobado; si no, 409 INVALID_STATE y no pisa nada.
 describe('cambios de estado a la vez (M4)', () => {
@@ -385,22 +335,43 @@ describe('cambios de estado a la vez (M4)', () => {
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
   });
 
-  it('resolver las incidencias de un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y las incidencias sin resolver', async () => {
+  it('reportar un imprevisto en un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y no se guarda', async () => {
     const p = await confirmedPlan();
-    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
-    cancelledMeanwhile(p);
-    const res = await postTo(`${p.id}/incidences/resolve`, yo.token, { newState: 'PROPUESTO', votingDeadline: NEW_DEADLINE });
+    // Se cuela justo antes de que se guarde la incidencia (o de que se bloquee el plan para guardarla).
+    interleave(db, /^(INSERT INTO incidences|SELECT state, scheduled_at, group_id FROM proposals WHERE id = \$1 FOR UPDATE)/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
     expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await stateOf(p)).toBe('CANCELADO');
-    expect(await db.many('SELECT resolved FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([{ resolved: false }]);
-    expect(await db.one('SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', [p.id])).toEqual({ n: 2 });
+    expect(await db.many('SELECT id FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([]);
   });
 
-  it('la FALTA de un imprescindible no reabre como EN_RECOORDINACION un plan que otra petición acaba de cancelar', async () => {
+  it('lo primero, dentro de su transacción, es bloquear el plan (FOR UPDATE): una cancelación a la vez espera a la incidencia', async () => {
+    // PGlite tiene una sola conexión y no puede reproducir la carrera: este test impide que un cambio quite el bloqueo.
+    const p = await confirmedPlan();
+    const calls = recordQueries(db);
+    await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
+    expect(calls.find((c) => c.inTransaction)).toEqual({
+      sql: 'SELECT state, scheduled_at, group_id FROM proposals WHERE id = $1 FOR UPDATE', params: [p.id], inTransaction: true,
+    });
+  });
+
+  it('reportar en un plan que una votación acaba de mandar a recoordinar: 409 y no se guarda', async () => {
+    const p = await confirmedPlan();
+    // La ruta lo leyó CONFIRMADO; el cierre de una votación (REAGENDAR) se cuela antes de que se bloquee el plan.
+    interleave(db, /^SELECT state, scheduled_at, group_id FROM proposals WHERE id = \$1 FOR UPDATE/, "UPDATE proposals SET state = 'EN_RECOORDINACION' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'IMPREVISTO', reason: 'Examen' });
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
+    expect(await stateOf(p)).toBe('EN_RECOORDINACION');
+    expect(await db.many('SELECT id FROM incidences WHERE proposal_id = $1', [p.id])).toEqual([]);
+  });
+
+  it('una ausencia crítica en un plan que otra petición acaba de cancelar: 409, sigue CANCELADO y no abre votación', async () => {
     const p = await confirmedPlan();
     await makeEssential();
-    cancelledMeanwhile(p);
-    await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+    interleave(db, /^SELECT state, scheduled_at, group_id FROM proposals WHERE id = \$1 FOR UPDATE/, "UPDATE proposals SET state = 'CANCELADO' WHERE id = $1", [p.id]);
+    const res = await postTo(`${p.id}/incidences`, ana.token, { type: 'FALTA', reason: 'Enferma' });
+    expect([res.status, res.body.error?.code]).toEqual([409, 'INVALID_STATE']);
     expect(await stateOf(p)).toBe('CANCELADO');
+    expect(await db.many('SELECT id FROM express_votes WHERE proposal_id = $1', [p.id])).toEqual([]);
   });
 });

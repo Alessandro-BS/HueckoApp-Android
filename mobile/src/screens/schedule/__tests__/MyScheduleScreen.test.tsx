@@ -157,3 +157,11 @@ it('si falla la carga muestra el error y permite reintentar', async () => {
   await fireEvent.press(screen.getByText('Reintentar'));
   expect(await screen.findByText('Aún no tienes horarios registrados')).toBeTruthy();
 });
+
+it('tocar un bloque abre el formulario de edición con ese bloque', async () => {
+  const tutoria = block({ id: 'b2', label: 'Tutoría', dayOfWeek: 2 });
+  mocked.listTimeBlocks.mockResolvedValue([tutoria]);
+  await renderScreen();
+  await fireEvent.press(await screen.findByLabelText('Editar Tutoría'));
+  expect(navigation.navigate).toHaveBeenCalledWith('AddSchedule', { block: tutoria });
+});

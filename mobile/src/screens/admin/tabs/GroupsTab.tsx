@@ -7,7 +7,7 @@ import { useAdminGroups } from '../../../hooks/useAdminLists';
 import { useRefreshErrorToast } from '../../../hooks/useRefreshErrorToast';
 import { useRefreshOnFocus } from '../../../hooks/useRefreshOnFocus';
 import { colors, typography } from '../../../theme';
-import { countLabel } from '../../../utils/admin';
+import { countLabel, organizersLabel } from '../../../utils/admin';
 import { memberCountLabel } from '../../../utils/groups';
 import { Pager } from '../Pager';
 import { SearchRow } from '../SearchRow';
@@ -21,7 +21,7 @@ function GroupRow({ group, onPress }: { group: AdminGroupSummary; onPress: () =>
           {`${memberCountLabel(group.memberCount)} · ${countLabel(group.proposalCount, 'propuesta', 'propuestas')}`}
         </Text>
         <Text style={[typography.labelSmall, { color: colors.onSurfaceVariant }]}>
-          {group.owner ? `Administra: ${group.owner.name}` : 'Sin administrador'}
+          {organizersLabel(group.organizers)}
         </Text>
       </View>
     </HueckoCard>

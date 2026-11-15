@@ -49,6 +49,10 @@ export const MOCK_RESPONSES: Record<AiTask, unknown> = {
     recommendation: 'CONFIRMAR',
     reason: 'Son datos de ejemplo: con una clave de Gemini el resumen se basa en los votos reales.',
   },
+  'express-recommendation': {
+    option: 'MANTENER',
+    reason: 'Es una recomendación de ejemplo: con una clave de Gemini se basa en el plan y en la ausencia reales.',
+  },
 };
 
 export function createMockAiClient(): AiClient {

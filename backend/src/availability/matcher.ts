@@ -3,6 +3,9 @@ import type { MatchWindow } from '@hueckoapp/shared';
 // Puerto EXACTO de AvailabilityMatcher.kt (legacy-android). Función pura, sin base de datos.
 // Reglas y ejemplos: docs/superpowers/specs/2026-09-29-domain-logic-spec.md §1.
 // No añadir reglas aquí: las nuevas van en group-availability.ts.
+// (Solo cambió el tipo: MatchWindow ahora lleva `date`, que pone group-availability.ts; el matcher no conoce fechas.)
+
+export type DayWindow = Omit<MatchWindow, 'date'>;
 
 /** La hora h representa la franja [h:00, h+1:00). La agenda va de 08:00 a 20:00. */
 export const AGENDA_FIRST_HOUR = 8;
@@ -37,7 +40,7 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
  * Franjas del día `day` (1–7) en las que al menos el umbral del grupo está libre.
  * Una franja se describe por su hora MENOS disponible (mínimo), no por la media.
  */
-export function windowsFor(group: MatcherGroup, blocks: readonly MatcherBlock[], day: number): MatchWindow[] {
+export function windowsFor(group: MatcherGroup, blocks: readonly MatcherBlock[], day: number): DayWindow[] {
   const size = group.memberIds.length;
   if (size === 0) return [];
 
@@ -74,6 +77,6 @@ export function windowsFor(group: MatcherGroup, blocks: readonly MatcherBlock[],
 }
 
 /** Lunes a domingo concatenados: el resultado queda ordenado por día y hora (allWindowsFor en Kotlin). */
-export function weeklyWindows(group: MatcherGroup, blocks: readonly MatcherBlock[]): MatchWindow[] {
+export function weeklyWindows(group: MatcherGroup, blocks: readonly MatcherBlock[]): DayWindow[] {
   return WEEK.flatMap((day) => windowsFor(group, blocks, day));
 }

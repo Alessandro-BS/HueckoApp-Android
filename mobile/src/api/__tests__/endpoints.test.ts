@@ -5,7 +5,9 @@ import * as ai from '../ai';
 import { api } from '../client';
 import * as dashboard from '../dashboard';
 import * as groups from '../groups';
+import * as notifications from '../notifications';
 import * as proposals from '../proposals';
+import * as proximity from '../proximity';
 import * as schedule from '../schedule';
 
 const original = api.defaults.adapter;
@@ -30,21 +32,25 @@ const block: TimeBlockInput = {
 };
 
 const proposalInput = { title: 'Repaso', votingDeadline: '2026-10-03T01:00:00.000Z', windows: [] };
-const windowInput = { dayOfWeek: 5, startTime: '18:00', endTime: '19:30' };
+const windowInput = { date: '2026-10-02', startTime: '18:00', endTime: '19:30' };
+const replanInput = { votingDeadline: '2026-11-18T20:00:00.000Z', windows: [windowInput, { date: '2026-11-19', startTime: '10:00', endTime: '12:00' }] };
 const incidenceInput = { type: 'TARDANZA' as const, reason: 'Tráfico', delayMinutes: 20 };
 
 // [método, url, llamada, cuerpo esperado]: el título de cada test se lee como "GET /groups".
 it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['GET', '/me/time-blocks', () => schedule.listTimeBlocks(), undefined],
   ['POST', '/me/time-blocks', () => schedule.createTimeBlock(block), block],
+  ['PUT', '/me/time-blocks/b%201', () => schedule.updateTimeBlock('b 1', block), block],
   ['DELETE', '/me/time-blocks/b%201', () => schedule.deleteTimeBlock('b 1'), undefined],
   ['GET', '/groups', () => groups.listGroups(), undefined],
   ['GET', '/groups/g1', () => groups.getGroup('g1'), undefined],
   ['POST', '/groups', () => groups.createGroup({ name: 'Estudio' }), { name: 'Estudio' }],
   ['POST', '/groups/join', () => groups.joinGroup(' proy2026 '), { inviteCode: 'PROY2026' }],
-  ['PATCH', '/groups/g1/members/u2', () => groups.setMemberEssential('g1', 'u2', true), { isEssential: true }],
+  ['PATCH', '/groups/g1/members/u2', () => groups.updateMember('g1', 'u2', { isEssential: true }), { isEssential: true }],
+  ['PATCH', '/groups/g1/members/u2', () => groups.updateMember('g1', 'u2', { role: 'ORGANIZER' }), { role: 'ORGANIZER' }],
   ['DELETE', '/groups/g1/members/me', () => groups.leaveGroup('g1'), undefined],
   ['GET', '/groups/g1/availability', () => groups.getAvailability('g1'), undefined],
+  ['GET', '/groups/g1/availability?week=2026-11-16', () => groups.getAvailability('g1', '2026-11-16'), undefined],
   ['GET', '/groups/g1/proposals', () => proposals.listGroupProposals('g1'), undefined],
   ['POST', '/groups/g1/proposals', () => proposals.createProposal('g1', proposalInput), proposalInput],
   ['GET', '/proposals/p1', () => proposals.getProposal('p1'), undefined],
@@ -53,15 +59,23 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   ['POST', '/proposals/p1/windows', () => proposals.addWindow('p1', windowInput), windowInput],
   ['POST', '/proposals/p1/confirm', () => proposals.confirmProposal('p1'), {}],
   ['POST', '/proposals/p1/confirm', () => proposals.confirmProposal('p1', 'w1'), { windowId: 'w1' }],
+  ['POST', '/proposals/p1/replan', () => proposals.replanProposal('p1', replanInput), replanInput],
   ['POST', '/proposals/p1/cancel', () => proposals.cancelProposal('p1'), undefined],
   ['POST', '/proposals/p1/incidences', () => proposals.reportIncidence('p1', incidenceInput), incidenceInput],
-  ['POST', '/proposals/p1/incidences/resolve', () => proposals.resolveIncidences('p1', { newState: 'CANCELADO' }), { newState: 'CANCELADO' }],
+  ['PUT', '/proposals/p1/express-vote', () => proposals.voteExpress('p1', 'REAGENDAR'), { option: 'REAGENDAR' }],
   ['GET', '/me/dashboard', () => dashboard.getDashboard(), undefined],
   ['POST', '/me/time-blocks/bulk', () => schedule.createTimeBlocksBulk([block]), { blocks: [block] }],
   ['GET', '/ai/status', () => ai.getAiStatus(), undefined],
-  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes'), { text: 'Estudiar el viernes' }],
+  ['POST', '/groups/g%201/ai/proposal-draft', () => ai.draftProposal('g 1', 'Estudiar el viernes', '2026-11-16'), { text: 'Estudiar el viernes', week: '2026-11-16' }],
   ['POST', '/groups/g1/ai/suggestions', () => ai.suggestPlans('g1'), undefined],
   ['POST', '/proposals/p1/ai/summary', () => ai.summarizeVoting('p1'), undefined],
+  ['POST', '/proximity/invite', () => proximity.sendInvite('g1'), { groupId: 'g1' }],
+  ['POST', '/proximity/join', () => proximity.sendJoin(), {}],
+  ['GET', '/proximity/r%201', () => proximity.getProximity('r 1'), undefined],
+  ['POST', '/proximity/r1/accept', () => proximity.acceptProximity('r1'), undefined],
+  ['POST', '/proximity/r1/reject', () => proximity.rejectProximity('r1'), undefined],
+  ['DELETE', '/proximity/r1', () => proximity.cancelProximity('r1'), undefined],
+  ['GET', '/health', () => proximity.pingServer(), undefined],
 ])('%s %s', async (method, url, call, body) => {
   await call();
   expect(calls).toHaveLength(1);
@@ -70,9 +84,16 @@ it.each<[string, string, () => Promise<unknown>, unknown]>([
   if (body !== undefined) expect(JSON.parse(calls[0].data)).toEqual(body);
 });
 
+it('DELETE /proposals/p1/vote con windowId manda ?windowId= solo esa franja', async () => {
+  await proposals.removeVote('p1', 'w1');
+  expect(calls[0].method?.toUpperCase()).toBe('DELETE');
+  expect(calls[0].url).toBe('/proposals/p1/vote');
+  expect(calls[0].params).toEqual({ windowId: 'w1' });
+});
+
 it('las llamadas que usan la IA esperan hasta 45 s; el resto, lo normal', async () => {
   await ai.suggestPlans('g1');
-  await ai.draftProposal('g1', 'Estudiar');
+  await ai.draftProposal('g1', 'Estudiar', '2026-11-16');
   await ai.summarizeVoting('p1');
   await ai.getAiStatus();
   expect(calls.map((c) => c.timeout)).toEqual([45_000, 45_000, 45_000, 15_000]);
@@ -86,4 +107,22 @@ it('POST /ai/schedule-ocr sube la foto como multipart/form-data', async () => {
   expect(calls[0].data).toBeInstanceOf(FormData);
   expect(String(calls[0].headers['Content-Type'])).toContain('multipart/form-data');
   expect(calls[0].timeout).toBe(45_000);
+});
+
+it('pingServer no lanza si el servidor no responde', async () => {
+  api.defaults.adapter = async () => {
+    throw new Error('sin red');
+  };
+  await expect(proximity.pingServer()).resolves.toBeUndefined();
+});
+
+it('PUT /me/push-devices envía el token y DELETE lo pone codificado en la ruta', async () => {
+  await notifications.registerPushDevice('ExponentPushToken[abc]');
+  expect(calls[0].method?.toUpperCase()).toBe('PUT');
+  expect(calls[0].url).toBe('/me/push-devices');
+  expect(JSON.parse(calls[0].data)).toEqual({ token: 'ExponentPushToken[abc]' });
+  await notifications.unregisterPushDevice('ExponentPushToken[abc]');
+  expect(calls[1].method?.toUpperCase()).toBe('DELETE');
+  expect(calls[1].url).toBe('/me/push-devices/ExponentPushToken%5Babc%5D');
+  expect(calls[1].timeout).toBe(5_000);
 });

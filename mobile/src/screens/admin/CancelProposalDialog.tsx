@@ -33,7 +33,9 @@ export function CancelProposalDialog({ proposal, loading, error, onConfirm, onDi
     >
       <View style={styles.body}>
         <Text style={[typography.bodyMedium, { color: colors.onSurfaceVariant }]}>
-          {`«${proposal.title}» pasará a «Cancelado» para todo el grupo. Quedará en el registro de acciones.`}
+          {proposal.state === 'CANCELADO'
+            ? `«${proposal.title}» se canceló sola porque nadie votó. Quedará cancelada por la administración (ya no se podrá replantear) y en el registro de acciones.`
+            : `«${proposal.title}» pasará a «Cancelado» para todo el grupo. Quedará en el registro de acciones.`}
         </Text>
         <TextField
           label="Motivo"

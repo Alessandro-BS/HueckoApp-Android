@@ -1,16 +1,12 @@
 import { z } from 'zod';
 
+import { isRealDate } from '../common/zone';
+
 export const BLOCK_TYPES = ['CLASE', 'TRABAJO', 'LIBRE', 'PUNTUAL'] as const;
 
 // "HH:mm" de 00:00 a 23:59 con dos dígitos (misma regla que AddScheduleScreen.kt y la app).
 export const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-// "2026-02-30" pasa la regex pero no existe: se comprueba que la fecha sea real.
-const isRealDate = (value: string) => {
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-};
 
 const time = z.string({ error: 'Formato HH:mm' }).regex(TIME_REGEX, 'Formato HH:mm');
 

@@ -2,7 +2,8 @@ import type { Group, GroupSummary } from '@hueckoapp/shared';
 import { useCallback } from 'react';
 
 import { createGroup, joinGroup, listGroups } from '../api/groups';
-import { useResource } from './useResource';
+import { queryKeys } from '../api/queryClient';
+import { useApiQuery } from './useApiQuery';
 
 const NO_GROUPS: GroupSummary[] = [];
 
@@ -16,7 +17,7 @@ const toSummary = (g: Group): GroupSummary => ({
 
 // Mis grupos: la lista, crear y unirse. create/join lanzan si fallan (los diálogos usan useAction).
 export function useGroups() {
-  const { data, loaded, loading, refreshing, error, reload, mutate } = useResource(listGroups);
+  const { data, loaded, loading, refreshing, error, reload, mutate } = useApiQuery(queryKeys.groups, listGroups);
 
   const create = useCallback(
     async (name: string) => {

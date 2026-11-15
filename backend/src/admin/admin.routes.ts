@@ -3,6 +3,8 @@ import { Router, type Response } from 'express';
 
 import type { ResolvedDeps } from '../app';
 import { getUserId } from '../auth/require-auth';
+import { logCloseError } from '../proposals/express-votes.repository';
+import { closeDueProposals, closeProposalIfDue, VOTING } from '../proposals/voting-close';
 import { adminGroups } from './admin-groups';
 import { adminUsers, type AdminActor } from './admin-users';
 import {
@@ -20,19 +22,26 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   const groups = adminGroups(db);
   const actor = (res: Response): AdminActor => ({ adminId: getUserId(res), now: now() });
 
+  // Antes de contar se cierran todas las votaciones de franjas vencidas (nunca lanza): un plan ya cerrado no cuenta como
+  // «en votación».
+  const closeAllDue = () => closeDueProposals(db, { all: true }, now());
+
   // Estadísticas e informes: todo se calcula aquí, en la zona del servidor; la app solo lo muestra y lo exporta.
   router.get('/stats', async (_req, res) => {
+    await closeAllDue();
     res.json(await adminStats(db));
   });
 
   router.get('/stats/timeseries', async (req, res) => {
     const { range, fromDate, toDate, bucket } = timeseriesQuerySchema.parse(req.query);
+    await closeAllDue();
     const body: Timeseries = { from: fromDate, to: toDate, bucket, points: await timeseries(db, range, bucket) };
     res.json(body);
   });
 
   router.get('/stats/popular-hours', async (req, res) => {
     const period = optionalRangeQuerySchema.parse(req.query);
+    await closeAllDue();
     const body: PopularHours = {
       from: period?.fromDate ?? null,
       to: period?.toDate ?? null,
@@ -42,7 +51,9 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   });
 
   router.get('/reports', async (req, res) => {
-    res.json(await adminReport(db, rangeQuerySchema.parse(req.query).range, now()));
+    const { range } = rangeQuerySchema.parse(req.query);
+    await closeAllDue();
+    res.json(await adminReport(db, range, now()));
   });
 
   router.get('/users', async (req, res) => {
@@ -73,6 +84,7 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   });
 
   router.get('/groups/:id', async (req, res) => {
+    await closeDueProposals(db, { groupId: req.params.id }, now());
     res.json(await groups.detail(req.params.id));
   });
 
@@ -82,8 +94,11 @@ export function adminRouter({ db, now }: ResolvedDeps) {
   });
 
   // Moderación: cancelar la propuesta de cualquier grupo (D7). Cuerpo { reason } obligatorio (3-200 caracteres).
+  // Antes se cierra su votación si venció (como al cancelar quien gestiona): el resultado no depende de si alguien la
+  // consultó antes. Un plan que se confirma solo aquí se cancela igual (y queda con autoClosed false).
   router.post('/proposals/:id/cancel', async (req, res) => {
     const { reason } = cancelProposalSchema.parse(req.body ?? {});
+    await closeProposalIfDue(db, req.params.id, now()).catch((error: unknown) => logCloseError(req.params.id, error, VOTING));
     res.json(await groups.cancelProposal(actor(res), req.params.id, reason));
   });
 

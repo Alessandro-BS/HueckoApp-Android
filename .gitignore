@@ -44,3 +44,7 @@ Thumbs.db
 .vscode/
 # Configuración local de Claude Code de cada persona
 .claude/settings.local.json
+
+# --- Firebase: la clave de la cuenta de servicio es secreta (google-services.json NO lo es y sí se versiona) ---
+*-firebase-adminsdk-*.json
+mobile/google-service-account*.json

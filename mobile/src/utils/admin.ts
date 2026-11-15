@@ -15,6 +15,7 @@ export const AI_TASK_LABEL: Record<AiTask, string> = {
   'proposal-draft': 'Borrador de propuesta',
   'plan-suggestions': 'Ideas de plan',
   'voting-summary': 'Resumen de votación',
+  'express-recommendation': 'Recomendación exprés',
 };
 
 export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
@@ -99,3 +100,7 @@ export function lastWeeksRange(now: Date, weeks: number): DateRange {
   const monday = addDays(today, -((today.getDay() + 6) % 7));
   return { from: toDateKey(addDays(monday, -7 * (weeks - 1))), to: toDateKey(today) };
 }
+
+/** «Organiza: Ana, Carlos» o «Sin organizadores» (lista y detalle de grupos del panel). */
+export const organizersLabel = (organizers: { name: string }[]) =>
+  organizers.length === 0 ? 'Sin organizadores' : `Organiza: ${organizers.map((o) => o.name).join(', ')}`;

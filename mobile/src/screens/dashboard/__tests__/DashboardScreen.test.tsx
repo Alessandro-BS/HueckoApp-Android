@@ -11,6 +11,7 @@ import { dashboardCache } from '../../../storage/appStorage';
 import { makeDashboard, makeProposal } from '../../../testing/fixtures';
 import { showToast } from '../../../utils/toast';
 import { DashboardScreen } from '../DashboardScreen';
+import { withQueryClient } from '../../../testing/queryClient';
 
 jest.mock('../../../api/dashboard');
 jest.mock('../../../api/groups');
@@ -39,7 +40,7 @@ const SEED_BLOCKS = [
   block({ id: 'b1', label: 'Clase de Android', dayOfWeek: 1 }),
   block({ id: 'b2', label: 'Trabajo Part-time', dayOfWeek: 3, startTime: '14:00', endTime: '16:00' }),
 ];
-const renderScreen = () => render(<DashboardScreen navigation={navigation} route={{} as any} />);
+const renderScreen = () => render(<DashboardScreen navigation={navigation} route={{} as any} />, withQueryClient());
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -53,10 +54,10 @@ it('pinta los valores de la semilla (domain spec §2.2, UI spec §2.3)', async (
   expect(await screen.findByText('Buenos días, Usuario')).toBeTruthy();
   expect(screen.getByText('Martes, 29 de septiembre')).toBeTruthy();
   expect(screen.getByText('Esto es lo que pasa hoy en tus grupos y horarios.')).toBeTruthy();
-  // Alerta (G5, aviso): quien gestiona el plan puede decidir.
+  // Alerta (G5, aviso): lleva al plan.
   expect(await screen.findByText('Aviso de imprevisto')).toBeTruthy();
   expect(screen.getByText('Ana reportó un imprevisto en «Reunión de avance del proyecto»')).toBeTruthy();
-  expect(screen.getByText('Mantener')).toBeTruthy();
+  expect(screen.getByText('Ver plan')).toBeTruthy();
   // Métricas.
   expect(screen.getByText('Grupos activos')).toBeTruthy();
   expect(screen.getByText('Votaciones abiertas')).toBeTruthy();
@@ -71,12 +72,12 @@ it('pinta los valores de la semilla (domain spec §2.2, UI spec §2.3)', async (
   expect(screen.getByText('Nada en la agenda para hoy (Mar)')).toBeTruthy();
   expect(screen.getByText('Tienes 2 bloques en la semana.')).toBeTruthy();
   // Mis grupos.
-  expect(screen.getByText('2 miembros · Mié 11:00 - 13:00')).toBeTruthy();
+  expect(screen.getByText('2 miembros · Mié 7 oct · 11:00 - 13:00')).toBeTruthy();
   expect(screen.getByText('100%')).toBeTruthy();
   // Votaciones en curso.
   expect(screen.getByText('Repaso antes de la entrega')).toBeTruthy();
   expect(screen.getByText('Cierra: Mar 29 sep, 20:00')).toBeTruthy();
-  expect(screen.getByText('Mar · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.getByText('Mar 29 sep · 16:00 - 18:00')).toBeTruthy();
   expect(screen.getByText('1 voto')).toBeTruthy();
 });
 
@@ -114,9 +115,9 @@ it('sin datos muestra los estados vacíos', async () => {
 });
 
 it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)', async () => {
-  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowId: 'w_22' }));
+  proposals.voteWindow.mockResolvedValue(makeProposal({ myVoteWindowIds: ['w_22'] }));
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto ha sido registrado.'));
   expect(proposals.voteWindow).toHaveBeenCalledWith('prop_2', 'w_22');
   expect(screen.getByLabelText('Tu voto')).toBeTruthy();
@@ -124,11 +125,11 @@ it('votar desde «Votaciones en curso» usa la misma alternancia que Votar (G1)'
 
 it('tocar la franja que ya voté retira el voto y avisa (B8)', async () => {
   dashboard.getDashboard.mockResolvedValue(
-    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowId: 'w_21' }), groupName: 'Proyecto Integrador' }] }),
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
   );
   proposals.removeVote.mockResolvedValue(makeProposal());
   await renderScreen();
-  const mine = await screen.findByText('Mar · 16:00 - 18:00');
+  const mine = await screen.findByText('Mar 29 sep · 16:00 - 18:00');
   expect(screen.getByLabelText('Tu voto')).toBeTruthy();
   await fireEvent.press(mine);
   await waitFor(() => expect(showToast).toHaveBeenCalledWith('Tu voto se ha retirado.'));
@@ -140,7 +141,7 @@ it('tocar la franja que ya voté retira el voto y avisa (B8)', async () => {
 it('si votar falla muestra el error en «Votaciones en curso» y no avisa', async () => {
   proposals.voteWindow.mockRejectedValue(new ApiError(409, 'VOTING_CLOSED', 'La votación ya cerró.'));
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Jue · 10:00 - 12:00'));
+  await fireEvent.press(await screen.findByText('Jue 1 oct · 10:00 - 12:00'));
   expect(await screen.findByText('La votación ya cerró.')).toBeTruthy();
   expect(showToast).not.toHaveBeenCalled();
 });
@@ -176,17 +177,59 @@ it('las tarjetas y accesos navegan a Grupos, Horario, el plan y el grupo', async
   expect(navigation.navigate).toHaveBeenLastCalledWith('Schedule');
   await fireEvent.press(screen.getByText('1 de 2 asistirán'));
   expect(navigation.navigate).toHaveBeenLastCalledWith('PlanDetail', { proposalId: 'prop_1' });
-  await fireEvent.press(screen.getByText('2 miembros · Mié 11:00 - 13:00'));
+  await fireEvent.press(screen.getByText('2 miembros · Mié 7 oct · 11:00 - 13:00'));
   expect(navigation.navigate).toHaveBeenLastCalledWith('GroupDetail', { groupId: 'g1', name: 'Proyecto Integrador' });
 });
 
-it('«Mantener» en la alerta resuelve y recarga Inicio', async () => {
-  proposals.resolveIncidences.mockResolvedValue(makeProposal());
+it('alerta AVISO: «Ver plan» abre el plan', async () => {
   await renderScreen();
-  await fireEvent.press(await screen.findByText('Mantener'));
-  await waitFor(() => expect(dashboard.getDashboard).toHaveBeenCalledTimes(2));
-  expect(proposals.resolveIncidences).toHaveBeenCalledWith('prop_1', { newState: 'CONFIRMADO' });
-  expect(showToast).toHaveBeenCalledWith('Votación exprés registrada: mantener.');
+  await fireEvent.press(await screen.findByText('Ver plan'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta VOTACION: quién no puede ir, cuánto falta y «Votar» abre el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', canVote: true, expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
+  expect(screen.getByText('Cierra en 42 min')).toBeTruthy();
+  expect(screen.getByText('Cruce con un examen de laboratorio a última hora.')).toBeTruthy();
+  expect(screen.queryByText('Ver plan')).toBeNull();
+  await fireEvent.press(screen.getByText('Votar'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta VOTACION para quien no vota (quien avisó, o entró después): «Ver votación» en vez de «Votar», y abre el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ expressAlert: { ...base, kind: 'VOTACION', canVote: false, expiresAt: new Date(2026, 8, 29, 10, 42).toISOString() } }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Votación exprés: Ana no puede ir')).toBeTruthy();
+  expect(screen.queryByText('Votar')).toBeNull();
+  await fireEvent.press(screen.getByText('Ver votación'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta RECOORDINACION: «Proponer franjas» solo si puede gestionar el plan', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(makeDashboard({ expressAlert: { ...base, kind: 'RECOORDINACION', canResolve: true } }));
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió reagendar')).toBeTruthy();
+  expect(screen.getByText('Ana no puede ir a «Reunión de avance del proyecto»')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Proponer franjas'));
+  expect(navigation.navigate).toHaveBeenCalledWith('PlanDetail', { proposalId: 'prop_1' });
+});
+
+it('alerta RECOORDINACION sin permiso de gestión: solo informa, sin botón', async () => {
+  const base = makeDashboard().expressAlert!;
+  dashboard.getDashboard.mockResolvedValue(makeDashboard({ expressAlert: { ...base, kind: 'RECOORDINACION', canResolve: false } }));
+  await renderScreen();
+  expect(await screen.findByText('El grupo decidió reagendar')).toBeTruthy();
+  expect(screen.queryByText('Proponer franjas')).toBeNull();
+  expect(screen.queryByText('Votar')).toBeNull();
 });
 
 it('si la primera carga falla muestra el error con «Reintentar»', async () => {
@@ -204,4 +247,39 @@ it('sin red muestra los últimos datos guardados con un aviso, en vez del error'
   expect(await screen.findByText('Sin conexión: estos son los últimos datos guardados.')).toBeTruthy();
   expect(screen.getByText('6 h')).toBeTruthy();
   expect(screen.queryByText('Reintentar')).toBeNull();
+});
+
+it('Inicio muestra la fecha de la próxima franja de cada grupo', async () => {
+  const base = makeDashboard();
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({
+      groups: [{ ...base.groups[0], nextWindow: { date: '2026-11-20', dayOfWeek: 5, startTime: '16:00', endTime: '18:00', availabilityPercentage: 80 } }],
+    }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('2 miembros · Vie 20 nov · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.getByText('80%')).toBeTruthy();
+});
+
+it('con voto múltiple dice cuántas franjas votaste y la ayuda; con 1, «Votaste 1 franja»', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_21', 'w_22'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  proposals.removeVote.mockResolvedValue(makeProposal({ multipleVotes: true, myVoteWindowIds: ['w_22'] }));
+  await renderScreen();
+  expect(await screen.findByText('Votaste 2 franjas')).toBeTruthy();
+  expect(screen.getByText('Puedes votar todas las franjas que te sirvan')).toBeTruthy();
+  await fireEvent.press(screen.getByText('Mar 29 sep · 16:00 - 18:00'));
+  expect(await screen.findByText('Votaste 1 franja')).toBeTruthy();
+  expect(proposals.removeVote).toHaveBeenCalledWith('prop_2', 'w_21');
+});
+
+it('sin voto múltiple no muestra «Votaste» ni la ayuda', async () => {
+  dashboard.getDashboard.mockResolvedValue(
+    makeDashboard({ pendingVotes: [{ ...makeProposal({ myVoteWindowIds: ['w_21'] }), groupName: 'Proyecto Integrador' }] }),
+  );
+  await renderScreen();
+  expect(await screen.findByText('Mar 29 sep · 16:00 - 18:00')).toBeTruthy();
+  expect(screen.queryByText(/Votaste/)).toBeNull();
+  expect(screen.queryByText('Puedes votar todas las franjas que te sirvan')).toBeNull();
 });

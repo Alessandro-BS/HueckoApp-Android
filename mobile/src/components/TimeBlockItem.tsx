@@ -6,10 +6,10 @@ import { categoryColorFor, colors, radius, typography } from '../theme';
 import { dayShort, formatDateLabel } from '../utils/days';
 import { Badge } from './Badge';
 
-type Props = { block: TimeBlock; onDelete?: () => void };
+type Props = { block: TimeBlock; onDelete?: () => void; onPress?: () => void };
 
 // TimeBlockItem (UI spec §2.9). Un puntual muestra su fecha («Vie 2 oct») en vez de «Puntual».
-export function TimeBlockItem({ block, onDelete }: Props) {
+export function TimeBlockItem({ block, onDelete, onPress }: Props) {
   const when =
     block.isRecurring && block.dayOfWeek ? dayShort(block.dayOfWeek) : block.date ? formatDateLabel(block.date) : 'Puntual';
   const isPunctual = !block.isRecurring || block.type === 'PUNTUAL';
@@ -17,10 +17,16 @@ export function TimeBlockItem({ block, onDelete }: Props) {
   return (
     <View style={styles.item}>
       <View style={[styles.accent, { backgroundColor: categoryColorFor(block.id) }]} />
-      <View style={styles.texts}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Editar ${block.label}`}
+        disabled={!onPress}
+        onPress={onPress}
+        style={styles.texts}
+      >
         <Text style={[typography.titleMedium, { color: colors.onSurface }]}>{block.label}</Text>
         <Text style={[typography.bodySmall, styles.subtitle]}>{`${when} · ${block.startTime} - ${block.endTime}`}</Text>
-      </View>
+      </Pressable>
       {isPunctual ? <Badge text="Puntual" containerColor={colors.secondaryContainer} contentColor={colors.onSecondaryContainer} /> : null}
       {block.type === 'LIBRE' ? <Badge text="Libre" containerColor={colors.successContainer} contentColor={colors.onSuccessContainer} /> : null}
       {onDelete ? (

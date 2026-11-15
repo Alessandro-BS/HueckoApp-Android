@@ -8,10 +8,35 @@ export type UserRole = 'USER' | 'ADMIN';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED';
 
 // Quien inició sesión: solo lo devuelve /auth. Los demás usuarios (miembros, creadores…) siguen siendo `User`:
-// el rol de otras personas no se publica.
-export type CurrentUser = User & { role: UserRole };
+// el rol y los datos de la cuenta de otras personas no se publican.
+// hasPassword: puede entrar con contraseña (una cuenta creada con Google no tiene); hasGoogle: está vinculada a Google.
+export type CurrentUser = User & {
+  role: UserRole;
+  emailVerified: boolean;
+  twoFactorEnabled: boolean;
+  hasPassword: boolean;
+  hasGoogle: boolean;
+};
 
 export type AuthResponse = { token: string; user: CurrentUser };
+
+// Para qué es un código enviado por correo (docs/api.md, «Códigos por correo»).
+export type ChallengePurpose = 'VERIFY_EMAIL' | 'LOGIN_2FA' | 'RESET_PASSWORD' | 'ENABLE_2FA';
+
+// Un reto con código: se confirma con POST /auth/challenges/:id/verify. emailHint: «a***@gmail.com»;
+// resendAvailableAt: desde cuándo se puede pedir otro código (ISO).
+export type Challenge = { id: string; purpose: ChallengePurpose; emailHint: string; resendAvailableAt: string };
+
+// Respuesta de register/login: la sesión, o un reto que hay que confirmar con el código del correo antes.
+export type AuthResult = AuthResponse | { challenge: Challenge };
+
+export type ForgotPasswordInput = { email: string };
+export type GoogleLoginInput = { idToken: string };
+
+// Activar/desactivar la verificación en dos pasos: pide la contraseña actual.
+export type PasswordInput = { password: string };
+
+export type VerifyChallengeInput = { code: string; newPassword?: string };
 
 export type BlockType = 'CLASE' | 'TRABAJO' | 'LIBRE' | 'PUNTUAL';
 
@@ -30,7 +55,10 @@ export type TimeBlock = {
 // Cuerpo de POST /me/time-blocks (y de cada elemento de /bulk): el servidor pone id y userId.
 export type TimeBlockInput = Omit<TimeBlock, 'id' | 'userId'>;
 
-export type GroupMember = User & { role: 'OWNER' | 'MEMBER'; isEssential: boolean };
+export type GroupMember = User & { role: 'ORGANIZER' | 'MEMBER'; isEssential: boolean };
+
+// Cuerpo de PATCH /groups/:id/members/:userId: al menos uno de los dos campos.
+export type UpdateMemberInput = { isEssential?: boolean; role?: GroupMember['role'] };
 
 export type GroupSummary = {
   id: string;
@@ -46,6 +74,7 @@ export type Group = GroupSummary & {
 };
 
 export type MatchWindow = {
+  date: string;                  // YYYY-MM-DD (America/Lima) del día concreto de la franja
   dayOfWeek: number;
   startTime: string;
   endTime: string;
@@ -63,7 +92,8 @@ export type Location = {
 
 export type TimeWindow = {
   id: string;
-  dayOfWeek: number;
+  date: string;                    // "YYYY-MM-DD" en America/Lima: el día concreto de la franja
+  dayOfWeek: number;               // 1 = lunes … 7 = domingo, siempre el de `date`
   startTime: string;
   endTime: string;
   availabilityPercentage: number;
@@ -81,7 +111,30 @@ export type Incidence = {
   delayMinutes: number | null;
   criticality: Criticality;
   resolved: boolean;
+  criticalReason: string | null;   // por qué la incidencia es crítica (abre votación exprés); null si no lo es
   createdAt: string;
+};
+
+export type ExpressOption = 'CANCELAR' | 'REAGENDAR' | 'MANTENER';
+
+// Votación exprés grupal: una ausencia crítica en un plan confirmado abre una votación corta (docs/api.md, «Votación exprés»).
+export type ExpressVote = {
+  id: string;
+  status: 'ABIERTA' | 'CERRADA';
+  reportedBy: User;
+  reason: string;
+  criticalReason: string;
+  openedAt: string;
+  expiresAt: string;
+  closedAt: string | null;
+  counts: Record<ExpressOption, number>;
+  myVote: ExpressOption | null;
+  canVote: boolean;
+  eligibleVoters: number;
+  quorum: number;
+  result: ExpressOption | null;
+  resultByDefault: boolean | null;
+  recommendation: { option: ExpressOption; reason: string } | null;
 };
 
 export type Proposal = {
@@ -92,31 +145,43 @@ export type Proposal = {
   createdBy: User;
   votingDeadline: string;          // ISO 8601 (UTC); solo se vota antes de esta hora
   state: ProposalState;
-  windows: TimeWindow[];           // ordenadas por día y hora
-  myVoteWindowId: string | null;   // ventana que votó el usuario actual
-  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar, reprogramar o resolver (docs/api.md, «Quién gestiona un plan»)
+  windows: TimeWindow[];           // ordenadas por fecha y hora
+  multipleVotes: boolean;          // true: se pueden votar varias franjas; false: un voto por persona (votar otra lo mueve)
+  autoClosed: boolean;             // true si la votación se cerró sola al vencer el plazo (CONFIRMADO, o CANCELADO si nadie votó)
+  myVoteWindowIds: string[];       // franjas que votó el usuario actual, en el orden de `windows`
+  canManage: boolean;              // true si el usuario actual puede confirmar, cancelar o replantear (docs/api.md, «Quién gestiona un plan»)
   chosenWindowId: string | null;   // se llena al confirmar
-  scheduledAt: string | null;      // ISO: próxima vez que ocurre la franja elegida, calculada al confirmar
-  scheduledDate: string | null;    // "YYYY-MM-DD": la misma fecha en la zona horaria del servidor (para mostrarla sin depender de la del teléfono)
+  scheduledAt: string | null;      // ISO: inicio de la franja elegida (su fecha y hora en America/Lima), fijado al confirmar
+  scheduledDate: string | null;    // "YYYY-MM-DD": la fecha de la franja elegida (para mostrarla sin depender de la zona del teléfono)
   incidences: Incidence[];
+  expressVote: ExpressVote | null; // la votación exprés más reciente del plan (abierta o cerrada), si hay
   createdAt: string;               // ISO; GET /groups/:id/proposals ordena por aquí (más recientes primero)
 };
 
 // Cuerpos de las peticiones de propuestas (docs/api.md, «Propuestas y votación»).
-export type TimeWindowInput = { dayOfWeek: number; startTime: string; endTime: string };
+export type TimeWindowInput = {
+  date: string;                    // "YYYY-MM-DD" en America/Lima, entre esta semana y las próximas 3
+  startTime: string;
+  endTime: string;
+};
 
 export type ProposalInput = {
   title: string;
   location?: Location | null;
-  votingDeadline: string;          // ISO 8601 futura
-  windows?: TimeWindowInput[];     // vacío u omitido: el servidor propone las 3 mejores franjas
+  votingDeadline: string;          // ISO 8601 futura y anterior al inicio de la primera franja
+  windows?: TimeWindowInput[];     // de 2 a 5; vacío u omitido: el servidor propone las 3 mejores franjas de `week`
+  multipleVotes?: boolean;         // por defecto true
+  week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); solo se usa sin `windows`; por defecto, esta semana
 };
 
 export type IncidenceInput = { type: IncidenceType; reason: string; delayMinutes?: number | null };
 
-export type ResolveIncidencesInput =
-  | { newState: 'CONFIRMADO' | 'CANCELADO' }
-  | { newState: 'PROPUESTO'; votingDeadline: string };
+// Voto en la votación exprés (PUT /proposals/:id/express-vote); se puede cambiar mientras siga abierta.
+export type ExpressVoteInput = { option: ExpressOption };
+
+// Replantear una propuesta en votación, en recoordinación o cancelada sola porque nadie votó: franjas (2 a 5) y plazo
+// nuevos; se borran los votos.
+export type ReplanInput = { votingDeadline: string; windows: TimeWindowInput[] };
 
 // Propuesta con el nombre de su grupo (Inicio y /me/upcoming-plans).
 export type ProposalWithGroup = Proposal & { groupName: string };
@@ -133,9 +198,11 @@ export type ExpressAlert = {
   groupName: string;
   who: string;                          // nombre de quien reportó la incidencia
   reason: string;
-  kind: 'RECOORDINACION' | 'AVISO';     // EN_RECOORDINACION, o CONFIRMADO con incidencias sin resolver
+  kind: 'VOTACION' | 'RECOORDINACION' | 'AVISO'; // votación exprés abierta; plan EN_RECOORDINACION; o CONFIRMADO con incidencias sin resolver
   canResolve: boolean;                  // = canManage del plan para el usuario actual
+  canVote: boolean;                     // solo en VOTACION: el canVote de la votación abierta; false en los demás
   createdBy: User;
+  expiresAt: string | null;             // ISO: cuándo vence la votación; solo en VOTACION, null en los demás
 };
 
 export type DashboardGroup = {
@@ -163,7 +230,7 @@ export type AiProvider = 'gemini' | 'mock';
 export type AiStatus = { provider: AiProvider };
 
 // Función de la app que llamó a la IA (estadísticas de administración, `ai_calls`).
-export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary';
+export type AiTask = 'schedule-ocr' | 'proposal-draft' | 'plan-suggestions' | 'voting-summary' | 'express-recommendation';
 
 // Respuesta de POST /ai/schedule-ocr: bloques SIN guardar, para revisarlos y guardarlos con /me/time-blocks/bulk.
 export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
@@ -172,7 +239,10 @@ export type ScheduleOcrResult = { blocks: TimeBlockInput[] };
 export type PlanCategory = 'ESTUDIO' | 'REUNION' | 'COMIDA' | 'DEPORTE' | 'SALIDA' | 'OTRO';
 
 // Cuerpo de POST /groups/:id/ai/proposal-draft.
-export type ProposalDraftInput = { text: string };
+export type ProposalDraftInput = {
+  text: string;
+  week?: string;                   // lunes "YYYY-MM-DD" (cualquier día se normaliza); por defecto, esta semana y la siguiente
+};
 
 // Borrador para pre-rellenar «Nueva propuesta». No se guarda nada hasta que el usuario crea la propuesta.
 export type ProposalDraft = {
@@ -180,7 +250,7 @@ export type ProposalDraft = {
   category: PlanCategory;
   placeName: string | null;
   window: MatchWindow | null;      // dentro de un hueco real del grupo (GET /groups/:id/availability), recortado a lo pedido, o null
-  windows: MatchWindow[];          // 0–3 opciones para votar (la primera = `window`), con las mismas reglas
+  windows: MatchWindow[];          // 2–5 opciones para votar (la primera = `window`), con las mismas reglas
   votingDeadline: string;          // ISO futura sugerida (antes de la opción que llega primero)
 };
 
@@ -252,7 +322,7 @@ export type AdminGroupSummary = {
   description: string;
   memberCount: number;
   proposalCount: number;
-  owner: User | null;              // OWNER actual; null si el grupo no tiene miembros
+  organizers: User[];              // quienes organizan el grupo, del más antiguo al más nuevo; [] si no hay miembros
   createdAt: string;
 };
 
@@ -267,6 +337,7 @@ export type AdminProposalSummary = {
   scheduledDate: string | null;
   voteCount: number;               // solo votos de quienes siguen en el grupo
   incidenceCount: number;
+  autoClosed: boolean;             // la votación se cerró sola al vencer el plazo (CANCELADO + autoClosed: se puede moderar)
 };
 
 export type AdminGroupDetail = AdminGroupSummary & {
@@ -346,3 +417,29 @@ export type AdminReport = {
   popularHours: HourCount[];
   topGroups: TopGroup[];           // hasta 5, por propuestas creadas en el periodo
 };
+
+// ---- Unirse a un grupo acercando el celular (docs/api.md, «Proximidad») ----
+
+export type ProximityRole = 'INVITE' | 'JOIN';
+
+export type ProximityStatus = 'WAITING' | 'MATCHED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'AMBIGUOUS' | 'CANCELLED';
+
+export type ProximityRequest = {
+  id: string;
+  role: ProximityRole;
+  status: ProximityStatus;
+  group: { id: string; name: string } | null; // en JOIN, solo se conoce a partir de MATCHED
+  peer: { id: string; name: string } | null;  // a partir de MATCHED
+  expiresAt: string | null;      // ISO, en WAITING y MATCHED (cuenta atrás de la app); null en estados finales
+  acceptableFrom: string | null; // ISO; en MATCHED, matched_at + 3 s; null en otros estados
+};
+
+// ---- Notificaciones push (docs/api.md, «Notificaciones») ----
+
+export type NotificationKind = 'NEW_PROPOSAL' | 'PLAN_CONFIRMED' | 'PLAN_CANCELLED' | 'EXPRESS_OPENED' | 'EXPRESS_RESULT' | 'REMINDER';
+
+// Carga útil (`data`) de cada aviso: la app abre la pantalla indicada al tocarlo.
+export type NotificationData = { kind: NotificationKind; proposalId: string; groupId: string; screen: 'VOTING' | 'PLAN' };
+
+// Cuerpo de PUT /me/push-devices: token de Expo (`ExponentPushToken[...]` o `ExpoPushToken[...]`).
+export type PushDeviceInput = { token: string };

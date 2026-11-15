@@ -5,12 +5,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Db } from '../src/db/db';
 import { insertGroup, registerAdmin } from './admin-fixtures';
-import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp, NOW, setupSeedGroup, voteFor } from './helpers';
+import { bearer, createGroup, createProposal, DEADLINE, interleave, makeTestApp, NOW, setupSeedGroup, voteFor, win } from './helpers';
 
 async function setupGroups() {
   const { app, db } = await makeTestApp({ now: () => NOW });
   const admin = await registerAdmin(app, db, { email: 'admin@correo.com' });
-  const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es OWNER, Ana MEMBER
+  const { yo, ana, group } = await setupSeedGroup(app); // «Proyecto Integrador»: yo es ORGANIZER, Ana MEMBER
   return { app, db, admin, yo, ana, group };
 }
 
@@ -19,10 +19,10 @@ const names = (body: { items: { name: string }[] }) => body.items.map((g) => g.n
 
 type Session = { token: string; user: { id: string } };
 
-// Plan de un solo tramo (miércoles 11–13) votado por los dos y confirmado por quien lo creó.
+// Plan con dos franjas (miércoles 7/10 y sábado 10/10, 11–13), votado por los dos en el miércoles y confirmado por quien lo creó.
 async function confirmedPlan(app: Express, yo: Session, ana: Session, groupId: string, title = 'Reunión'): Promise<Proposal> {
   const plan = await createProposal(app, yo.token, groupId, {
-    title, votingDeadline: DEADLINE, windows: [{ dayOfWeek: 3, startTime: '11:00', endTime: '13:00' }],
+    title, votingDeadline: DEADLINE, windows: [win(3, '11:00', '13:00'), win(6, '11:00', '13:00')],
   });
   await voteFor(app, plan.id, plan.windows[0].id, yo.token).expect(200);
   await voteFor(app, plan.id, plan.windows[0].id, ana.token).expect(200);
@@ -32,7 +32,7 @@ async function confirmedPlan(app: Express, yo: Session, ana: Session, groupId: s
 }
 
 describe('GET /api/admin/groups', () => {
-  it('cada grupo con miembros, propuestas y OWNER; busca por nombre o por código', async () => {
+  it('cada grupo con miembros, propuestas y ORGANIZER; busca por nombre o por código', async () => {
     const { app, db, admin, yo, group } = await setupGroups();
     await createProposal(app, yo.token, group.id, { votingDeadline: DEADLINE });
     const other = await insertGroup(db, { name: 'Amigos de la Uni', inviteCode: 'HUECKO123' });
@@ -40,12 +40,24 @@ describe('GET /api/admin/groups', () => {
     expect(all.body).toMatchObject({ page: 1, pageSize: 20, total: 2 });
     const byId = new Map(all.body.items.map((g: { id: string }) => [g.id, g]));
     expect(byId.get(group.id)).toEqual({
-      id: group.id, name: 'Proyecto Integrador', description: '', memberCount: 2, proposalCount: 1, owner: yo.user, createdAt: expect.any(String),
+      id: group.id, name: 'Proyecto Integrador', description: '', memberCount: 2, proposalCount: 1, organizers: [yo.user], createdAt: expect.any(String),
     });
-    expect(byId.get(other)).toMatchObject({ memberCount: 0, proposalCount: 0, owner: null });
+    expect(byId.get(other)).toMatchObject({ memberCount: 0, proposalCount: 0, organizers: [] });
     const search = async (q: string) => names((await request(app).get('/api/admin/groups').query({ search: q }).set(bearer(admin.token))).body);
     expect(await search('huecko1')).toEqual(['Amigos de la Uni']);
     expect(await search('INTEGRADOR')).toEqual(['Proyecto Integrador']);
+  });
+
+  it('con varios organizadores los devuelve por antigüedad, en la lista y en el detalle', async () => {
+    const { app, db, admin, yo, ana, group } = await setupGroups();
+    const other = await insertGroup(db, { name: 'Otro', ownerId: yo.user.id });
+    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ role: 'ORGANIZER' }).expect(200);
+    const list = await request(app).get('/api/admin/groups').set(bearer(admin.token));
+    const byId = new Map<string, { organizers: unknown[] }>(list.body.items.map((g: { id: string }) => [g.id, g]));
+    expect(byId.get(group.id)!.organizers).toEqual([yo.user, ana.user]);
+    expect(byId.get(other)!.organizers).toEqual([yo.user]);
+    const detail = await request(app).get(`/api/admin/groups/${group.id}`).set(bearer(admin.token));
+    expect(detail.body.organizers).toEqual([yo.user, ana.user]);
   });
 
   it('% y _ se buscan literalmente, no como comodines', async () => {
@@ -82,16 +94,16 @@ describe('GET /api/admin/groups/:id', () => {
     const res = await request(app).get(`/api/admin/groups/${group.id}`).set(bearer(admin.token));
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      id: group.id, name: 'Proyecto Integrador', inviteCode: group.inviteCode, availabilityThreshold: 80, memberCount: 2, proposalCount: 1, owner: yo.user,
+      id: group.id, name: 'Proyecto Integrador', inviteCode: group.inviteCode, availabilityThreshold: 80, memberCount: 2, proposalCount: 1, organizers: [yo.user],
     });
     expect(res.body.members.map((m: { name: string; role: string }) => [m.name, m.role])).toEqual([
-      ['Usuario de Prueba', 'OWNER'],
+      ['Usuario de Prueba', 'ORGANIZER'],
       ['Ana', 'MEMBER'],
     ]);
     expect(res.body.proposals).toEqual([
       {
         id: plan.id, title: 'Repaso', state: 'PROPUESTO', createdBy: yo.user, createdAt: NOW.toISOString(), votingDeadline: DEADLINE,
-        scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0,
+        scheduledAt: null, scheduledDate: null, voteCount: 1, incidenceCount: 0, autoClosed: false,
       },
     ]);
     await request(app).delete(`/api/groups/${group.id}/members/me`).set(bearer(ana.token)).expect(204);
@@ -120,7 +132,7 @@ describe('DELETE /api/admin/groups/:id', () => {
       await count(db, 'SELECT COUNT(*) AS n FROM votes WHERE proposal_id = $1', plan.id),
       await count(db, 'SELECT COUNT(*) AS n FROM incidences WHERE proposal_id = $1', plan.id),
     ];
-    expect(await left()).toEqual([2, 1, 1, 2, 1]); // control positivo: antes de borrar, todo existe
+    expect(await left()).toEqual([2, 1, 2, 2, 1]); // control positivo: antes de borrar, todo existe
     expect((await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(admin.token))).status).toBe(204);
     expect(await left()).toEqual([0, 0, 0, 0, 0]);
     expect((await request(app).get(`/api/groups/${group.id}`).set(bearer(yo.token))).status).toBe(404);
@@ -131,7 +143,7 @@ describe('DELETE /api/admin/groups/:id', () => {
     });
   });
 
-  it('solo ADMIN: el OWNER del grupo recibe 403 NOT_ADMIN y el grupo sigue', async () => {
+  it('solo ADMIN: el ORGANIZER del grupo recibe 403 NOT_ADMIN y el grupo sigue', async () => {
     const { app, admin, yo, group } = await setupGroups();
     const denied = await request(app).delete(`/api/admin/groups/${group.id}`).set(bearer(yo.token));
     expect(denied.status).toBe(403);
@@ -185,12 +197,10 @@ describe('POST /api/admin/proposals/:id/cancel (moderación, D7)', () => {
     const { app, admin, yo, ana, group } = await setupGroups();
     const confirmed = await confirmedPlan(app, yo, ana, group.id, 'Confirmado');
     const recoordinating = await confirmedPlan(app, yo, ana, group.id, 'Re-coordinando');
-    await request(app).patch(`/api/groups/${group.id}/members/${ana.user.id}`).set(bearer(yo.token)).send({ isEssential: true }).expect(200);
-    const report = await request(app)
-      .post(`/api/proposals/${recoordinating.id}/incidences`)
-      .set(bearer(ana.token))
-      .send({ type: 'FALTA', reason: 'Enferma' });
-    expect(report.body.state).toBe('EN_RECOORDINACION'); // control del escenario
+    // Yo (quien lo propuso) no puede ir: Ana, la única que vota, elige REAGENDAR y el plan queda EN_RECOORDINACION.
+    await request(app).post(`/api/proposals/${recoordinating.id}/incidences`).set(bearer(yo.token)).send({ type: 'FALTA', reason: 'Enfermo' }).expect(201);
+    const reagendar = await request(app).put(`/api/proposals/${recoordinating.id}/express-vote`).set(bearer(ana.token)).send({ option: 'REAGENDAR' });
+    expect(reagendar.body.state).toBe('EN_RECOORDINACION'); // control del escenario
     for (const plan of [confirmed, recoordinating]) {
       const res = await request(app).post(`/api/admin/proposals/${plan.id}/cancel`).set(bearer(admin.token)).send({ reason: 'Spam' });
       expect(res.status).toBe(200);

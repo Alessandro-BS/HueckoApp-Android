@@ -1,4 +1,4 @@
-import type { AdminGroupDetail, AdminGroupSummary, AdminProposalSummary, Page, ProposalState } from '@hueckoapp/shared';
+import type { AdminGroupDetail, AdminGroupSummary, AdminProposalSummary, Page, ProposalState, User } from '@hueckoapp/shared';
 
 import type { Db, SqlParam } from '../db/db';
 import { groupsRepository, MEMBER_ORDER } from '../groups/groups.repository';
@@ -16,10 +16,9 @@ type GroupRow = {
   created_at: string;
   member_count: number;
   proposal_count: number;
-  owner_id: string | null;
-  owner_name: string | null;
-  owner_email: string | null;
 };
+
+type OrganizerRow = { group_id: string; id: string; name: string; email: string };
 
 type ProposalRow = {
   id: string;
@@ -35,35 +34,31 @@ type ProposalRow = {
   creator_email: string;
   vote_count: number;
   incidence_count: number;
+  auto_closed: boolean;
 };
 
-// El OWNER actual (si por datos rotos hubiera dos, el que llegó antes).
 const GROUP_SELECT = `
   SELECT g.id, g.name, g.description, g.created_at,
          (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id) AS member_count,
-         (SELECT COUNT(*) FROM proposals p WHERE p.group_id = g.id) AS proposal_count,
-         o.id AS owner_id, o.name AS owner_name, o.email AS owner_email
-  FROM groups g
-  LEFT JOIN users o ON o.id = (
-    SELECT m.user_id FROM group_members m WHERE m.group_id = g.id AND m.role = 'OWNER' ${MEMBER_ORDER} LIMIT 1
-  )`;
+         (SELECT COUNT(*) FROM proposals p WHERE p.group_id = g.id) AS proposal_count
+  FROM groups g`;
 
 // voteCount solo cuenta a quienes siguen en el grupo, igual que GET /proposals/:id.
 const PROPOSAL_SELECT = `
-  SELECT p.id, p.group_id, p.title, p.state, p.created_at, p.voting_deadline, p.scheduled_at, p.scheduled_date,
+  SELECT p.id, p.group_id, p.title, p.state, p.created_at, p.voting_deadline, p.scheduled_at, p.scheduled_date, p.auto_closed,
          u.id AS creator_id, u.name AS creator_name, u.email AS creator_email,
          (SELECT COUNT(*) FROM votes v JOIN group_members m ON m.group_id = p.group_id AND m.user_id = v.user_id
           WHERE v.proposal_id = p.id) AS vote_count,
          (SELECT COUNT(*) FROM incidences i WHERE i.proposal_id = p.id) AS incidence_count
   FROM proposals p JOIN users u ON u.id = p.created_by`;
 
-const toGroup = (r: GroupRow): AdminGroupSummary => ({
+const toGroup = (r: GroupRow, organizers: User[]): AdminGroupSummary => ({
   id: r.id,
   name: r.name,
   description: r.description,
   memberCount: r.member_count,
   proposalCount: r.proposal_count,
-  owner: r.owner_id === null ? null : { id: r.owner_id, name: r.owner_name ?? '', email: r.owner_email ?? '' },
+  organizers,
   createdAt: r.created_at,
 });
 
@@ -78,6 +73,7 @@ const toProposal = (r: ProposalRow): AdminProposalSummary => ({
   scheduledDate: r.scheduled_date,
   voteCount: r.vote_count,
   incidenceCount: r.incidence_count,
+  autoClosed: r.auto_closed,
 });
 
 const groupNotFound = () => new ApiError(404, 'GROUP_NOT_FOUND', 'Grupo no encontrado.');
@@ -93,6 +89,23 @@ export function adminGroups(db: Db) {
     if (!row) throw groupNotFound();
     return row;
   };
+  // Los organizadores de varios grupos en una sola consulta, del que llegó antes al que llegó después.
+  const loadOrganizers = async (groupIds: string[]): Promise<Map<string, User[]>> => {
+    const byGroup = new Map<string, User[]>();
+    if (groupIds.length === 0) return byGroup;
+    const rows = await db.many<OrganizerRow>(
+      `SELECT m.group_id, u.id, u.name, u.email
+       FROM group_members m JOIN users u ON u.id = m.user_id
+       WHERE m.group_id = ANY($1::text[]) AND m.role = 'ORGANIZER' ${MEMBER_ORDER}`,
+      [groupIds],
+    );
+    for (const r of rows) {
+      const list = byGroup.get(r.group_id) ?? [];
+      list.push({ id: r.id, name: r.name, email: r.email });
+      byGroup.set(r.group_id, list);
+    }
+    return byGroup;
+  };
   const findProposal = (id: string) => db.one<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.id = $1`, [id]);
 
   return {
@@ -105,7 +118,8 @@ export function adminGroups(db: Db) {
         `${GROUP_SELECT} ${where} ORDER BY g.created_at DESC, g.seq DESC LIMIT $${n + 1} OFFSET $${n + 2}`,
         [...filter, ADMIN_PAGE_SIZE, offsetOf(page)],
       );
-      return toPage(rows.map(toGroup), page, total);
+      const organizers = await loadOrganizers(rows.map((r) => r.id));
+      return toPage(rows.map((r) => toGroup(r, organizers.get(r.id) ?? [])), page, total);
     },
 
     async detail(id: string): Promise<AdminGroupDetail> {
@@ -114,7 +128,7 @@ export function adminGroups(db: Db) {
       if (!group) throw groupNotFound();
       const rows = await db.many<ProposalRow>(`${PROPOSAL_SELECT} WHERE p.group_id = $1 ORDER BY p.created_at DESC, p.seq DESC`, [id]);
       return {
-        ...toGroup(row),
+        ...toGroup(row, (await loadOrganizers([id])).get(id) ?? []),
         inviteCode: group.inviteCode,
         availabilityThreshold: group.availabilityThreshold,
         members: group.members,
@@ -138,15 +152,19 @@ export function adminGroups(db: Db) {
       });
     },
 
-    // Moderación (D7): cualquier propuesta que no esté cancelada, sea de quien sea y sin ser miembro.
+    // Moderación (D7): cualquier propuesta que no esté cancelada, sea de quien sea y sin ser miembro. Una CANCELADO que
+    // se canceló sola (auto_closed) también: queda como cancelada a mano (auto_closed en false) y ya no se replantea.
     cancelProposal(actor: AdminActor, id: string, reason: string): Promise<AdminProposalSummary> {
       return db.transaction(async () => {
         const row = await findProposal(id);
         if (!row) throw proposalNotFound();
         const alreadyCancelled = () => new ApiError(409, 'INVALID_STATE', 'La propuesta ya está cancelada.');
-        if (!canCancel(row.state)) throw alreadyCancelled();
-        // Condicionado: si quien organiza la canceló justo ahora, no se cancela ni se anota dos veces.
-        if (!(await proposals.cancel(id))) throw alreadyCancelled();
+        const autoCancelled = row.state === 'CANCELADO' && row.auto_closed;
+        if (!canCancel(row.state) && !autoCancelled) throw alreadyCancelled();
+        // Condicionado: si quien organiza la canceló (o la replanteó) justo ahora, no se cancela ni se anota dos veces.
+        // Cancelar avisa a todos los miembros (el admin no se excluye: null); moderar una cancelada sola no avisa.
+        const done = autoCancelled ? await proposals.clearAutoCancelled(id) : await proposals.cancel(id, null, actor.now);
+        if (!done) throw alreadyCancelled();
         await audit.record({
           adminId: actor.adminId,
           action: 'PROPOSAL_CANCELLED',
